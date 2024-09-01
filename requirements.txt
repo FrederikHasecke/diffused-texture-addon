@@ -2,4 +2,6 @@ numpy
 scipy
 opencv-python
 torch
+accelerate
 diffusers
+transformers

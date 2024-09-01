@@ -2,12 +2,18 @@ import os
 import bpy
 import cv2
 import numpy as np
+from pathlib import Path
+
 
 from render_setup import setup_render_settings, create_cameras_on_sphere
 from condition_setup import (
     bpy_img_to_numpy,
     create_depth_condition,
     create_normal_condition,
+)
+from texturegen.diffusers_utils import (
+    create_first_pass_pipeline,
+    infer_first_pass_pipeline,
 )
 
 
@@ -22,14 +28,16 @@ def first_pass(scene, max_size):
         offset=False,
     )
 
+    output_path = Path(scene.output_path)  # Use Path for OS-independent path handling
+
     # TODO: Do we want to enable more than 512x512?
     output_nodes = setup_render_settings(scene, resolution=(512, 512))
 
     # Set base paths for outputs
-    output_nodes["depth"].base_path = scene.output_path + "first_pass_depth/"
-    output_nodes["normal"].base_path = scene.output_path + "first_pass_normal/"
-    output_nodes["uv"].base_path = scene.output_path + "first_pass_uv/"
-    output_nodes["position"].base_path = scene.output_path + "first_pass_position/"
+    output_nodes["depth"].base_path = str(output_path / "first_pass_depth")
+    output_nodes["normal"].base_path = str(output_path / "first_pass_normal")
+    output_nodes["uv"].base_path = str(output_path / "first_pass_uv")
+    output_nodes["position"].base_path = str(output_path / "first_pass_position")
 
     # Create directories if they don't exist
     for key in output_nodes:
@@ -53,43 +61,45 @@ def first_pass(scene, max_size):
     depth_images = []
     normal_images = []
     uv_images = []
-    position_images = []
+
+    # get the current blender frame
+    frame_number = bpy.context.scene.frame_current
 
     for i in range(16):
 
         # Load UV images
-        uv_image_path = f"{output_nodes['uv'].base_path}uv_camera_{i:02d}_0000.exr"
-        uv_image_bpy = bpy.data.images.load(uv_image_path)
-        uv_image = bpy_img_to_numpy(uv_image_bpy)
+        uv_image_path = (
+            Path(output_nodes["uv"].base_path)
+            / f"uv_camera_{i:02d}_{frame_number:04d}.exr"
+        )
+
+        uv_image = bpy_img_to_numpy(str(uv_image_path))
 
         uv_images.append(uv_image)
 
-        # Load position images
-        position_image_path = (
-            f"{output_nodes['position'].base_path}position_camera_{i:02d}_0000.exr"
-        )
-        position_image_bpy = bpy.data.images.load(position_image_path)
-
-        position_image = bpy_img_to_numpy(position_image_bpy)
-        position_images.append(position_image)
-
         # Load depth images
         depth_image_path = (
-            f"{output_nodes['depth'].base_path}depth_camera_{i:02d}_0000.exr"
+            Path(output_nodes["depth"].base_path)
+            / f"depth_camera_{i:02d}_{frame_number:04d}.exr"
         )
 
-        depth_image_bpy = bpy.data.images.load(depth_image_path)
-        depth_image = create_depth_condition(depth_image_bpy)
+        depth_image = create_depth_condition(str(depth_image_path))
 
         depth_images.append(depth_image)
 
+        # Load position images
+        position_image_path = (
+            Path(output_nodes["position"].base_path)
+            / f"position_camera_{i:02d}_{frame_number:04d}.exr"
+        )
         # Load normal images
         normal_image_path = (
-            f"{output_nodes['normal'].base_path}normal_camera_{i:02d}_0000.exr"
+            Path(output_nodes["normal"].base_path)
+            / f"normal_camera_{i:02d}_{frame_number:04d}.exr"
         )
-
-        normal_image_bpy = bpy.data.images.load(normal_image_path)
-        normal_image = create_normal_condition(normal_image_bpy)
+        normal_image = create_normal_condition(
+            str(normal_image_path), str(position_image_path), cameras[i]
+        )
         normal_images.append(normal_image)
 
     # create the empty grid images
@@ -106,19 +116,61 @@ def first_pass(scene, max_size):
         depth_quad[row : row + 512, col : col + 512] = depth_img
         normal_quad[row : row + 512, col : col + 512] = normal_img
 
+    # Create the Canny image from the normal
     canny_quad = cv2.Canny(normal_quad, 100, 200)
     canny_quad = np.stack((canny_quad, canny_quad, canny_quad), axis=-1)
 
-    # TODO: Create the Canny image from the normal
-
-    # TODO: Setup the controlnets according to the mesh complexity
-
     # TODO: Create the pipe with the optional addition of a new checkpoint and additional loras
+    pipe = create_first_pass_pipeline(scene)
+    output_quad = infer_first_pass_pipeline(
+        pipe, scene, canny_quad, normal_quad, depth_quad
+    )
 
-    # TODO: Create the corresponding list of images for the controlnets
+    output_quad = np.array(output_quad)
 
-    # TODO: Execute pipe
+    # create a 16x512x512x3 uv map (one for each grid img)
+    uv_texture_first_pass = np.nan * np.ones(
+        (16, 512, 512, 3), dtype=np.float32
+    )  # neccessary for nanmean
 
-    # TODO: Reproject the 4x4 img output grid to the UV positions iteratively each on a channel of a 16 channel image
+    for cam_index in enumerate(cameras):
+        # Calculate the position in the grid
+        row = (i // 4) * 512
+        col = (i % 4) * 512
 
-    # TODO: nanmean the colors
+        # load the uv image
+        uv_image = uv_images[cam_index]
+
+        # resize the uv values to 0-511
+        uv_coordinates = (uv_image * 511).astype(np.uint16).reshape(-1, 2)
+
+        # the uvs are meant to start from the bottom left corner, so we flip the y axis (v axis)
+        uv_coordinates[:, 1] = 511 - uv_coordinates[:, 1]
+
+        uv_texture_first_pass[i, uv_coordinates[:, 1], uv_coordinates[:, 0], ...] = (
+            output_quad[row : row + 512, col : col + 512].reshape(-1, 3)
+        )
+
+    # average the UV texture across the 16 quadrants, but only where the UV map is defined
+    nan_per_channel = np.any(
+        np.isnan(uv_texture_first_pass), axis=-1
+    )  # check if any nan values are present in the last axis (channels)
+    nan_per_image = np.all(
+        nan_per_channel, axis=0
+    )  # check if any nan values are present in the last axis (quadrants)
+
+    # now every pixel in nan_per_image is True if the pixel is nan in all of the 4 quadrants
+    # make the unpainted mask 0-255 uint8
+    unpainted_mask = nan_per_image.astype(np.uint8) * 255
+
+    uv_texture_first_pass = np.nanmean(uv_texture_first_pass, axis=0).astype(np.uint8)
+
+    # inpaint all the missing pixels
+    filled_uv_texture_first_pass = cv2.inpaint(
+        uv_texture_first_pass,
+        unpainted_mask,
+        inpaintRadius=3,
+        flags=cv2.INPAINT_TELEA,
+    )
+
+    return filled_uv_texture_first_pass

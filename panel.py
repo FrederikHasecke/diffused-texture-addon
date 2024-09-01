@@ -9,6 +9,8 @@ script_dir = "C:/Users/fredd/Desktop/SD-texturing/code/texturegen_addon"
 # Add the directory to the system path if not already present
 if script_dir not in sys.path:
     sys.path.append(script_dir)
+
+os.environ["HF_HOME"] = r"G:\Huggingface_cache"
 ############################################################################
 
 from operators import OBJECT_OT_GenerateTexture, OBJECT_OT_SelectPipette
@@ -105,9 +107,6 @@ class OBJECT_PT_MainPanel(bpy.types.Panel):
             text="Start Texture Generation",
             icon="SHADERFX",
         )
-
-        # Add the button to install required libraries
-        layout.operator("object.install_libraries", text="Install Required Libraries")
 
 
 class OBJECT_PT_LoRAPanel(bpy.types.Panel):
