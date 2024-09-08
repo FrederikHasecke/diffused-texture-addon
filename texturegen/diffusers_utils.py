@@ -7,10 +7,12 @@ from diffusers import (
     StableDiffusionControlNetPipeline,
     ControlNetModel,
 )
+from PIL import Image
+
 
 # Create a dictionary to map model complexities to their corresponding controlnet weights and inputs
 controlnet_config = {
-    "low": {
+    "LOW": {
         "conditioning_scale": [0.8],
         "controlnets": [
             ControlNetModel.from_pretrained(
@@ -19,7 +21,7 @@ controlnet_config = {
         ],
         "inputs": ["depth"],
     },
-    "medium": {
+    "MEDIUM": {
         "conditioning_scale": [0.8, 0.75],
         "controlnets": [
             ControlNetModel.from_pretrained(
@@ -31,7 +33,7 @@ controlnet_config = {
         ],
         "inputs": ["depth", "canny"],
     },
-    "high": {
+    "HIGH": {
         "conditioning_scale": [1.0, 1.0, 1.0],
         "controlnets": [
             ControlNetModel.from_pretrained(
@@ -72,22 +74,32 @@ def infer_first_pass_pipeline(pipe, scene, canny_img, normal_img, depth_img):
 
     for entry in controlnet_config[scene.mesh_complexity]["inputs"]:
         if entry == "depth":
-            images.append(depth_img)
+            images.append(
+                Image.fromarray(depth_img).resize((512, 512), Image.Resampling.LANCZOS)
+            )
         elif entry == "canny":
-            images.append(canny_img)
+            images.append(
+                Image.fromarray(canny_img).resize((512, 512), Image.Resampling.LANCZOS)
+            )
         elif entry == "normal":
-            images.append(normal_img)
+            images.append(
+                Image.fromarray(normal_img).resize((512, 512), Image.Resampling.LANCZOS)
+            )
 
-    output = pipe(
-        prompt=scene.my_prompt,
-        negative_prompt=scene.my_negative_prompt,
-        image=images,
-        num_images_per_prompt=1,
-        controlnet_conditioning_scale=controlnet_config[scene.mesh_complexity][
-            "conditioning_scale"
-        ],
-        num_inference_steps=50,
-        guidance_scale=10.0,
-    ).images[0]
+    output = (
+        pipe(
+            prompt=scene.my_prompt,
+            negative_prompt=scene.my_negative_prompt,
+            image=images,
+            num_images_per_prompt=1,
+            controlnet_conditioning_scale=controlnet_config[scene.mesh_complexity][
+                "conditioning_scale"
+            ],
+            num_inference_steps=50,
+            guidance_scale=10.0,
+        )
+        .images[0]
+        .resize((canny_img.shape[0], canny_img.shape[1]), Image.Resampling.LANCZOS)
+    )
 
     return output

@@ -2,6 +2,7 @@ import os
 import bpy
 import copy
 import traceback
+import numpy as np
 from pathlib import Path
 
 from utils import update_uv_maps, get_mesh_objects, update_image_list
@@ -79,8 +80,12 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                 texture_first_pass = first_pass.first_pass(scene, max_size)
                 texture_final = copy.deepcopy(texture_first_pass)
 
+                # flip along the v axis
+                texture_final = texture_final[::-1]
+
                 # Save texture as texture_first_pass
                 self.save_texture(texture_final, str(output_path / "first_pass.png"))
+                self.save_texture(texture_final, str(output_path / "final_texture.png"))
 
             if scene.second_pass:
 
@@ -91,8 +96,12 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                 )
                 texture_final = copy.deepcopy(texture_second_pass)
 
+                # flip along the v axis
+                texture_final = texture_final[::-1]
+
                 # Save texture_final as texture_second_pass
                 self.save_texture(texture_final, str(output_path / "second_pass.png"))
+                self.save_texture(texture_final, str(output_path / "final_texture.png"))
 
             if scene.refinement_uv_space:
 
@@ -104,8 +113,12 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                 texture_uv_pass = uv_pass.uv_pass(scene, texture_input)
                 texture_final = copy.deepcopy(texture_uv_pass)
 
+                # flip along the v axis
+                texture_final = texture_final[::-1]
+
                 # Save texture_final as texture_uv_pass
                 self.save_texture(texture_final, str(output_path / "uv_pass.png"))
+                self.save_texture(texture_final, str(output_path / "final_texture.png"))
 
             # Process complete
             wm.progress_end()
@@ -131,52 +144,139 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
 
         finally:
             # Restore the original scene by reloading the backup file
-            bpy.ops.wm.open_mainfile(filepath=backup_file)
+            bpy.ops.wm.open_mainfile(filepath=str(backup_file))
+
+            # Select the new object since we reloaded
+            selected_object = bpy.data.objects.get(selected_mesh_name)
 
             # Assign the texture_final to the object
-            if texture_final:
-                self.assign_texture_to_object(selected_object, texture_final)
+            self.assign_texture_to_object(
+                selected_object, str(output_path / "final_texture.png")
+            )
 
         return {"FINISHED"}
 
     def save_texture(self, texture, filepath):
-        """Save the texture to a file."""
-        if texture:
-            texture.filepath_raw = filepath
-            texture.file_format = "PNG"
-            texture.save()
+        """
+        Save a numpy array as an image texture in Blender.
+
+        :param texture: numpy array representing the texture (shape: [height, width, channels]).
+                        The array should be in the range [0, 255] for integer values.
+        :param path: The path where the texture will be saved.
+        """
+
+        (height, width) = texture.shape[:2]
+
+        # Ensure the numpy array is in float format and normalize if necessary
+        if texture.dtype == np.uint8:
+            texture = texture.astype(np.float32) / 255.0
+
+        # Handle grayscale textures (add alpha channel if needed)
+        if texture.shape[2] == 1:  # Grayscale
+            texture = np.repeat(texture, 4, axis=2)
+            texture[:, :, 3] = 1.0  # Set alpha to 1 for grayscale
+
+        elif texture.shape[2] == 3:  # RGB
+            alpha_channel = np.ones((height, width, 1), dtype=np.float32)
+            texture = np.concatenate(
+                (texture, alpha_channel), axis=2
+            )  # Add alpha channel
+
+        # Flatten the numpy array to a list
+        flattened_texture = texture.flatten()
+
+        # Create a new image in Blender with the provided dimensions
+        image = bpy.data.images.new(
+            name="SavedTexture", width=width, height=height, alpha=True
+        )
+
+        # Update the image's pixel data with the flattened texture
+        image.pixels = flattened_texture
+
+        # Save the image to the specified path
+        image.filepath_raw = filepath
+        image.file_format = "PNG"  # Set to PNG or any other format you prefer
+        image.save()
 
     def load_texture(self, filepath):
-        """Load a texture from a file."""
+        """Load a texture from a file and return it as a numpy array."""
         if os.path.exists(filepath):
-            return bpy.data.images.load(filepath)
+            # Load the texture using Blender's image system
+            image = bpy.data.images.load(filepath)
+
+            # Ensure the image has loaded data
+            if not image.has_data:
+                raise ValueError(f"Image data not loaded for {filepath}")
+
+            # Get image dimensions
+            width, height = image.size
+
+            # Extract the pixel data (Blender stores it in RGBA format, float [0, 1])
+            pixels = np.array(image.pixels[:], dtype=np.float32)
+
+            # Reshape the flattened pixel data into (height, width, 4) array
+            pixels = pixels.reshape((height, width, 4))
+
+            # Convert the pixel values from float [0, 1] to [0, 255] uint8
+            pixels = (pixels * 255).astype(np.uint8)
+
+            return pixels
         else:
-            self.report({"ERROR"}, f"Texture file {filepath} not found.")
-            return None
+            raise FileNotFoundError(f"Texture file {filepath} not found.")
 
-    def assign_texture_to_object(self, obj, texture):
-        """Assign the final texture to the object's material."""
-        if obj and texture:
-            if obj.data.materials:
-                material = obj.data.materials[0]
-            else:
-                material = bpy.data.materials.new(name="Material")
-                obj.data.materials.append(material)
+    def no_material_on(self, mesh):
+        if 1 > len(mesh.materials):
+            return True
 
-            if material.node_tree:
-                nodes = material.node_tree.nodes
-                bsdf = nodes.get("Principled BSDF")
+        for i in range(len(mesh.materials)):
+            if mesh.materials[i] is not None:
+                return False
+        return True
 
-                if bsdf:
-                    texture_node = nodes.new(type="ShaderNodeTexImage")
-                    texture_node.image = texture
-                    material.node_tree.links.new(
-                        bsdf.inputs["Base Color"], texture_node.outputs["Color"]
-                    )
-                else:
-                    self.report({"ERROR"}, "Could not find Principled BSDF node.")
-            else:
-                self.report({"ERROR"}, "Material has no node tree.")
+    def assign_texture_to_object(self, obj, texture_filepath):
+        """
+        Assign the final texture to the object's material using the texture filepath.
+
+        :param obj: The object to assign the texture to.
+        :param texture_filepath: Path to the texture file (PNG or other format).
+        """
+        # Check if the object has an existing material
+        if obj.data.materials:
+            material = obj.data.materials[0]
+        else:
+            # Create a new material if none exists
+            material = bpy.data.materials.new(name="GeneratedMaterial")
+            obj.data.materials.append(material)
+
+        # Enable 'Use Nodes' for the material
+        material.use_nodes = True
+        nodes = material.node_tree.nodes
+
+        # Find the Principled BSDF node or add one if it doesn't exist
+        bsdf = nodes.get("Principled BSDF")
+        if bsdf is None:
+            bsdf = nodes.new(type="ShaderNodeBsdfPrincipled")
+            nodes["Material Output"].location = (400, 0)
+
+        # Create a new image texture node
+        texture_node = nodes.new(type="ShaderNodeTexImage")
+
+        # Load the texture file as an image
+        try:
+            texture_image = bpy.data.images.load(texture_filepath)
+            texture_node.image = texture_image
+        except RuntimeError as e:
+            self.report({"ERROR"}, f"Could not load texture: {e}")
+            return
+
+        # Link the texture node to the Base Color input of the Principled BSDF node
+        material.node_tree.links.new(
+            bsdf.inputs["Base Color"], texture_node.outputs["Color"]
+        )
+
+        # Set the location of nodes for better layout
+        texture_node.location = (-300, 0)
+        bsdf.location = (0, 0)
 
 
 class OBJECT_OT_SelectPipette(bpy.types.Operator):

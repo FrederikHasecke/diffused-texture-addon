@@ -5,7 +5,11 @@ import numpy as np
 from pathlib import Path
 
 
-from render_setup import setup_render_settings, create_cameras_on_sphere
+from render_setup import (
+    setup_render_settings,
+    create_cameras_on_sphere,
+    create_cameras_on_two_rings,
+)
 from condition_setup import (
     bpy_img_to_numpy,
     create_depth_condition,
@@ -20,17 +24,23 @@ from texturegen.diffusers_utils import (
 def first_pass(scene, max_size):
     """Run the first pass for texture generation."""
 
-    # create 16 equidistant cameras
-    cameras = create_cameras_on_sphere(
-        num_cameras=16,
-        max_size=max_size,  # we dont want to intersect with the object
-        name_prefix="Camera_first_pass",
-        offset=False,
+    # # create 16 equidistant cameras
+    # cameras = create_cameras_on_sphere(
+    #     num_cameras=16,
+    #     max_size=max_size,  # we dont want to intersect with the object
+    #     name_prefix="Camera_first_pass",
+    #     offset=False,
+    # )
+
+    cameras = create_cameras_on_two_rings(
+        num_cameras=16, max_size=max_size, name_prefix="Camera_first_pass"
     )
 
     output_path = Path(scene.output_path)  # Use Path for OS-independent path handling
 
-    # TODO: Do we want to enable more than 512x512?
+    # TODO enable more than 512x512?
+    # target_resolution = scene.texture_resolution
+
     output_nodes = setup_render_settings(scene, resolution=(512, 512))
 
     # Set base paths for outputs
@@ -107,7 +117,8 @@ def first_pass(scene, max_size):
     normal_quad = np.zeros((2048, 2048, 3), dtype=np.uint8)
 
     # Combine the 16 images into a 4x4 grid structure
-    for depth_img, normal_img in zip(depth_images, normal_images):
+    # TODO: CHECK IF THIS FIXES THE ASSIGNMENT!
+    for i, (depth_img, normal_img) in enumerate(zip(depth_images, normal_images)):
         # Calculate the position in the grid
         row = (i // 4) * 512
         col = (i % 4) * 512
@@ -126,20 +137,29 @@ def first_pass(scene, max_size):
         pipe, scene, canny_quad, normal_quad, depth_quad
     )
 
+    cv2.imwrite(os.path.join(scene.output_path, "canny_quad.png"), canny_quad)
+    cv2.imwrite(os.path.join(scene.output_path, "normal_quad.png"), normal_quad)
+    cv2.imwrite(os.path.join(scene.output_path, "depth_quad.png"), depth_quad)
+
     output_quad = np.array(output_quad)
+
+    # TODO: REMOVE ME, just for debugging
+    # output the image as png
+    cv2.imwrite(os.path.join(scene.output_path, "output_quad.png"), output_quad)
 
     # create a 16x512x512x3 uv map (one for each grid img)
     uv_texture_first_pass = np.nan * np.ones(
         (16, 512, 512, 3), dtype=np.float32
     )  # neccessary for nanmean
 
-    for cam_index in enumerate(cameras):
+    for cam_index in range(len(cameras)):
         # Calculate the position in the grid
-        row = (i // 4) * 512
-        col = (i % 4) * 512
+        row = (cam_index // 4) * 512
+        col = (cam_index % 4) * 512
 
         # load the uv image
         uv_image = uv_images[cam_index]
+        uv_image = uv_image[..., :2]  # Keep only u and v
 
         # resize the uv values to 0-511
         uv_coordinates = (uv_image * 511).astype(np.uint16).reshape(-1, 2)
@@ -147,9 +167,9 @@ def first_pass(scene, max_size):
         # the uvs are meant to start from the bottom left corner, so we flip the y axis (v axis)
         uv_coordinates[:, 1] = 511 - uv_coordinates[:, 1]
 
-        uv_texture_first_pass[i, uv_coordinates[:, 1], uv_coordinates[:, 0], ...] = (
-            output_quad[row : row + 512, col : col + 512].reshape(-1, 3)
-        )
+        uv_texture_first_pass[
+            cam_index, uv_coordinates[:, 1], uv_coordinates[:, 0], ...
+        ] = output_quad[row : row + 512, col : col + 512].reshape(-1, 3)
 
     # average the UV texture across the 16 quadrants, but only where the UV map is defined
     nan_per_channel = np.any(

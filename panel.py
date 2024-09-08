@@ -19,7 +19,7 @@ from properties import register_properties, unregister_properties
 
 class OBJECT_PT_MainPanel(bpy.types.Panel):
     bl_label = "Stable Diffuse Texture Diffusion"
-    bl_idname = "shade.texturegen"
+    bl_idname = "OBJECT_PT_texturegen_panel"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "TextureGen"

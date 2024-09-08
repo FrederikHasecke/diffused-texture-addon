@@ -33,6 +33,9 @@ def bpy_img_to_numpy(img_path):
     # Reshape the array to match the image's dimensions and channels
     image_array = pixels.reshape((height, width, num_channels))
 
+    # FLIP vertically
+    image_array = np.flipud(image_array)
+
     return image_array
 
 
@@ -61,6 +64,9 @@ def create_depth_condition(depth_image_path):
 
     # Scale to [0, 255] and convert to uint8
     depth_array = (depth_array * 255).astype(np.uint8)
+
+    # stack on third axis to get a rgb png
+    depth_array = np.stack((depth_array, depth_array, depth_array), axis=-1)
 
     return depth_array
 

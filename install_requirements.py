@@ -1,5 +1,7 @@
 import pip
 import os
+import subprocess
+import sys
 
 
 def install_requirements(requirements_file):
@@ -20,4 +22,5 @@ requirements_path = (
     r"C:\Users\fredd\Desktop\SD-texturing\code\texturegen_addon\requirements.txt"
 )
 
+# Install other requirements
 install_requirements(requirements_path)

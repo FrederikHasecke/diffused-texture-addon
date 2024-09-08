@@ -3,6 +3,89 @@ import math
 import mathutils
 
 
+def create_cameras_on_two_rings(
+    num_cameras=16, max_size=1, name_prefix="Camera", fov=22.5
+):
+    """
+    Create 16 cameras evenly distributed on two rings around the world origin (Z-axis).
+    Each ring will have 8 cameras, with the upper and lower rings' cameras placed in the gaps of each other.
+
+    :param max_size: The maximum size of the object to be captured by the cameras.
+    :param name_prefix: Prefix for naming the cameras.
+    :param fov: Field of view for the cameras in degrees.
+    :return: List of created camera objects.
+    """
+    cameras = []
+
+    # Convert FOV from degrees to radians
+    fov_rad = math.radians(fov)
+
+    # Calculate the distance from the origin such that the FOV covers max_size
+    radius = (max_size * 0.5) / math.tan(fov_rad * 0.5)
+
+    # Add a 10% margin
+    radius *= 1.1
+
+    num_cameras_per_ring = num_cameras // 2
+    angle_offset = math.pi / num_cameras_per_ring  # Offset for the upper ring cameras
+
+    # Set the vertical offset for the rings (small elevation above/below the object)
+    elevation_upper = radius * 0.5  # Adjust this value to control the elevation
+    elevation_lower = -radius * 0.5
+
+    # Loop to create the lower ring (around Z-axis)
+    for i in range(num_cameras_per_ring):
+        theta = (2 * math.pi / num_cameras_per_ring) * i
+
+        # Position for the lower ring (XZ-plane)
+        x = radius * math.cos(theta)
+        y = radius * math.sin(theta)
+        location_lower = mathutils.Vector((x, y, elevation_lower))
+
+        # Create lower ring camera
+        bpy.ops.object.camera_add(location=location_lower)
+        camera_lower = bpy.context.object
+        camera_lower.name = f"{name_prefix}_LowerRing_{i+1}"
+
+        # Set the camera's FOV
+        camera_lower.data.lens_unit = "FOV"
+        camera_lower.data.angle = fov_rad
+
+        # Point the camera at the origin
+        direction_lower = camera_lower.location - mathutils.Vector((0, 0, 0))
+        rot_quat_lower = direction_lower.to_track_quat("Z", "Y")
+        camera_lower.rotation_euler = rot_quat_lower.to_euler()
+
+        cameras.append(camera_lower)
+
+    # Loop to create the upper ring (around Z-axis), offset by half an angle
+    for i in range(num_cameras_per_ring):
+        theta = (2 * math.pi / num_cameras_per_ring) * i + angle_offset
+
+        # Position for the upper ring (XZ-plane)
+        x = radius * math.cos(theta)
+        y = radius * math.sin(theta)
+        location_upper = mathutils.Vector((x, y, elevation_upper))
+
+        # Create upper ring camera
+        bpy.ops.object.camera_add(location=location_upper)
+        camera_upper = bpy.context.object
+        camera_upper.name = f"{name_prefix}_UpperRing_{i+1}"
+
+        # Set the camera's FOV
+        camera_upper.data.lens_unit = "FOV"
+        camera_upper.data.angle = fov_rad
+
+        # Point the camera at the origin
+        direction_upper = camera_upper.location - mathutils.Vector((0, 0, 0))
+        rot_quat_upper = direction_upper.to_track_quat("Z", "Y")
+        camera_upper.rotation_euler = rot_quat_upper.to_euler()
+
+        cameras.append(camera_upper)
+
+    return cameras
+
+
 def create_cameras_on_sphere(
     num_cameras=16, max_size=1, name_prefix="Camera", offset=False, fov=22.5
 ):
@@ -28,8 +111,8 @@ def create_cameras_on_sphere(
     # Calculate the distance from the origin such that the FOV covers max_size
     radius = (max_size * 0.5) / math.tan(fov_rad * 0.5)
 
-    # Add a 2x margin in case the object is very weirdly shaped
-    radius *= 2
+    # Add a 1.5x margin in case the object is very weirdly shaped
+    radius *= 1.5
 
     for i in range(num_cameras):
         y = 1 - (i / float(num_cameras - 1)) * 2  # y goes from 1 to -1
@@ -89,9 +172,20 @@ def setup_render_settings(scene, resolution=(512, 512)):
             raise SystemError("You need an NVidia GPU for this Addon!")
 
     # Set rendering samples and noise threshold
-    scene.cycles.samples = 1024
-    scene.cycles.adaptive_threshold = 0.05
-    scene.cycles.use_denoising = True
+    scene.cycles.samples = 1  # Reduce to 1 sample for no anti-aliasing in Cycles
+
+    # Set filter size to minimum (0.01 to disable most filtering)
+    scene.render.filter_size = 0.01
+
+    # Enable transparent background
+    scene.render.film_transparent = True
+
+    # Set the render resolution
+    scene.render.resolution_x, scene.render.resolution_y = resolution
+
+    # Prevent interpolation for the UV, depth, and normal outputs
+    scene.render.image_settings.file_format = "OPEN_EXR"
+    scene.render.image_settings.color_depth = "32"  # Ensure high precision
 
     # Ensure the scene uses nodes
     scene.use_nodes = True
@@ -112,13 +206,6 @@ def setup_render_settings(scene, resolution=(512, 512)):
     scene.view_layers["ViewLayer"].use_pass_normal = True
     scene.view_layers["ViewLayer"].use_pass_uv = True
     scene.view_layers["ViewLayer"].use_pass_position = True
-
-    # Set the render resolution
-    scene.render.resolution_x, scene.render.resolution_y = resolution
-
-    # Prevent interpolation for the UV, depth, and normal outputs
-    scene.render.image_settings.file_format = "OPEN_EXR"
-    scene.render.image_settings.color_depth = "32"  # Ensure high precision
 
     # Create output nodes for each pass
     output_nodes = {}
