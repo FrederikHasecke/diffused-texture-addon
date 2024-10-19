@@ -59,3 +59,13 @@ def clean_scene(scene):
     print(
         f"Scene cleaned: All objects except '{selected_object_name}' have been removed."
     )
+
+
+def clean_object(scene):
+    """
+    Remove all materials from the selected mesh object.
+    """
+    # Get the selected object's name and retrieve the object
+    selected_object_name = scene.my_mesh_object
+    selected_object = bpy.data.objects.get(selected_object_name)
+    selected_object.data.materials.clear()

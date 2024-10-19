@@ -3,6 +3,61 @@ import math
 import mathutils
 
 
+def create_cameras_on_one_ring(
+    num_cameras=16, max_size=1, name_prefix="Camera", fov=22.5, offset_additional=0
+):
+    """
+    Create n cameras evenly distributed on a ring around the world origin (Z-axis).
+
+    :param max_size: The maximum size of the object to be captured by the cameras.
+    :param name_prefix: Prefix for naming the cameras.
+    :param fov: Field of view for the cameras in degrees.
+    :return: List of created camera objects.
+    """
+    cameras = []
+
+    # Convert FOV from degrees to radians
+    fov_rad = math.radians(fov)
+
+    # Calculate the distance from the origin such that the FOV covers max_size
+    radius = (max_size * 0.5) / math.tan(fov_rad * 0.5)
+
+    # Add a 10% margin
+    radius *= 1.1
+
+    angle_offset = math.pi / num_cameras  # Offset for the ring cameras
+
+    # Set the vertical offset for the rings (small elevation above/below the object)
+    elevation = radius * 0.25  # Adjust this value to control the elevation
+
+    # Loop to create the ring (around Z-axis), offset by half an angle
+    for i in range(num_cameras):
+        theta = (2 * math.pi / num_cameras) * i + angle_offset + offset_additional
+
+        # Position for the upper ring (XZ-plane)
+        x = radius * math.cos(theta)
+        y = radius * math.sin(theta)
+        location = mathutils.Vector((x, y, elevation))
+
+        # Create upper ring camera
+        bpy.ops.object.camera_add(location=location)
+        camera = bpy.context.object
+        camera.name = f"{name_prefix}_{i+1}"
+
+        # Set the camera's FOV
+        camera.data.lens_unit = "FOV"
+        camera.data.angle = fov_rad
+
+        # Point the camera at the origin
+        direction_upper = camera.location - mathutils.Vector((0, 0, 0))
+        rot_quat_upper = direction_upper.to_track_quat("Z", "Y")
+        camera.rotation_euler = rot_quat_upper.to_euler()
+
+        cameras.append(camera)
+
+    return cameras
+
+
 def create_cameras_on_two_rings(
     num_cameras=16, max_size=1, name_prefix="Camera", fov=22.5
 ):
@@ -111,8 +166,8 @@ def create_cameras_on_sphere(
     # Calculate the distance from the origin such that the FOV covers max_size
     radius = (max_size * 0.5) / math.tan(fov_rad * 0.5)
 
-    # Add a 1.5x margin in case the object is very weirdly shaped
-    radius *= 1.5
+    # Add a 1.0x margin in case the object is very weirdly shaped
+    radius *= 1.1
 
     for i in range(num_cameras):
         y = 1 - (i / float(num_cameras - 1)) * 2  # y goes from 1 to -1
@@ -207,6 +262,10 @@ def setup_render_settings(scene, resolution=(512, 512)):
     scene.view_layers["ViewLayer"].use_pass_uv = True
     scene.view_layers["ViewLayer"].use_pass_position = True
 
+    # scene.world.light_settings.use_ambient_occlusion = True  # turn AO on
+    # scene.world.light_settings.ao_factor = 1.0
+    scene.view_layers["ViewLayer"].use_pass_ambient_occlusion = True  # Enable AO pass
+
     # Create output nodes for each pass
     output_nodes = {}
 
@@ -237,7 +296,7 @@ def setup_render_settings(scene, resolution=(512, 512)):
     links.new(render_layers.outputs["UV"], uv_output.inputs[0])
     output_nodes["uv"] = uv_output
 
-    # Position pass (using Position pass)
+    # Position pass
     position_output = tree.nodes.new("CompositorNodeOutputFile")
     position_output.label = "Position Output"
     position_output.name = "PositionOutput"
@@ -245,5 +304,14 @@ def setup_render_settings(scene, resolution=(512, 512)):
     position_output.file_slots[0].path = "position_"
     links.new(render_layers.outputs["Position"], position_output.inputs[0])
     output_nodes["position"] = position_output
+
+    # Ambient Occlusion pass
+    img_output = tree.nodes.new("CompositorNodeOutputFile")
+    img_output.label = "Image Output"
+    img_output.name = "ImageOutput"
+    img_output.base_path = ""
+    img_output.file_slots[0].path = "img_"
+    links.new(render_layers.outputs["Image"], img_output.inputs[0])
+    output_nodes["img"] = img_output
 
     return output_nodes

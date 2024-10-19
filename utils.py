@@ -1,4 +1,5 @@
 import bpy
+import numpy as np
 
 
 def update_uv_maps(self, context):
@@ -48,3 +49,28 @@ def apply_texture_to_uv_map(obj, uv_map_name, image_name):
                 texture_slot = material.texture_paint_slots[0]
                 texture_slot.texture.image = image
                 break
+
+
+def image_to_numpy(image):
+    """
+    Convert a Blender image object to a NumPy array.
+
+    :param image: Blender image object
+    :return: NumPy array representing the image (height, width, channels)
+    """
+    # Get image dimensions
+    width, height = image.size
+
+    # Get pixel data (Blender stores pixels in a flat array as RGBA values in [0, 1])
+    pixels = np.array(image.pixels[:], dtype=np.float32)
+
+    # Reshape to (height, width, 4) since Blender stores data in RGBA format
+    pixels = pixels.reshape((height, width, 4))
+
+    # Discard the alpha channel
+    pixels = pixels[:, :, :3]  # Keep only RGB channels
+
+    # Convert the pixel values from [0, 1] to [0, 255] for typical image use
+    pixels = (pixels * 255).astype(np.uint8)
+
+    return pixels
