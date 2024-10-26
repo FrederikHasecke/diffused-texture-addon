@@ -5,7 +5,7 @@ import bpy
 ############################################################################
 # TODO: REMOVE THIS AFTER ALL WORKS!!
 # Manually specify the directory containing your scripts
-script_dir = "C:/Users/fredd/Desktop/SD-texturing/code/texturegen_addon"
+script_dir = "C:/Users/fredd/Desktop/SD-texturing/code/diffused_texture_addon"
 # Add the directory to the system path if not already present
 if script_dir not in sys.path:
     sys.path.append(script_dir)
@@ -18,11 +18,11 @@ from properties import register_properties, unregister_properties
 
 
 class OBJECT_PT_MainPanel(bpy.types.Panel):
-    bl_label = "Stable Diffuse Texture Diffusion"
-    bl_idname = "OBJECT_PT_texturegen_panel"
+    bl_label = "Stable Diffusion for Diffuse Texture Generation"
+    bl_idname = "OBJECT_PT_diffused_texture_panel"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "TextureGen"
+    bl_category = "DiffusedTexture"
 
     def draw(self, context):
         layout = self.layout
@@ -118,7 +118,7 @@ class OBJECT_PT_LoRAPanel(bpy.types.Panel):
     bl_idname = "OBJECT_PT_lora_panel"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "TextureGen"
+    bl_category = "DiffusedTexture"
 
     def draw(self, context):
         layout = self.layout
@@ -139,7 +139,7 @@ class OBJECT_PT_IPAdapterPanel(bpy.types.Panel):
     bl_idname = "OBJECT_PT_ipadapter_panel"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "TextureGen"
+    bl_category = "DiffusedTexture"
 
     def draw(self, context):
         layout = self.layout

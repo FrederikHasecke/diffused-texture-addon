@@ -8,7 +8,7 @@ from pathlib import Path
 from utils import update_uv_maps, get_mesh_objects, update_image_list
 from object_ops import move_object_to_origin, calculate_mesh_midpoint
 from scene_backup import SceneBackup, clean_scene, clean_object
-from texturegen import first_pass, second_pass, third_pass, uv_pass
+from diffusedtexture import first_pass, second_pass, third_pass, uv_pass
 
 
 class OBJECT_OT_GenerateTexture(bpy.types.Operator):
@@ -70,7 +70,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
 
             # Execute texture passes based on user selection
             if scene.operation_mode == "TEXT2IMAGE_PARALLEL":
-                texture_first_pass = first_pass.first_pass(scene, 1.1 * max_size)
+                texture_first_pass = first_pass.first_pass(scene, 1.5 * max_size)
 
                 # flip along the v axis
                 texture_first_pass = texture_first_pass[::-1]
@@ -86,7 +86,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                 texture_input = self.load_texture(str(input_texture_path))
 
                 texture_second_pass = second_pass.second_pass(
-                    scene, 1.1 * max_size, texture_input
+                    scene, 1.5 * max_size, texture_input
                 )
 
                 # flip along the v axis
@@ -106,7 +106,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                 texture_input = self.load_texture(str(input_texture_path))
 
                 texture_third_pass = third_pass.third_pass(
-                    scene, max_size, texture_input
+                    scene, 1.5 * max_size, texture_input
                 )
 
                 texture_final = copy.deepcopy(texture_third_pass)
@@ -157,8 +157,11 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
             return {"CANCELLED"}
 
         finally:
-            # Restore the original scene by reloading the backup file
-            bpy.ops.wm.open_mainfile(filepath=str(backup_file))
+
+            # TODO: do not restore (DEBUG)
+
+            # # Restore the original scene by reloading the backup file
+            # bpy.ops.wm.open_mainfile(filepath=str(backup_file))
 
             # Select the new object since we reloaded
             selected_object = bpy.data.objects.get(selected_mesh_name)

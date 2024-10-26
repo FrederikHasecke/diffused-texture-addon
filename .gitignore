@@ -4,6 +4,12 @@ __pycache__
 *.py[cod]
 *$py.class
 
+# conda env
+.conda/
+
+# scratchbook code snippets for prototyping
+scratchbook/
+
 # Distribution / packaging 
 .Python build/ 
 develop-eggs/ 

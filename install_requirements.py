@@ -19,7 +19,7 @@ def install_requirements(requirements_file):
 
 # Path to your requirements.txt file
 requirements_path = (
-    r"C:\Users\fredd\Desktop\SD-texturing\code\texturegen_addon\requirements.txt"
+    r"C:\Users\fredd\Desktop\SD-texturing\code\diffused_texture_addon\requirements.txt"
 )
 
 # Install other requirements

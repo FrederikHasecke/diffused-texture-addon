@@ -40,7 +40,7 @@ controlnet_config = {
         "inputs": ["depth", "canny"],
     },
     "HIGH": {
-        "conditioning_scale": [1.0, 0.9, 0.0],
+        "conditioning_scale": [1.0, 0.9, 0.9],
         "controlnets": [
             ControlNetModel.from_pretrained(
                 "lllyasviel/sd-controlnet-depth", torch_dtype=torch.float16

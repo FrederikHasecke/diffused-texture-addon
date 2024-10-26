@@ -16,7 +16,7 @@ from condition_setup import (
     create_depth_condition,
     create_normal_condition,
 )
-from texturegen.diffusers_utils import (
+from diffusedtexture.diffusers_utils import (
     create_first_pass_pipeline,
     infer_first_pass_pipeline,
 )
@@ -123,9 +123,7 @@ def second_pass(scene, max_size, texture):
             Path(output_nodes["normal"].base_path)
             / f"normal_camera_{i:02d}_{frame_number:04d}.exr"
         )
-        normal_image = create_normal_condition(
-            str(normal_image_path), str(position_image_path), camera
-        )
+        normal_image = create_normal_condition(str(normal_image_path), camera)
         normal_images.append(normal_image)
 
         # Load render images

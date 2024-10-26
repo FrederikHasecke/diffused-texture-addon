@@ -1,7 +1,7 @@
 import os
 import bpy
 import numpy as np
-from texturegen.process_utils import blendercs_to_ccs
+from diffusedtexture.process_utils import blendercs_to_ccs
 
 
 def bpy_img_to_numpy(img_path):
@@ -71,57 +71,36 @@ def create_depth_condition(depth_image_path):
     return depth_array
 
 
-def create_normal_condition(normal_img_path, position_img_path, camera_obj):
+def create_normal_condition(normal_img_path, camera_obj):
     normal_array = bpy_img_to_numpy(normal_img_path)
-    position_array = bpy_img_to_numpy(position_img_path)
+
+    normal_array = normal_array[..., :3]
 
     # Get image dimensions
     image_size = normal_array.shape[:2]
 
-    # transform the position array into a pointcloud
-    normal_pc = normal_array[..., :3].reshape((-1, 3))
-    position_pc = position_array[..., :3].reshape((-1, 3))
+    # Flatten the normal array for transformation
+    normal_pc = normal_array.reshape((-1, 3))
 
-    # rotate (and translate) the normal and position to camera space
+    # Rotate the normal vectors to the camera space without translating
     normal_pc = blendercs_to_ccs(
         points_bcs=normal_pc, camera=camera_obj, rotation_only=True
     )
-    position_pc = blendercs_to_ccs(points_bcs=position_pc, camera=camera_obj)
 
-    # normalize the norm and pos pc
-    # Ignore div by zero and div by nan warnings
-    with np.errstate(divide="ignore", invalid="ignore"):
-        normal_pc_norm = normal_pc / np.linalg.norm(normal_pc, axis=1, keepdims=True)
-        position_pc_norm = position_pc / np.linalg.norm(
-            position_pc, axis=1, keepdims=True
-        )
+    # Map normalized values to the [0, 1] range for RGB display
+    red_channel = ((normal_pc[:, 0] + 1) / 2).reshape(image_size)  # Normal X
+    green_channel = ((normal_pc[:, 1] + 1) / 2).reshape(image_size)  # Normal Y
+    blue_channel = ((normal_pc[:, 2] + 1) / 2).reshape(image_size)  # Normal Z
 
-    red_channel = (normal_pc_norm[..., 0] + position_pc_norm[..., 0]).reshape(
-        image_size
-    )  # actually minus pos, since reverse vector
+    # Adjust to shapenet colors
+    blue_channel = 1 - blue_channel
+    green_channel = 1 - green_channel
 
-    # invert and normalize
-    red_channel -= -2  # 0 to max
-    red_channel /= 4  # 0 to 1
-    red_channel = 1 - red_channel  # invert
-
-    green_channel = (normal_pc_norm[..., 1] + position_pc_norm[..., 1]).reshape(
-        image_size
-    )  # actually minus pos, since reverse vector
-
-    green_channel -= -2  # 0 to max
-    green_channel /= 4  # 0 to 1
-    green_channel = 1 - green_channel  # invert
-
-    # blue channel: get the z pointing direction
-    blue_channel = np.linalg.norm(
-        np.cross(normal_pc_norm, position_pc_norm, axis=-1), axis=-1
-    ).reshape(image_size)
-    blue_channel = 1 - blue_channel  # invert (0 to 1)
-    blue_channel = 0.5 + 0.5 * blue_channel  # shapenet normal z is 128-255
-
+    # Stack channels into a single image
     normal_image = np.stack((red_channel, green_channel, blue_channel), axis=-1)
+    normal_image = np.clip(normal_image, 0, 1)
 
+    # Convert to uint8 for display
     normal_image *= 255.0
     normal_image = normal_image.astype(np.uint8)
 

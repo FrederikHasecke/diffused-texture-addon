@@ -22,9 +22,6 @@ def create_cameras_on_one_ring(
     # Calculate the distance from the origin such that the FOV covers max_size
     radius = (max_size * 0.5) / math.tan(fov_rad * 0.5)
 
-    # Add a 10% margin
-    radius *= 1.1
-
     angle_offset = math.pi / num_cameras  # Offset for the ring cameras
 
     # Set the vertical offset for the rings (small elevation above/below the object)
@@ -77,9 +74,6 @@ def create_cameras_on_two_rings(
 
     # Calculate the distance from the origin such that the FOV covers max_size
     radius = (max_size * 0.5) / math.tan(fov_rad * 0.5)
-
-    # Add a 10% margin
-    radius *= 1.1
 
     num_cameras_per_ring = num_cameras // 2
     angle_offset = math.pi / num_cameras_per_ring  # Offset for the upper ring cameras
@@ -165,9 +159,6 @@ def create_cameras_on_sphere(
 
     # Calculate the distance from the origin such that the FOV covers max_size
     radius = (max_size * 0.5) / math.tan(fov_rad * 0.5)
-
-    # Add a 1.0x margin in case the object is very weirdly shaped
-    radius *= 1.1
 
     for i in range(num_cameras):
         y = 1 - (i / float(num_cameras - 1)) * 2  # y goes from 1 to -1

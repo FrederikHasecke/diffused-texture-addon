@@ -7,7 +7,7 @@ from pathlib import Path
 from condition_setup import (
     bpy_img_to_numpy,
 )
-from texturegen.diffusers_utils import (
+from diffusedtexture.diffusers_utils import (
     create_uv_pass_pipeline,
     infer_uv_pass_pipeline,
 )
