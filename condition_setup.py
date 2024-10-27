@@ -105,3 +105,49 @@ def create_normal_condition(normal_img_path, camera_obj):
     normal_image = normal_image.astype(np.uint8)
 
     return normal_image
+
+
+def create_similar_angle_image(normal_array, position_array, camera_obj):
+    """
+    Create an image where each pixel's intensity represents how aligned the normal vector at
+    that point is with the direction vector from the point to the camera.
+
+    :param normal_array: NumPy array of shape (height, width, 3) containing normal vectors.
+    :param position_array: NumPy array of shape (height, width, 3) containing positions in global coordinates.
+    :param camera_obj: Blender camera object to get the camera position in global coordinates.
+
+    :return: A NumPy array (height, width) with values ranging from 0 to 1, where 1 means perfect alignment.
+    """
+
+    # Extract camera position in global coordinates
+    camera_position = np.array(camera_obj.matrix_world.to_translation())
+
+    # Calculate direction vectors from each point to the camera
+    direction_to_camera = position_array - camera_position[None, None, :]
+
+    # Normalize the normal vectors and direction vectors
+    normal_array_normalized = normal_array / np.linalg.norm(
+        normal_array, axis=2, keepdims=True
+    )
+    direction_to_camera_normalized = direction_to_camera / np.linalg.norm(
+        direction_to_camera, axis=2, keepdims=True
+    )
+
+    # Compute the dot product between the normalized vectors
+    alignment = np.sum(normal_array_normalized * direction_to_camera_normalized, axis=2)
+
+    # Ensure values are in range -1 to 1; clip them just in case due to floating-point errors
+    alignment = np.clip(alignment, -1.0, 1.0)
+
+    # and invert
+    similar_angle_image = -1 * alignment
+
+    # slice off the last 10%
+    similar_angle_image = similar_angle_image * 1.1
+    similar_angle_image = similar_angle_image - 0.1
+    similar_angle_image[similar_angle_image <= 0] = 0
+
+    similar_angle_image[np.isnan(similar_angle_image)] = 0
+
+    # Return the final similarity image
+    return similar_angle_image

@@ -70,7 +70,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
 
             # Execute texture passes based on user selection
             if scene.operation_mode == "TEXT2IMAGE_PARALLEL":
-                texture_first_pass = first_pass.first_pass(scene, 1.5 * max_size)
+                texture_first_pass = first_pass.first_pass(scene, 1.25 * max_size)
 
                 # flip along the v axis
                 texture_first_pass = texture_first_pass[::-1]
@@ -86,7 +86,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                 texture_input = self.load_texture(str(input_texture_path))
 
                 texture_second_pass = second_pass.second_pass(
-                    scene, 1.5 * max_size, texture_input
+                    scene, 1.25 * max_size, texture_input
                 )
 
                 # flip along the v axis
@@ -106,7 +106,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                 texture_input = self.load_texture(str(input_texture_path))
 
                 texture_third_pass = third_pass.third_pass(
-                    scene, 1.5 * max_size, texture_input
+                    scene, 1.25 * max_size, texture_input
                 )
 
                 texture_final = copy.deepcopy(texture_third_pass)
