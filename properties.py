@@ -6,10 +6,8 @@ from bpy.props import (
     IntProperty,
     CollectionProperty,
     EnumProperty,
-    BoolProperty,
-    PointerProperty,
 )
-from utils import update_uv_maps, get_mesh_objects
+from .utils import update_uv_maps, get_mesh_objects
 
 
 class LoRAModel(bpy.types.PropertyGroup):
@@ -39,14 +37,10 @@ def update_loras(self, context):
 
 def update_operation_mode(self, context):
     """Automatically adjust denoise strength based on the operation mode."""
-    if self.operation_mode == "TEXT2IMAGE_PARALLEL":
-        self.denoise_strength = 1.0  # Set denoise strength to 1.0
-    elif self.operation_mode == "TEXTURE2TEXTURE_ENHANCEMENT":
-        self.denoise_strength = 0.1  # Set denoise strength to 1.0
+    if self.operation_mode in ["IMAGE2IMAGE_PARALLEL", "IMAGE2IMAGE_SEQUENTIAL"]:
+        self.denoise_strength = 0.4 
     else:
-        self.denoise_strength = (
-            0.4  # Set default to 0.4 if switching away from TEXT2IMAGE_PARALLEL
-        )
+        self.denoise_strength = 1.0
 
 
 def update_ipadapter_image(self, context):
@@ -89,6 +83,14 @@ def register_properties():
         name="Negative Prompt", description="Define what the object should NOT be"
     )
 
+    bpy.types.Scene.guidance_scale = FloatProperty(
+        name="Guidance Scale",
+        description="A higher guidance scale value encourages the model to generate images closely linked to the text `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.",
+        default=10.0,
+        min=0.0,
+        max=30.0,  # Ensure this is a float value for finer control
+    )
+
     bpy.types.Scene.operation_mode = EnumProperty(
         name="Operation Mode",
         description="The complexity, polycount and detail of the selected mesh.",
@@ -108,11 +110,11 @@ def register_properties():
                 "Image2Image Sequential",
                 "Generate textures using input images sequentially.",
             ),
-            (
-                "TEXTURE2TEXTURE_ENHANCEMENT",
-                "Texture2Texture Enhancement",
-                "Enhance textures using input textures.",
-            ),
+            # (
+            #     "TEXTURE2TEXTURE_ENHANCEMENT",
+            #     "Texture2Texture Enhancement",
+            #     "Enhance textures using input textures.",
+            # ),
         ],
         update=update_operation_mode,  # Add the update function
     )
@@ -120,7 +122,7 @@ def register_properties():
     bpy.types.Scene.denoise_strength = FloatProperty(
         name="Denoise Strength",
         description="Strength of denoise for Stable Diffusion",
-        default=0.4,
+        default=1.0,
         min=0.0,
         max=1.0,  # Ensure this is a float value for finer control
     )
@@ -137,11 +139,23 @@ def register_properties():
         ],
     )
 
+    bpy.types.Scene.render_resolution = EnumProperty(
+        name="Render Resolution",
+        description="The Render resolution used in Stable Diffusion.",
+        items=[
+            ("512", "512x512", ""),
+            ("1024", "1024x1024", ""),
+            ("2048", "2048x2048", ""),
+            ("4096", "4096x4096", ""),
+            ("8192", "8192x8192", ""),
+        ],
+    )
+
     bpy.types.Scene.output_path = StringProperty(
         name="Output Path",
         description="Directory to store the resulting texture and temporary files",
         subtype="DIR_PATH",
-        default=os.path.dirname(bpy.data.filepath) if bpy.data.filepath else "",
+        default="",
     )
 
     bpy.types.Scene.input_texture_path = StringProperty(
@@ -165,46 +179,6 @@ def register_properties():
             ("16", "16 Camera Viewpoints", ""),
         ],
     )
-
-    # bpy.types.Scene.first_pass = BoolProperty(
-    #     name="First Pass from Gaussian Noise",
-    #     description="First pass creates one result from multiple viewpoints at once.",
-    # )
-
-    # bpy.types.Scene.num_cameras_first_pass = EnumProperty(
-    #     name="Number of Cameras (first pass)",
-    #     description="How many viewpoints are to be used to create the initial texture?",
-    #     items=[
-    #         ("4", "4 Camera Viewpoints", ""),
-    #         ("9", "9 Camera Viewpoints", ""),
-    #         ("16", "16 Camera Viewpoints", ""),
-    #     ],
-    # )
-
-    # bpy.types.Scene.second_pass = BoolProperty(
-    #     name="Second Pass in Image Space",
-    #     description="Second pass improves results from multiple viewpoints at once.",
-    # )
-
-    # bpy.types.Scene.num_cameras_second_pass = EnumProperty(
-    #     name="Number of Cameras (second pass)",
-    #     description="How many viewpoints are to be used to refine the initial texture?",
-    #     items=[
-    #         ("4", "4 Camera Viewpoints", ""),
-    #         ("9", "9 Camera Viewpoints", ""),
-    #         ("16", "16 Camera Viewpoints", ""),
-    #     ],
-    # )
-
-    # bpy.types.Scene.third_pass = BoolProperty(
-    #     name="Third Pass in Image Space",
-    #     description="Third pass improves results from multiple viewpoints successively for details.",
-    # )
-
-    # bpy.types.Scene.refinement_uv_space = BoolProperty(
-    #     name="Refinement in UV Space",
-    #     description="Refinement in UV space fixes areas not visible to the camera or holes in the texture.",
-    # )
 
     bpy.types.Scene.texture_seed = IntProperty(
         name="Seed",
@@ -251,120 +225,58 @@ def register_properties():
         soft_max=1.0,
     )
 
+    # bpy.types.Scene.show_advanced = bpy.props.BoolProperty(
+    #     name="Show Advanced Settings",
+    #     description="Toggle the visibility of advanced settings",
+    #     default=False,
+    # )
+    # bpy.types.Scene.canny_controlnet_strength = bpy.props.FloatProperty(
+    #     name="Canny ControlNet Strength",
+    #     description="Strength of the Canny ControlNet",
+    #     default=1.0,
+    #     min=0.0,
+    #     max=2.0,
+    # )
+    # bpy.types.Scene.normal_controlnet_strength = bpy.props.FloatProperty(
+    #     name="Normal ControlNet Strength",
+    #     description="Strength of the Normal ControlNet",
+    #     default=1.0,
+    #     min=0.0,
+    #     max=2.0,
+    # )
+    # bpy.types.Scene.depth_controlnet_strength = bpy.props.FloatProperty(
+    #     name="Depth ControlNet Strength",
+    #     description="Strength of the Depth ControlNet",
+    #     default=1.0,
+    #     min=0.0,
+    #     max=2.0,
+    # )
+
 
 def unregister_properties():
 
-    try:
-        bpy.utils.unregister_class(LoRAModel)
-    except Exception as e:
-        print(
-            f"Warning: {LoRAModel.__name__} was not registered or failed to unregister. {e}"
-        )
-
-    # Safely unregister properties with error handling
-    try:
-        del bpy.types.Scene.num_loras
-    except AttributeError:
-        print("num_loras not found, skipping...")
-
-    try:
-        del bpy.types.Scene.lora_models
-    except AttributeError:
-        print("lora_models not found, skipping...")
-
-    try:
-        del bpy.types.Scene.use_ipadapter
-    except AttributeError:
-        print("use_ipadapter not found, skipping...")
-
-    try:
-        del bpy.types.Scene.ipadapter_image
-    except AttributeError:
-        print("ipadapter_image not found, skipping...")
-
-    try:
-        del bpy.types.Scene.ipadapter_strength
-    except AttributeError:
-        print("ipadapter_strength not found, skipping...")
-
-    try:
-        del bpy.types.Scene.my_mesh_object
-    except AttributeError:
-        print("my_mesh_object not found, skipping...")
-
-    try:
-        del bpy.types.Scene.my_uv_map
-    except AttributeError:
-        print("my_uv_map not found, skipping...")
-
-    try:
-        del bpy.types.Scene.selected_image
-    except AttributeError:
-        print("selected_image not found, skipping...")
-
-    try:
-        del bpy.types.Scene.my_prompt
-    except AttributeError:
-        print("my_prompt not found, skipping...")
-
-    try:
-        del bpy.types.Scene.my_negative_prompt
-    except AttributeError:
-        print("my_negative_prompt not found, skipping...")
-
-    try:
-        del bpy.types.Scene.mesh_complexity
-    except AttributeError:
-        print("mesh_complexity not found, skipping...")
-
-    try:
-        del bpy.types.Scene.texture_resolution
-    except AttributeError:
-        print("texture_resolution not found, skipping...")
-
-    try:
-        del bpy.types.Scene.operation_mode
-    except AttributeError:
-        print("operation_mode not found, skipping...")
-
-    try:
-        del bpy.types.Scene.denoise_strength
-    except AttributeError:
-        print("denoise_strength not found, skipping...")
-
-    try:
-        del bpy.types.Scene.output_path
-    except AttributeError:
-        print("output_path not found, skipping...")
-
-    # try:
-    #     del bpy.types.Scene.first_pass
-    # except AttributeError:
-    #     print("first_pass not found, skipping...")
-
-    # try:
-    #     del bpy.types.Scene.second_pass
-    # except AttributeError:
-    #     print("second_pass not found, skipping...")
-
-    # try:
-    #     del bpy.types.Scene.third_pass
-    # except AttributeError:
-    #     print("third_pass not found, skipping...")
-
-    # try:
-    #     del bpy.types.Scene.refinement_uv_space
-    # except AttributeError:
-    #     print("refinement_uv_space not found, skipping...")
-
-    try:
-        del bpy.types.Scene.texture_seed
-    except AttributeError:
-        print("texture_seed not found, skipping...")
-
-    # try:
-    #     del bpy.types.Scene.checkpoint_path
-    # except AttributeError:
-    #     print("checkpoint_path not found, skipping...")
-
-    print("Properties unregistered successfully.")
+    bpy.utils.unregister_class(LoRAModel)
+    del bpy.types.Scene.num_loras
+    del bpy.types.Scene.lora_models
+    del bpy.types.Scene.use_ipadapter
+    del bpy.types.Scene.ipadapter_image
+    del bpy.types.Scene.ipadapter_strength
+    del bpy.types.Scene.my_mesh_object
+    del bpy.types.Scene.my_uv_map
+    del bpy.types.Scene.selected_image
+    del bpy.types.Scene.my_prompt
+    del bpy.types.Scene.my_negative_prompt
+    del bpy.types.Scene.guidance_scale
+    del bpy.types.Scene.mesh_complexity
+    del bpy.types.Scene.texture_resolution
+    del bpy.types.Scene.render_resolution
+    del bpy.types.Scene.operation_mode
+    del bpy.types.Scene.denoise_strength
+    del bpy.types.Scene.output_path
+    del bpy.types.Scene.texture_seed
+    # del bpy.types.Scene.checkpoint_path
+    # del bpy.types.Scene.show_advanced
+    # del bpy.types.Scene.canny_controlnet_strength
+    # del bpy.types.Scene.normal_controlnet_strength
+    # del bpy.types.Scene.depth_controlnet_strength
+   

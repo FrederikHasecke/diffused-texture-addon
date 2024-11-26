@@ -28,6 +28,7 @@ wheels/
 *.egg 
 *.manifest 
 *.spec 
+*.zip
 
 # Log files
 pip-log.txt

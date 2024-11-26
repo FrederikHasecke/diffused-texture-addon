@@ -1,24 +1,7 @@
-import os
-import sys
 import bpy
 
-############################################################################
-# TODO: REMOVE THIS AFTER ALL WORKS!!
-# Manually specify the directory containing your scripts
-script_dir = "C:/Users/fredd/Desktop/SD-texturing/code/diffused_texture_addon"
-# Add the directory to the system path if not already present
-if script_dir not in sys.path:
-    sys.path.append(script_dir)
-
-os.environ["HF_HOME"] = r"G:\Huggingface_cache"
-############################################################################
-
-from operators import OBJECT_OT_GenerateTexture, OBJECT_OT_SelectPipette
-from properties import register_properties, unregister_properties
-
-
 class OBJECT_PT_MainPanel(bpy.types.Panel):
-    bl_label = "Stable Diffusion for Diffuse Texture Generation"
+    bl_label = "DiffusedTexture"
     bl_idname = "OBJECT_PT_diffused_texture_panel"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -42,16 +25,22 @@ class OBJECT_PT_MainPanel(bpy.types.Panel):
         # Negative Prompt Text Field
         layout.prop(scene, "my_negative_prompt", text="Negative Prompt")
 
+        # guidance_scale
+        layout.prop(scene, "guidance_scale", text="Guidance Scale")
+
         # Mesh Complexity Dropdown
         layout.prop(scene, "mesh_complexity", text="Mesh Complexity")
 
         # Texture Resolution Dropdown
         layout.prop(scene, "texture_resolution", text="Texture Resolution")
 
-        # Warning for High Resolution
-        if scene.texture_resolution in ["1024", "2048", "4096"]:
+        # Texture Resolution Dropdown
+        layout.prop(scene, "render_resolution", text="Render Resolution")
+
+        # Warning for low render Resolution
+        if int(scene.render_resolution) <= int(scene.texture_resolution):
             layout.label(
-                text="All three passes required for >=1024 resolution",
+                text="Render Resolution should be at least 2x Texture Resolution to prevent 'banding artifacts' in the texture",
                 icon="ERROR",
             )
 
@@ -72,11 +61,6 @@ class OBJECT_PT_MainPanel(bpy.types.Panel):
             text="Input Texture (for img2img or texture2texture pass)",
         )
 
-        # # First Pass in Image Space Checkbox
-        # layout.prop(
-        #     scene, "first_pass", text="First Pass from Gaussian Noise (text2img)"
-        # )
-
         # operation_mode Dropdown
         layout.prop(scene, "operation_mode", text="Operation Mode")
 
@@ -93,32 +77,36 @@ class OBJECT_PT_MainPanel(bpy.types.Panel):
         # Warning for Many Cameras
         if scene.num_cameras == "16":
             layout.label(
-                text="Warning: High VRAM, ~5min freeze",
+                text="Warning: long freeze, might produce OUT OF MEMORY error",
                 icon="ERROR",
             )
 
         # Seed Input Field
         layout.prop(scene, "texture_seed", text="Seed")
 
-        # # Optional: Checkpoint Selection
+        # TODO: Checkpoint Selection which are converted to Diffusers
         # layout.prop(scene, "checkpoint_path", text="Checkpoint")
 
         # Execute Button
         row = layout.row()
-        row.scale_y = 2.0  # Makes the button bigger
+        row.scale_y = 2.0
+
+        # Enable the button only if the output path is specified
+        row.enabled = bool(scene.output_path.strip())
         row.operator(
             "object.generate_texture",
             text="Start Texture Generation",
             icon="SHADERFX",
         )
 
-
+# TODO: Test if this Lora stuff even works
 class OBJECT_PT_LoRAPanel(bpy.types.Panel):
     bl_label = "LoRA Models"
     bl_idname = "OBJECT_PT_lora_panel"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "DiffusedTexture"
+    bl_options = {"DEFAULT_CLOSED"}
 
     def draw(self, context):
         layout = self.layout
@@ -140,6 +128,7 @@ class OBJECT_PT_IPAdapterPanel(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "DiffusedTexture"
+    bl_options = {"DEFAULT_CLOSED"}
 
     def draw(self, context):
         layout = self.layout
@@ -179,66 +168,28 @@ class OBJECT_OT_OpenNewIPAdapterImage(bpy.types.Operator):
         context.window_manager.fileselect_add(self)
         return {"RUNNING_MODAL"}
 
+# TODO: Give the user more options if they know the SD basics
+# class OBJECT_PT_AdvancedPanel(bpy.types.Panel):
+#     """Advanced Settings Panel"""
+#     bl_label = "Advanced Settings"
+#     bl_idname = "OBJECT_PT_advanced_panel"
+#     bl_space_type = "VIEW_3D"
+#     bl_region_type = "UI"
+#     bl_category = "DiffuseTex"
 
-def register():
-    # Unregister everything first to avoid duplication
-    try:
-        unregister_properties()
-    except Exception as e:
-        print(f"Error during property unregistration: {e}")
+#     def draw(self, context):
+#         layout = self.layout
+#         scene = context.scene
 
-    # Unregister all the classes if already registered
-    classes = [
-        OBJECT_OT_GenerateTexture,
-        OBJECT_OT_SelectPipette,
-        OBJECT_PT_MainPanel,
-        OBJECT_PT_LoRAPanel,
-        OBJECT_PT_IPAdapterPanel,
-        OBJECT_OT_OpenNewIPAdapterImage,
-    ]
+#         # Add a toggle to show/hide advanced settings
+#         layout.prop(scene, "show_advanced", text="Show Advanced Settings")
 
-    for cls in classes:
-        try:
-            bpy.utils.unregister_class(cls)
-        except Exception as e:
-            print(f"Error unregistering {cls.__name__}: {e}")
+#         if scene.show_advanced:
+#             box = layout.box()
 
-    # Now re-register everything
-    try:
-        register_properties()
-        for cls in classes:
-            bpy.utils.register_class(cls)
-    except Exception as e:
-        print(f"Error during registration: {e}")
+#             # Add advanced settings
+#             box.label(text="ControlNet Strengths:")
+#             box.prop(scene, "canny_controlnet_strength", text="Canny Strength")
+#             box.prop(scene, "normal_controlnet_strength", text="Normal Strength")
+#             box.prop(scene, "depth_controlnet_strength", text="Depth Strength")
 
-
-def unregister():
-    # Unregister all classes
-    classes = [
-        OBJECT_OT_GenerateTexture,
-        OBJECT_OT_SelectPipette,
-        OBJECT_PT_MainPanel,
-        OBJECT_PT_LoRAPanel,
-        OBJECT_PT_IPAdapterPanel,
-        OBJECT_OT_OpenNewIPAdapterImage,
-    ]
-
-    for cls in classes:
-        try:
-            bpy.utils.unregister_class(cls)
-        except Exception as e:
-            print(f"Error unregistering {cls.__name__}: {e}")
-
-    try:
-        unregister_properties()
-    except Exception as e:
-        print(f"Error during property unregistration: {e}")
-
-
-if __name__ == "__main__":
-    try:
-        unregister()  # Unregister first to ensure no conflicts
-    except Exception as e:
-        print(f"Unregister error: {e}")
-
-    register()  # Then register all

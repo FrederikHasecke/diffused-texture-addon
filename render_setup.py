@@ -4,7 +4,7 @@ import mathutils
 
 
 def create_cameras_on_one_ring(
-    num_cameras=16, max_size=1, name_prefix="Camera", fov=22.5, offset_additional=0
+    num_cameras=16, max_size=1, name_prefix="Camera", fov=22.5
 ):
     """
     Create n cameras evenly distributed on a ring around the world origin (Z-axis).
@@ -29,7 +29,7 @@ def create_cameras_on_one_ring(
 
     # Loop to create the ring (around Z-axis), offset by half an angle
     for i in range(num_cameras):
-        theta = (2 * math.pi / num_cameras) * i + angle_offset + offset_additional
+        theta = (2 * math.pi / num_cameras) * i + angle_offset
 
         # Position for the upper ring (XZ-plane)
         x = radius * math.cos(theta)
@@ -136,7 +136,7 @@ def create_cameras_on_two_rings(
 
 
 def create_cameras_on_sphere(
-    num_cameras=16, max_size=1, name_prefix="Camera", offset=False, fov=22.5
+    num_cameras=16, max_size=1, name_prefix="Camera", fov=22.5
 ):
     """
     Create cameras evenly distributed on a sphere around the world origin,
@@ -146,7 +146,7 @@ def create_cameras_on_sphere(
     :param num_cameras: Number of cameras to create.
     :param max_size: The maximum size of the object to be captured by the cameras.
     :param name_prefix: Prefix for naming the cameras.
-    :param offset: If True, swap the coordinates (x -> y, y -> z, z -> x).
+    :param offset: Offset to change views slightly.
     :param fov: Field of view for the cameras in degrees.
     :return: List of created camera objects.
     """
@@ -163,15 +163,15 @@ def create_cameras_on_sphere(
     for i in range(num_cameras):
         y = 1 - (i / float(num_cameras - 1)) * 2  # y goes from 1 to -1
         radius_at_y = math.sqrt(1 - y * y)  # Radius at y
-        theta = phi * i  # Golden angle increment
+        theta = (phi) * i  # Golden angle increment
 
         x = math.cos(theta) * radius_at_y
         z = math.sin(theta) * radius_at_y
         location = mathutils.Vector((x, y, z)) * radius
 
-        if offset:
-            # Swap coordinates: x -> y, y -> z, z -> x
-            location = mathutils.Vector((location.y, location.z, location.x))
+        # if offset:
+        #     # Swap coordinates: x -> y, y -> z, z -> x
+        #     location = mathutils.Vector((location.y, location.z, location.x))
 
         # Create camera
         bpy.ops.object.camera_add(location=location)
@@ -219,6 +219,14 @@ def setup_render_settings(scene, resolution=(512, 512)):
 
     # Set rendering samples and noise threshold
     scene.cycles.samples = 1  # Reduce to 1 sample for no anti-aliasing in Cycles
+    scene.cycles.use_denoising = False
+    scene.cycles.use_light_tree = False
+    scene.cycles.max_bounces = 1
+    scene.cycles.diffuse_bounces = 1
+    scene.cycles.glossy_bounces = 0
+    scene.cycles.transmission_bounces = 0
+    scene.cycles.volume_bounces = 0
+    scene.cycles.transparent_max_bounces = 0
 
     # Set filter size to minimum (0.01 to disable most filtering)
     scene.render.filter_size = 0.01
