@@ -1,306 +1,255 @@
 import os
-import bpy
-import cv2
 import numpy as np
-from pathlib import Path
+import cv2
 
-
-from render_setup import (
-    setup_render_settings,
-    create_cameras_on_sphere,
-    create_cameras_on_two_rings,
-    create_cameras_on_one_ring,
-)
-from condition_setup import (
-    bpy_img_to_numpy,
-    create_depth_condition,
-    create_normal_condition,
-)
-from diffusedtexture.diffusers_utils import (
+from .diffusers_utils import (
     create_first_pass_pipeline,
     infer_first_pass_pipeline,
+)
+from .process_operations import (
+    process_uv_texture,
+    generate_multiple_views,
+    create_input_image,
+    create_content_mask,
+    delete_render_folders,
 )
 
 
 def third_pass(scene, max_size, texture):
-    """Run the third pass in image space."""
+    """Run the third pass for sequential texture refinement."""
 
-    num_cameras = int(scene.num_cameras)
+    # Flip texture vertically (blender y 0 is down, opencv y 0 is up)
+    # texture_flipped = np.transpose(texture[::-1], (1, 0, 2))
+    texture = texture[::-1]
 
-    if num_cameras == 4:
-        cameras = create_cameras_on_one_ring(
-            num_cameras=num_cameras,
-            max_size=max_size,  # we dont want to intersect with the object
-            name_prefix="Camera_third_pass",
-        )
-    elif num_cameras == 9:
-        cameras = create_cameras_on_sphere(
-            num_cameras=num_cameras,
-            max_size=max_size,  # we dont want to intersect with the object
-            name_prefix="Camera_third_pass",
-            offset=False,
-        )
-    elif num_cameras == 16:
-        cameras = create_cameras_on_two_rings(
-            num_cameras=num_cameras, max_size=max_size, name_prefix="Camera_third_pass"
+    multiview_images, render_img_folders = generate_multiple_views(
+        scene=scene,
+        max_size=max_size,
+        suffix="third_pass",
+        render_resolution=int(scene.render_resolution),
+        offset_additional=15,
+    )
+
+    # Scale the texture to the new texture res (if it isnt)
+    if int(scene.texture_resolution) != texture.shape[0]:
+        final_texture = cv2.resize(
+            texture[..., :3],
+            (int(scene.texture_resolution), int(scene.texture_resolution)),
+            interpolation=cv2.INTER_LANCZOS4,
         )
     else:
-        raise ValueError("Only 4, 9 or 16 cameras are supported for first pass.")
+        final_texture = np.copy(texture)[..., :3]
 
-    output_path = Path(scene.output_path)  # Use Path for OS-independent path handling
-
-    output_nodes = setup_render_settings(scene, resolution=(512, 512))
-
-    # Set base paths for outputs
-    output_nodes["depth"].base_path = str(output_path / "third_pass_depth")
-    output_nodes["normal"].base_path = str(output_path / "third_pass_normal")
-    output_nodes["uv"].base_path = str(output_path / "third_pass_uv")
-    output_nodes["position"].base_path = str(output_path / "third_pass_position")
-    output_nodes["img"].base_path = str(output_path / "third_pass_img")
-
-    # Create directories if they don't exist
-    for key in output_nodes:
-        os.makedirs(output_nodes[key].base_path, exist_ok=True)
-
-        # Render with each of the cameras in the list
-    for i, camera in enumerate(cameras):
-        # Set the active camera to the current camera
-        scene.camera = camera
-
-        # Set the output file path for each pass with the corresponding camera index
-        output_nodes["depth"].file_slots[0].path = f"depth_camera_{i:02d}_"
-        output_nodes["normal"].file_slots[0].path = f"normal_camera_{i:02d}_"
-        output_nodes["uv"].file_slots[0].path = f"uv_camera_{i:02d}_"
-        output_nodes["position"].file_slots[0].path = f"position_camera_{i:02d}_"
-        output_nodes["img"].file_slots[0].path = f"img_camera_{i:02d}_"
-
-        # Render the scene
-        bpy.ops.render.render(write_still=True)
-
-    # Load the rendered images
-    depth_images = []
-    normal_images = []
-    uv_images = []
-    img_images = []
-
-    # get the current blender frame
-    frame_number = bpy.context.scene.frame_current
-
-    for i, camera in enumerate(cameras):
-
-        # Load UV images
-        uv_image_path = (
-            Path(output_nodes["uv"].base_path)
-            / f"uv_camera_{i:02d}_{frame_number:04d}.exr"
-        )
-
-        uv_image = bpy_img_to_numpy(str(uv_image_path))
-
-        uv_images.append(uv_image)
-
-        # Load depth images
-        depth_image_path = (
-            Path(output_nodes["depth"].base_path)
-            / f"depth_camera_{i:02d}_{frame_number:04d}.exr"
-        )
-
-        depth_image = create_depth_condition(str(depth_image_path))
-
-        depth_images.append(depth_image)
-
-        # Load position images
-        position_image_path = (
-            Path(output_nodes["position"].base_path)
-            / f"position_camera_{i:02d}_{frame_number:04d}.exr"
-        )
-        # Load normal images
-        normal_image_path = (
-            Path(output_nodes["normal"].base_path)
-            / f"normal_camera_{i:02d}_{frame_number:04d}.exr"
-        )
-        normal_image = create_normal_condition(str(normal_image_path), camera)
-        normal_images.append(normal_image)
-
-        # Load render images
-        img_image_path = (
-            Path(output_nodes["img"].base_path)
-            / f"img_camera_{i:02d}_{frame_number:04d}.exr"
-        )
-
-        img_image = bpy_img_to_numpy(str(img_image_path))
-
-        img_images.append(img_image)
-
-    # final_texture = cv2.GaussianBlur(texture, (5, 5), 0)
-
-    # transpose texture
-    texture = texture[..., :3]
-    texture = texture[::-1]  # np.transpose(texture[::-1], (1, 0, 2))
-
-    # create the base of the final texture
-    final_texture = cv2.resize(
-        texture,
-        (int(scene.texture_resolution), int(scene.texture_resolution)),
-        interpolation=cv2.INTER_LANCZOS4,
-    )
-
-    final_texture = final_texture[..., :3]
-
-    # create an unpainted mask for the inpainting
-    unpainted_mask = np.zeros(
-        (int(scene.texture_resolution), int(scene.texture_resolution)), dtype=np.uint8
-    )
-
-    store_z = np.zeros(
+    # lookup table to store info on already set and fixed pixels (2), set and variable pixels (1), and untouched ones (0)
+    pixel_status = np.zeros(
         (int(scene.texture_resolution), int(scene.texture_resolution))
-    ).astype(np.float32)
+    )
+    max_angle_status = np.zeros(
+        (int(scene.texture_resolution), int(scene.texture_resolution))
+    )
 
+    # TODO: Create the pipe with the optional addition of a new checkpoint and additional loras
     pipe = create_first_pass_pipeline(scene)
 
-    for i, camera in enumerate(cameras):
+    for i in range(int(scene.num_cameras)):
 
-        # create an empty texture for the current iteration
-        iteration_refined_texture = np.nan * np.ones(np.shape(final_texture))
+        (
+            _,
+            input_render_resolution,
+            _,
+        ) = create_input_image(
+            final_texture,
+            multiview_images["uv"][i],
+            int(scene.render_resolution),
+            int(scene.texture_resolution),
+        )
 
-        uv_image_orig = uv_images[i]
-        depth_image = depth_images[i]
-        normal_image = normal_images[i]
-        img_image = img_images[i]
+        # Get the render view mask
+        content_mask_fullsize = create_content_mask(multiview_images["uv"][i])
 
-        # get the texture content projected
-        uv_image = np.copy(uv_image_orig)
-        uv_image = uv_image[..., :2]  # Keep only u and v
+        # get the UV coordinates of the current iteration
+        uv_image = multiview_images["uv"][i][..., :2]  # Keep only u and v
+        uv_image[content_mask_fullsize == 0] = 0
 
-        # resize the uv values to 0-1023
-        uv_coordinates = (
-            (uv_image * (int(scene.texture_resolution) - 1))
-            .astype(np.uint16)
+        # copy of uv_image at texture scale
+        uv_image_texture_scale = cv2.resize(
+            np.copy(multiview_images["uv"][i]),
+            (int(scene.texture_resolution), int(scene.texture_resolution)),
+            interpolation=cv2.INTER_NEAREST_EXACT,
+        )
+        content_mask_texture_scale = cv2.resize(
+            content_mask_fullsize,
+            (int(scene.texture_resolution), int(scene.texture_resolution)),
+            interpolation=cv2.INTER_NEAREST_EXACT,
+        )
+        uv_image_texture_scale = uv_image_texture_scale[..., :2]
+        uv_image_texture_scale[content_mask_texture_scale == 0] = 0
+
+        # resize the uv values to 0-2047
+        uv_coordinates_tex = (
+            (uv_image_texture_scale * (int(scene.texture_resolution) - 1))
+            .astype(np.int32)
             .reshape(-1, 2)
         )
 
         # the uvs are meant to start from the bottom left corner, so we flip the y axis (v axis)
-        uv_coordinates[:, 1] = (int(scene.texture_resolution) - 1) - uv_coordinates[
-            :, 1
-        ]
+        uv_coordinates_tex[:, 1] = (
+            int(scene.texture_resolution) - 1
+        ) - uv_coordinates_tex[:, 1]
 
         # in case we have uv coordinates beyond the texture
-        uv_coordinates = uv_coordinates % int(scene.texture_resolution)
+        uv_coordinates_tex = uv_coordinates_tex % int(scene.texture_resolution)
+        uv_coordinates_tex = uv_coordinates_tex.astype(np.int32)
 
-        # remove values where the normal is pointing away from the camera
-        normal_z = np.copy(normal_image).astype(np.float32)
-        normal_z = normal_z[..., 2]
+        # Coordiates in render size
+        uv_coordinates_render = uv_image
+        uv_coordinates_render = (
+            (uv_coordinates_render * (int(scene.texture_resolution) - 1))
+            .astype(np.int32)
+            .reshape(-1, 2)
+        )
+        uv_coordinates_render[:, 1] = (
+            int(scene.texture_resolution) - 1
+        ) - uv_coordinates_render[:, 1]
+        uv_coordinates_render = uv_coordinates_render % int(scene.texture_resolution)
 
-        normal_z_uv = np.zeros(
+        content_mask_texture = np.zeros(
             (int(scene.texture_resolution), int(scene.texture_resolution))
         )
 
-        normal_z_uv[uv_coordinates[:, 1], uv_coordinates[:, 0]] = normal_z.reshape(
-            -1,
+        # add ALL the UV content mask to content_mask_texture
+        content_mask_texture[uv_coordinates_tex[:, 1], uv_coordinates_tex[:, 0]] = 1
+
+        # Remove the fixed parts of the texture from the content mask before resizing
+        content_mask_texture[pixel_status == 2] = 0
+
+        # Remove the variable parts of the texture from the content mask if the current facing is less than the previous
+        facing_texture = np.zeros(
+            (int(scene.texture_resolution), int(scene.texture_resolution))
         )
 
-        # compare the normal_z to the store_z
-        add_mask = normal_z_uv > store_z
+        # facing image to texture scale
+        facing_render = cv2.resize(
+            np.copy(multiview_images["facing"][i]),
+            (int(scene.texture_resolution), int(scene.texture_resolution)),
+            interpolation=cv2.INTER_NEAREST_EXACT,
+        ).flatten()
 
-        # get an input image from the original texture
-        input_image = final_texture[uv_coordinates[:, 1], uv_coordinates[:, 0], ...]
-        input_image = input_image[..., :3]  # cut off alpha
-        input_image = input_image.reshape((512, 512, 3))
-
-        img_image = (img_image[..., :3] / np.max(img_image[..., :3]) * 255).astype(
-            np.uint8
-        )
-        canny_image = cv2.Canny(img_image, 100, 200)
-        canny_image = np.stack((canny_image, canny_image, canny_image), axis=-1)
-
-        # TODO: add_content_mask
-        add_content_mask = add_mask[uv_coordinates[:, 1], uv_coordinates[:, 0]].reshape(
-            (512, 512)
-        )
-        add_content_mask = (255 * add_content_mask).astype(np.uint8)
-        add_content_mask = cv2.erode(
-            add_content_mask, np.ones((3, 3), np.uint8), iterations=1
+        facing_texture[uv_coordinates_tex[:, 1], uv_coordinates_tex[:, 0]] = (
+            facing_render
         )
 
-        # add_content_mask = np.stack(
-        #     (add_content_mask, add_content_mask, add_content_mask), axis=-1
-        # )
+        content_mask_texture[
+            np.logical_and(pixel_status == 1, max_angle_status > facing_texture)
+        ] = 0
 
-        output_image = infer_first_pass_pipeline(
-            pipe,
-            scene,
-            input_image,
-            add_content_mask,
-            canny_image,
-            normal_image,
-            depth_image,
-            strength=scene.denoise_strength,
+        # if something is facing too little toward the camera, remove it
+        content_mask_texture[facing_texture < 0.75] = 0
+
+        # Add the current values to the maps
+        max_angle_status[content_mask_texture > 0] = facing_texture[
+            content_mask_texture > 0
+        ]
+        pixel_status[content_mask_texture > 0] = (
+            pixel_status[content_mask_texture > 0] + 1
         )
+        pixel_status = np.clip(pixel_status, a_min=0, a_max=2)
 
-        # remove alpha
-        output_image = np.array(output_image)[..., :3]
-
-        cv2.imwrite(
-            os.path.join(scene.output_path, f"input_image_third_pass_{i}.png"),
-            cv2.cvtColor(input_image, cv2.COLOR_RGB2BGR),
-        )
-        cv2.imwrite(
-            os.path.join(scene.output_path, f"add_content_mask_third_pass_{i}.png"),
-            cv2.cvtColor(add_content_mask, cv2.COLOR_RGB2BGR),
-        )
-        cv2.imwrite(
-            os.path.join(scene.output_path, f"canny_third_pass_{i}.png"),
-            cv2.cvtColor(canny_image, cv2.COLOR_RGB2BGR),
-        )
-        cv2.imwrite(
-            os.path.join(scene.output_path, f"normal_third_pass_{i}.png"),
-            cv2.cvtColor(normal_image, cv2.COLOR_RGB2BGR),
-        )
-        cv2.imwrite(
-            os.path.join(scene.output_path, f"depth_third_pass_{i}.png"),
-            cv2.cvtColor(depth_image, cv2.COLOR_RGB2BGR),
-        )
-
-        # TODO: REMOVE ME, just for debugging
-        # output the image as png
-        cv2.imwrite(
-            os.path.join(scene.output_path, f"output_third_pass_{i}.png"),
-            cv2.cvtColor(output_image, cv2.COLOR_RGB2BGR),
-        )
-
-        # project the output image back to the uv map
-        iteration_refined_texture[uv_coordinates[:, 1], uv_coordinates[:, 0], :] = (
-            np.array(output_image).reshape(-1, 3)
-        )
-
-        # save the normal_z values for the next iteration
-        store_z[normal_z_uv > store_z] = normal_z_uv[normal_z_uv > store_z]
-
-        # block all worked on set pixels
-        store_z[np.logical_and(add_mask, normal_z_uv > 150)] = 255
-
-        # set the values to nan if the normal is pointing away from the camera
-        iteration_refined_texture[normal_z_uv < 150] = np.nan
-
-        # set the values to nan if the normal was better in a previous iteration
-        iteration_refined_texture[~add_mask] = np.nan
-
-        final_texture[~np.isnan(iteration_refined_texture)] = iteration_refined_texture[
-            ~np.isnan(iteration_refined_texture)
+        # Project the content_mask_texture back to render view
+        content_mask_render = content_mask_texture[
+            uv_coordinates_tex[:, 1], uv_coordinates_tex[:, 0]
         ]
 
-        unpainted_mask[uv_coordinates[:, 1], uv_coordinates[:, 0]] = 255
+        # point array to image
+        content_mask_render = content_mask_render.reshape(
+            (int(scene.texture_resolution), int(scene.texture_resolution))
+        )
 
-    iteration_refined_texture = iteration_refined_texture.astype(np.uint8)
+        content_mask_render_sd = cv2.resize(
+            content_mask_render,
+            (512, 512),
+            interpolation=cv2.INTER_LINEAR,
+        )
 
-    unpainted_mask = 255 - unpainted_mask
-    unpainted_mask = unpainted_mask.astype(np.uint8)
+        input_image_sd = cv2.resize(
+            input_render_resolution,
+            (512, 512),
+            interpolation=cv2.INTER_LINEAR,
+        )
 
-    # inpaint all the missing pixels
-    final_texture = cv2.inpaint(
-        final_texture,
-        unpainted_mask,
-        inpaintRadius=3,
-        flags=cv2.INPAINT_TELEA,
-    )
+        canny_img = cv2.resize(
+            multiview_images["normal"][i].astype(np.uint8),
+            (512, 512),
+            interpolation=cv2.INTER_LINEAR,
+        )
+        canny_img = cv2.Canny(canny_img, 100, 200)
+        canny_img = np.stack(
+            (canny_img, canny_img, canny_img),
+            axis=-1,
+        ).astype(np.uint8)
+        normal_img = cv2.resize(
+            multiview_images["normal"][i],
+            (512, 512),
+            interpolation=cv2.INTER_LINEAR,
+        )
+        depth_img = cv2.resize(
+            multiview_images["depth"][i],
+            (512, 512),
+            interpolation=cv2.INTER_LINEAR,
+        )
+
+        output = infer_first_pass_pipeline(
+            pipe,
+            scene,
+            input_image_sd,
+            content_mask_render_sd,
+            canny_img,
+            normal_img,
+            depth_img,
+            strength=scene.denoise_strength,
+            guidance_scale=scene.guidance_scale,
+        )
+
+        # upscale output to texture size
+        output = cv2.resize(
+            np.array(output)[..., :3],
+            (int(scene.render_resolution), int(scene.render_resolution)),
+            interpolation=cv2.INTER_LINEAR,
+        )
+
+        # overlay the output on the input with feathered blend
+        overlay_mask = np.copy(content_mask_render)
+
+        overlay_mask = cv2.resize(
+            overlay_mask,
+            (int(scene.render_resolution), int(scene.render_resolution)),
+            interpolation=cv2.INTER_LINEAR,
+        )
+
+        # shrink the mask by half the blur distance
+        overlay_mask = cv2.erode(overlay_mask, np.ones((3, 3)), iterations=2)
+        overlay_mask = cv2.blur(overlay_mask, (9, 9))
+        overlay_mask = np.stack((overlay_mask, overlay_mask, overlay_mask), axis=-1)
+
+        output = (1 - overlay_mask) * input_render_resolution.astype(
+            np.float32
+        ) + overlay_mask * output.astype(np.float32)
+        # Convert back to uint8
+        output = np.clip(output, 0, 255).astype(np.uint8)
+
+        iteration_texture = np.zeros(
+            (int(scene.texture_resolution), int(scene.texture_resolution), 3)
+        )
+        iteration_texture[
+            uv_coordinates_render[:, 1], uv_coordinates_render[:, 0], ...
+        ] = output.reshape(-1, 3)
+
+        # add the new parts to the texture
+        final_texture[content_mask_texture > 0] = iteration_texture[
+            content_mask_texture > 0
+        ]
+
+    # delete all rendering folders
+    delete_render_folders(render_img_folders)
 
     return final_texture

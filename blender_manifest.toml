@@ -2,12 +2,11 @@ schema_version = "1.0.0"
 
 # Example of manifest file for a Blender extension
 # Change the values according to your extension
-id = "stable_diffusion_texture_extension"
-version = "0.0.1"
+id = "diffused_texture_addon"
+version = "0.1.0"
 name = "DiffusedTexture"
-tagline = "Stable Diffusion for Diffuse Texture Generation"
+tagline = "Generate Diffuse Textures on Meshes with Stable Diffusion"
 maintainer = "Frederik Hasecke <frederik@hasecke.eu>"
-# Supported types: "add-on", "theme"
 type = "add-on"
 
 # # Optional: link to documentation, support, source files, etc

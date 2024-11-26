@@ -1,15 +1,14 @@
 import os
+import threading
 import bpy
 import copy
 import traceback
 import numpy as np
 from pathlib import Path
 
-from utils import update_uv_maps, get_mesh_objects, update_image_list
-from object_ops import move_object_to_origin, calculate_mesh_midpoint
-from scene_backup import SceneBackup, clean_scene, clean_object
-from diffusedtexture import first_pass, second_pass, third_pass, uv_pass
-
+from .object_ops import move_object_to_origin, calculate_mesh_midpoint
+from .scene_backup import clean_scene, clean_object
+from .diffusedtexture import first_pass, second_pass, third_pass
 
 class OBJECT_OT_GenerateTexture(bpy.types.Operator):
     bl_idname = "object.generate_texture"
@@ -19,6 +18,14 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
         scene = context.scene
         output_path = Path(scene.output_path)
 
+        # Retrieve the HuggingFace cache path from preferences
+        prefs = bpy.context.preferences.addons[__package__].preferences
+        hf_cache_path = prefs.hf_cache_path
+
+        # Set environment variable if path is provided
+        if hf_cache_path:
+            os.environ["HF_HOME"] = hf_cache_path
+
         # Check if an input texture is selected
         input_texture_path = Path(bpy.path.abspath(scene.input_texture_path))
 
@@ -27,7 +34,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
             in [
                 "IMAGE2IMAGE_PARALLEL",
                 "IMAGE2IMAGE_SEQUENTIAL",
-                "TEXTURE2TEXTURE_ENHANCEMENT",
+                # "TEXTURE2TEXTURE_ENHANCEMENT",
             ]
         ):
             self.report(
@@ -118,20 +125,21 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                 self.save_texture(texture_final, str(output_path / "third_pass.png"))
                 self.save_texture(texture_final, str(output_path / "final_texture.png"))
 
-            elif scene.operation_mode == "TEXTURE2TEXTURE_ENHANCEMENT":
+            # TODO: At one point revisit this part. Limit to texture parts and leave texture patch borders out
+            # elif scene.operation_mode == "TEXTURE2TEXTURE_ENHANCEMENT":
 
-                texture_input = self.load_texture(str(input_texture_path))
+            #     texture_input = self.load_texture(str(input_texture_path))
 
-                texture_uv_pass = uv_pass.uv_pass(scene, texture_input)
-                texture_final = copy.deepcopy(texture_uv_pass)
+            #     texture_uv_pass = uv_pass.uv_pass(scene, texture_input)
+            #     texture_final = copy.deepcopy(texture_uv_pass)
 
-                # Save texture_final as texture_uv_pass
-                self.save_texture(texture_final, str(output_path / "uv_pass.png"))
-                self.save_texture(texture_final, str(output_path / "final_texture.png"))
+            #     # Save texture_final as texture_uv_pass
+            #     self.save_texture(texture_final, str(output_path / "uv_pass.png"))
+            #     self.save_texture(texture_final, str(output_path / "final_texture.png"))
 
             else:
                 raise NotImplementedError(
-                    "Only the four modes 'TEXT2IMAGE_PARALLEL', 'IMAGE2IMAGE_PARALLEL', 'IMAGE2IMAGE_SEQUENTIAL', 'TEXTURE2TEXTURE_ENHANCEMENT' are implemented"
+                    "Only the three modes 'TEXT2IMAGE_PARALLEL', 'IMAGE2IMAGE_PARALLEL', 'IMAGE2IMAGE_SEQUENTIAL' are implemented"
                 )
 
             # Process complete
@@ -158,10 +166,8 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
 
         finally:
 
-            # TODO: do not restore (DEBUG)
-
-            # # Restore the original scene by reloading the backup file
-            # bpy.ops.wm.open_mainfile(filepath=str(backup_file))
+            # Restore the original scene by reloading the backup file
+            bpy.ops.wm.open_mainfile(filepath=str(backup_file))
 
             # Select the new object since we reloaded
             selected_object = bpy.data.objects.get(selected_mesh_name)

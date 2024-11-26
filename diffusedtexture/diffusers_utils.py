@@ -13,7 +13,7 @@ from transformers import CLIPVisionModelWithProjection
 
 from PIL import Image
 
-from utils import image_to_numpy
+from ..utils import image_to_numpy
 
 
 # Create a dictionary to map model complexities to their corresponding controlnet weights and inputs
@@ -98,7 +98,15 @@ def create_first_pass_pipeline(scene):
 
 
 def infer_first_pass_pipeline(
-    pipe, scene, input_image, uv_mask, canny_img, normal_img, depth_img, strength=1.0
+    pipe,
+    scene,
+    input_image,
+    uv_mask,
+    canny_img,
+    normal_img,
+    depth_img,
+    strength=1.0,
+    guidance_scale=7.5,
 ):
     # run the pipeline
     control_images = []
@@ -141,7 +149,7 @@ def infer_first_pass_pipeline(
             ],
             num_inference_steps=50,
             strength=strength,
-            # guidance_scale=10.0,
+            guidance_scale=guidance_scale,
         ).images[0]
         # .resize((canny_img.shape[0], canny_img.shape[1]), Image.Resampling.LANCZOS)
     )

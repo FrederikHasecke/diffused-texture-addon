@@ -1,7 +1,7 @@
 import os
 import bpy
 import numpy as np
-from diffusedtexture.process_utils import blendercs_to_ccs
+from .diffusedtexture.process_utils import blendercs_to_ccs
 
 
 def bpy_img_to_numpy(img_path):
@@ -141,11 +141,6 @@ def create_similar_angle_image(normal_array, position_array, camera_obj):
 
     # and invert
     similar_angle_image = -1 * alignment
-
-    # slice off the last 10%
-    similar_angle_image = similar_angle_image * 1.1
-    similar_angle_image = similar_angle_image - 0.1
-    similar_angle_image[similar_angle_image <= 0] = 0
 
     similar_angle_image[np.isnan(similar_angle_image)] = 0
 
