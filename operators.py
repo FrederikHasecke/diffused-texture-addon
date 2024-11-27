@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .object_ops import move_object_to_origin, calculate_mesh_midpoint
 from .scene_backup import clean_scene, clean_object
-from .diffusedtexture import first_pass, second_pass, third_pass
+
 
 class OBJECT_OT_GenerateTexture(bpy.types.Operator):
     bl_idname = "object.generate_texture"
@@ -25,6 +25,9 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
         # Set environment variable if path is provided
         if hf_cache_path:
             os.environ["HF_HOME"] = hf_cache_path
+
+        # import affter setting the HF home
+        from .diffusedtexture import first_pass, second_pass, third_pass
 
         # Check if an input texture is selected
         input_texture_path = Path(bpy.path.abspath(scene.input_texture_path))

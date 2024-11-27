@@ -1,63 +1,72 @@
 import os
 
-os.environ["HF_HOME"] = r"G:\Huggingface_cache"
-
-import torch
-from diffusers import (
-    StableDiffusionControlNetPipeline,
-    StableDiffusionControlNetImg2ImgPipeline,
-    StableDiffusionControlNetInpaintPipeline,
-    ControlNetModel,
-)
-from transformers import CLIPVisionModelWithProjection
-
 from PIL import Image
 
 from ..utils import image_to_numpy
 
+# import torch
+# from diffusers import (
+#     StableDiffusionControlNetInpaintPipeline,
+#     ControlNetModel,
+# )
+# from transformers import CLIPVisionModelWithProjection
 
-# Create a dictionary to map model complexities to their corresponding controlnet weights and inputs
-controlnet_config = {
-    "LOW": {
-        "conditioning_scale": [0.8],
-        "controlnets": [
-            ControlNetModel.from_pretrained(
-                "lllyasviel/sd-controlnet-depth", torch_dtype=torch.float16
-            ),
-        ],
-        "inputs": ["depth"],
-    },
-    "MEDIUM": {
-        "conditioning_scale": [0.7, 0.8],
-        "controlnets": [
-            ControlNetModel.from_pretrained(
-                "lllyasviel/sd-controlnet-depth", torch_dtype=torch.float16
-            ),
-            ControlNetModel.from_pretrained(
-                "lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16
-            ),
-        ],
-        "inputs": ["depth", "canny"],
-    },
-    "HIGH": {
-        "conditioning_scale": [1.0, 0.9, 0.9],
-        "controlnets": [
-            ControlNetModel.from_pretrained(
-                "lllyasviel/sd-controlnet-depth", torch_dtype=torch.float16
-            ),
-            ControlNetModel.from_pretrained(
-                "lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16
-            ),
-            ControlNetModel.from_pretrained(
-                "lllyasviel/sd-controlnet-normal", torch_dtype=torch.float16
-            ),
-        ],
-        "inputs": ["depth", "canny", "normal"],
-    },
-}
+
+def get_controlnet_config():
+    import torch
+    from diffusers import (
+        ControlNetModel,
+    )
+
+    # Create a dictionary to map model complexities to their corresponding controlnet weights and inputs
+    controlnet_config = {
+        "LOW": {
+            "conditioning_scale": [0.8],
+            "controlnets": [
+                ControlNetModel.from_pretrained(
+                    "lllyasviel/sd-controlnet-depth", torch_dtype=torch.float16
+                ),
+            ],
+            "inputs": ["depth"],
+        },
+        "MEDIUM": {
+            "conditioning_scale": [0.7, 0.8],
+            "controlnets": [
+                ControlNetModel.from_pretrained(
+                    "lllyasviel/sd-controlnet-depth", torch_dtype=torch.float16
+                ),
+                ControlNetModel.from_pretrained(
+                    "lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16
+                ),
+            ],
+            "inputs": ["depth", "canny"],
+        },
+        "HIGH": {
+            "conditioning_scale": [1.0, 0.9, 0.9],
+            "controlnets": [
+                ControlNetModel.from_pretrained(
+                    "lllyasviel/sd-controlnet-depth", torch_dtype=torch.float16
+                ),
+                ControlNetModel.from_pretrained(
+                    "lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16
+                ),
+                ControlNetModel.from_pretrained(
+                    "lllyasviel/sd-controlnet-normal", torch_dtype=torch.float16
+                ),
+            ],
+            "inputs": ["depth", "canny", "normal"],
+        },
+    }
+    return controlnet_config
 
 
 def create_first_pass_pipeline(scene):
+
+    # re-import if hf_home was re-set
+    import torch
+    from diffusers import StableDiffusionControlNetInpaintPipeline
+
+    controlnet_config = get_controlnet_config()
 
     # TODO: Add the options for LoRA and IPAdapter
     pipe = StableDiffusionControlNetInpaintPipeline.from_pretrained(
@@ -108,6 +117,9 @@ def infer_first_pass_pipeline(
     strength=1.0,
     guidance_scale=7.5,
 ):
+
+    controlnet_config = get_controlnet_config()
+
     # run the pipeline
     control_images = []
 
@@ -157,75 +169,75 @@ def infer_first_pass_pipeline(
     return output
 
 
-def create_uv_pass_pipeline(scene):
+# def create_uv_pass_pipeline(scene):
 
-    # TODO: Add the options for LoRA and IPAdapter
-    pipe = StableDiffusionControlNetInpaintPipeline.from_pretrained(
-        "runwayml/stable-diffusion-v1-5",
-        controlnet=[
-            ControlNetModel.from_pretrained(
-                "lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16
-            )
-        ],
-        torch_dtype=torch.float16,
-        use_safetensors=True,
-        safety_checker=None,
-    )
+#     # TODO: Add the options for LoRA and IPAdapter
+#     pipe = StableDiffusionControlNetInpaintPipeline.from_pretrained(
+#         "runwayml/stable-diffusion-v1-5",
+#         controlnet=[
+#             ControlNetModel.from_pretrained(
+#                 "lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16
+#             )
+#         ],
+#         torch_dtype=torch.float16,
+#         use_safetensors=True,
+#         safety_checker=None,
+#     )
 
-    if scene.num_loras > 0:
+#     if scene.num_loras > 0:
 
-        for lora in scene.lora_models:
+#         for lora in scene.lora_models:
 
-            # Extract the directory (everything but the file name)
-            file_path = os.path.dirname(lora.path)
+#             # Extract the directory (everything but the file name)
+#             file_path = os.path.dirname(lora.path)
 
-            # Extract the file name (just the file name, including extension)
-            file_name = os.path.basename(lora.path)
+#             # Extract the file name (just the file name, including extension)
+#             file_name = os.path.basename(lora.path)
 
-            # Load the LoRA weights using the extracted path and file name
-            pipe.load_lora_weights(file_path, weight_name=file_name)
+#             # Load the LoRA weights using the extracted path and file name
+#             pipe.load_lora_weights(file_path, weight_name=file_name)
 
-            pipe.fuse_lora(lora_scale=lora.strength)
+#             pipe.fuse_lora(lora_scale=lora.strength)
 
-    if scene.use_ipadapter:
-        pipe.load_ip_adapter(
-            "h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin"
-        )
+#     if scene.use_ipadapter:
+#         pipe.load_ip_adapter(
+#             "h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin"
+#         )
 
-        pipe.set_ip_adapter_scale(scene.ipadapter_strength)
+#         pipe.set_ip_adapter_scale(scene.ipadapter_strength)
 
-    pipe.enable_model_cpu_offload()
+#     pipe.enable_model_cpu_offload()
 
-    return pipe
+#     return pipe
 
 
-def infer_uv_pass_pipeline(pipe, scene, input_image, uv_mask, canny_img, strength=1.0):
-    # run the pipeline
-    control_images = []
+# def infer_uv_pass_pipeline(pipe, scene, input_image, uv_mask, canny_img, strength=1.0):
+#     # run the pipeline
+#     control_images = []
 
-    control_images.append(
-        Image.fromarray(canny_img)  # .resize((512, 512), Image.Resampling.LANCZOS)
-    )
+#     control_images.append(
+#         Image.fromarray(canny_img)  # .resize((512, 512), Image.Resampling.LANCZOS)
+#     )
 
-    ip_adapter_image = None
-    if scene.use_ipadapter:
-        ip_adapter_image = image_to_numpy(scene.ipadapter_image)
+#     ip_adapter_image = None
+#     if scene.use_ipadapter:
+#         ip_adapter_image = image_to_numpy(scene.ipadapter_image)
 
-    output = (
-        pipe(
-            prompt="A flat image of a texture of " + scene.my_prompt,
-            negative_prompt=scene.my_negative_prompt,
-            image=Image.fromarray(input_image),
-            mask_image=Image.fromarray(uv_mask),
-            control_image=control_images,
-            ip_adapter_image=ip_adapter_image,
-            num_images_per_prompt=1,
-            controlnet_conditioning_scale=[0.2],
-            num_inference_steps=50,
-            strength=strength,
-            # guidance_scale=10.0,
-        ).images[0]
-        # .resize((canny_img.shape[0], canny_img.shape[1]), Image.Resampling.LANCZOS)
-    )
+#     output = (
+#         pipe(
+#             prompt="A flat image of a texture of " + scene.my_prompt,
+#             negative_prompt=scene.my_negative_prompt,
+#             image=Image.fromarray(input_image),
+#             mask_image=Image.fromarray(uv_mask),
+#             control_image=control_images,
+#             ip_adapter_image=ip_adapter_image,
+#             num_images_per_prompt=1,
+#             controlnet_conditioning_scale=[0.2],
+#             num_inference_steps=50,
+#             strength=strength,
+#             # guidance_scale=10.0,
+#         ).images[0]
+#         # .resize((canny_img.shape[0], canny_img.shape[1]), Image.Resampling.LANCZOS)
+#     )
 
-    return output
+#     return output
