@@ -2,10 +2,8 @@
 
 DiffusedTexture is a Blender add-on that uses Stable Diffusion to create textures directly on 3D meshes. 
 
-Before  |  After
-:------:|:------:
-![Before](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/elephant_before.gif) | ![After](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/elephant_after.gif)
-![Before](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/bunny_before.gif) | ![After](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/bunny_after.gif)
+![https://www.cgtrader.com/free-3d-print-models/miniatures/other/elephant-natural-history-museum-1](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/elephant.gif)
+![https://graphics.stanford.edu/data/3Dscanrep/](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/bunny.gif)
 
 ## Table of Contents
 - [DiffusedTexture: AI-Powered Texture Generation for Blender](#diffusedtexture-ai-powered-texture-generation-for-blender)
@@ -14,20 +12,19 @@ Before  |  After
   - [Installation (Windows)](#installation-windows)
   - [Installation (Linux)](#installation-linux)
   - [Setup](#setup)
-    - [Blender Setup](#blender-setup)
+    - [Blender Configuration](#blender-configuration)
   - [Usage](#usage)
-    - [Main Workflow](#main-workflow)
     - [Additional Options](#additional-options)
   - [Troubleshooting](#troubleshooting)
-  - [TODOs](#todos)
-  - [Acknowledgement](#acknowledgement)
+  - [**Roadmap**](#roadmap)
+  - [**Acknowledgements**](#acknowledgements)
 
 ## Features
-- **Direct Texture Generation:** Diffuse Textures are generated directly on the 3D model within Blender, enabling WYSIWYG (what you see is what you get) results.
+- **AI-Driven Texture Creation:** Generate diffuse textures directly on 3D models
 - **Modes for Different Workflows:**
-  - **Text2Image Parallel**: Generates textures from text prompts.
-  - **Image2Image Parallel**: Generates textures from input images, applied parallel across all views.
-  - **Image2Image Sequential**: Sequentially applies textures across views, great for refinement.
+  - **Text2Image Parallel**: Create textures from text prompts, ensuring global consistency.
+  - **Image2Image Parallel**: Generates textures from input textures, applied parallel across all views.
+  - **Image2Image Sequential**: Sequentially adjusts textures across views, great for refinement.
 - **LoRA Integration**: Uses LoRA conditioning for specific styles.
 - **IPAdapter Integration**: Fit specific styles or objects with images for enhanced flexibility and control.
 
@@ -35,78 +32,74 @@ Before  |  After
 0. Download [7-Zip](https://7-zip.de/download.html) 
 1. Download all .tar files of the [latest release](https://github.com/FrederikHasecke/diffused-texture-addon/releases/latest)
 2. Untar the file `diffused_texture_addon.7z.001` this will automatically untar the other `.7z` files
-    >[!WARNING] WARNING
-    DO NOT unzip the resulting `diffused_texture_addon.zip`
+    >**WARNING:**    _DO NOT_ unzip the resulting `diffused_texture_addon.zip`
 3.  Install the `diffused_texture_addon.zip` file in Blender as an Add-On.
+    1.  `Edit` -> `Preferences...` -> Sidebar `Add-ons` -> Top right corner dropdown menu -> `Install from Disk...`
 
 ## Installation (Linux)
 - TODO: Test on Linux Instructions and test if it works
 
 ## Setup
-### Blender Setup
-Ensure your Blender preferences are configured for CUDA (for GPU rendering). If you’re using an NVIDIA GPU, enable cycles and set up with either CUDA or OPTIX.
-
-When you first install the Add-On you will need to download the required Stable Diffusion, ControlNet and IPAdapter Models. This will take a considerable time (10.6 GB in total). If you want to download them to a different drive than `C://`, change the `HuggingFace Cache Path` in the Add-On installation window.
-
-> [!TIP] Open The Console
-Open up the terminal (Window -> Toggle System Console) before you press "Install Models" so you can see the progress, the Blender UI will freeze in the meantime.
-
+### Blender Configuration
+1. Enable CUDA or OPTIX in Blender if using an NVIDIA GPU.
+     - Go to `Edit > Preferences > System` and configure GPU settings.
+     - **Note:** Requires a modern NVIDIA GPU with at least 12GB (TODO: Maybe 8?) VRAM.
+2. Download necessary models (~10.6 GB total):
+     - Optionally specify a custom cache directory via the `HuggingFace Cache Path` setting during installation.
+     - **Tip:** Open Blender's system console (`Window > Toggle System Console`) to monitor download progress.
 ## Usage
 
 ![General Usage](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/usage.gif)
 
-### Main Workflow
-1. **Open a 3D Model**: Open the `.blend` file containing the 3D model to texture (or create one from scratch).
-2. **UV Unwrap the Model**: The add-on requires a UV Map, 
-      > [!TIP] Tipp
-      `Smart UV Project` will work fine.
-3. **Open the DiffusedTexture Panel**: The add-on is in the right-hand panel (n-panel) under `DiffusedTexture`.
-4. **Select your Mesh and UV Map**: You need to provide the targets to the add-on.
-5. **Set the Stable Diffusion Options**: Prompt, Negative Prompt, Guidance Scale and Denoise (fixed to 1.0 for `Text2Image Parallel`)
-6. **Set DiffusedTexture Options**: Special settings:
-   - **Operation Model**:
-      - `Text2Image Parallel`
-      Global consistent texture from your text prompt. This operation mode does not use an input texture, even if it is supplied to the process. Depending on the provided
-      - `Image2Image Parallel`
-      For global adjustments and improvements to `Text2Image Parallel` textures. This operation mode needs an input texture. Depending on the provided
-      - `Image2Image Sequential`
-      This operation mode needs an input texture. Depending on the provided
-   - **Mesh Complexity**: Adjusts ControlNets based on object polycount.
-      -  `Low Complexity`: Depth ControlNet Only
-      -  `Mid Complexity`: Depth and Canny ControlNets
-      -  `High Complexity`: Depth, Canny and Normalmap ControlNets
-   -  **Cameras**: Number of Cameras used to create the texture.
-      -  Rule of thumb: The more viewpoints, the better. 
-   -  **Texture Resolution**: Size of the resulting Texture.
-   -  **Render Resolution**: This is not the image size given to Stable Diffusion, but used for the texture projection. Keep the Render Resolution at least to 2x the Texture Resolution, else the texture will have artifacts.
-   -  **Output Path**: Generated textures will be saved in the specified output path. 
-   -  **Input Texture**: The modes `Image2Image Parallel` and `Image2Image Sequential` require an input texture to work.
-7. Press the `Start Texture Generation` Button
-      > [!TIP] Open The Console
-      Open up the terminal (Window -> Toggle System Console) before you press `Start Texture Generation` so you can see the progress, the Blender UI will freeze in the meantime.
+1. **Load a 3D Model**:
+   - Import or create a `.blend` file containing the 3D model.
+2. **UV Unwrap the Model**:
+   - Apply a UV map (`Smart UV Project` works well).
+3. **Access the Add-On**:
+   - Open the `DiffusedTexture` panel in the N-panel (right-hand sidebar).
+4. **Set Up Texture Generation**:
+   - **Prompt & Negative Prompt**: Describe the desired texture/object and what to avoid.
+   - **Guidance Scale**: Adjust creativity vs. fidelity.
+   - **Denoise Strength**: Default to `1.0` for `Text2Image`.
+5. **Adjust Advanced Options**:
+   - **Mesh Complexity**:
+     - `Low`: Depth ControlNet only.
+     - `Medium`: Adds Canny ControlNet.
+     - `High`: Adds Normalmap ControlNet for maximum detail.
+   - **Cameras**: Use more viewpoints for better texture blending.
+   - **Texture & Render Resolution**: Ensure render resolution is at least 2x texture resolution.
+6. **Generate Texture**:
+   - Click `Start Texture Generation`. Monitor progress in the system console.
+
 
 ### Additional Options
 - **LoRA Models**: Add one or multiple LoRA models to match specific results.
 - **IPAdapter**: Supply the desired "look" as an image instead of a text prompt.
 
 ## Troubleshooting
-- **Freezes**: Open up the Terminal before executing the Addon to see the progress bar.
-- **Add-On Not Showing Up**: Ensure the add-on is enabled in Blender's preferences.
-- **CUDA/OPTIX Issues**: Verify GPU support is enabled in Blender and that the correct drivers are installed.
-- **Slow Rendering**: Higher resolutions and camera counts can increase memory usage and render times.
-- **RuntimeError: Error: Cannot open file [...]: Permission denied**: Create a new Folder and select that one.
-- **torch.OutOfMemoryError: CUDA out of memory.**: Choose less cameras in the parallel tasks and close all other processes that might use GPU Memory.
+- **Add-On Not Visible**: Ensure it’s enabled in `Edit > Preferences > Add-ons`.
+- **Blender Freezes**: Open the system console to track progress during long tasks.
+- **Permission Issues**: Specify a valid output path.
+- **Out of GPU Memory**:
+  - Reduce camera count.
+  - Close other GPU-intensive applications.
+- **Crashes**: Restart Blender or your PC if crashes persist.
 
-## TODOs
-- **Threading/Timing**: Remove the process from the main thread to not freeze Blender.
-- **Checkpoints**: Add an option to use external checkpoints finetuned for specific looks.
-- **Masking**: Add an option to only apply texture changes to specific parts of the mesh.
-- **Multi-Mesh**: Add an option to apply textures in one go to multiple objects with multiple UV Maps at once.
+## **Roadmap**
+- **Performance Enhancements**:
+  - Multi-threaded execution to prevent UI freezing.
+- **Checkpoint Flexibility**:
+  - Allow external Stable Diffusion checkpoints for varied outputs.
+- **Masking Support**:
+  - Apply textures to specific areas of the mesh.
+- **Multi-Mesh Workflow**:
+  - Simultaneously texture multiple objects.
 
-## Acknowledgement
-I'd like to thank [carson-katri](https://github.com/carson-katri) and all other contributors to [dream-textures](https://github.com/carson-katri/dream-textures). I took inspiration from the project to create this this one.
-
-Then of course [Stable Diffusion](https://arxiv.org/pdf/2112.10752), [HuggingFace's Diffusers](https://huggingface.co/docs/diffusers/index), [IPAdapter](https://arxiv.org/pdf/2308.06721) and [ControlNet](https://arxiv.org/pdf/2302.05543) which are the main parts of this repo.
-
-Furthermore the following papers which influenced the creation of this add-on:
-[TEXTure](https://arxiv.org/pdf/2302.01721), [Text2Tex](https://arxiv.org/pdf/2303.11396), [Paint3D](https://arxiv.org/pdf/2312.13913), [MatAtlas](https://arxiv.org/pdf/2404.02899) and [EucliDreamer](https://arxiv.org/pdf/2404.10279).
+## **Acknowledgements**
+- Inspired by [Dream Textures](https://github.com/carson-katri/dream-textures) by [Carson Katri](https://github.com/carson-katri).
+- Powered by:
+  - [Stable Diffusion](https://arxiv.org/pdf/2112.10752)
+  - [HuggingFace Diffusers](https://huggingface.co/docs/diffusers/index)
+  - [ControlNet](https://arxiv.org/pdf/2302.05543)
+  - [IPAdapter](https://arxiv.org/pdf/2308.06721)
+- Influenced by research in [TEXTure](https://arxiv.org/pdf/2302.01721), [Text2Tex](https://arxiv.org/pdf/2303.11396), [Paint3D](https://arxiv.org/pdf/2312.13913), [MatAtlas](https://arxiv.org/pdf/2404.02899) and [EucliDreamer](https://arxiv.org/pdf/2404.10279).
