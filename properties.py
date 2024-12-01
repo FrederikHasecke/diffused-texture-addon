@@ -38,7 +38,7 @@ def update_loras(self, context):
 def update_operation_mode(self, context):
     """Automatically adjust denoise strength based on the operation mode."""
     if self.operation_mode in ["IMAGE2IMAGE_PARALLEL", "IMAGE2IMAGE_SEQUENTIAL"]:
-        self.denoise_strength = 0.4 
+        self.denoise_strength = 0.4
     else:
         self.denoise_strength = 1.0
 
@@ -171,8 +171,8 @@ def register_properties():
     )
 
     bpy.types.Scene.num_cameras = EnumProperty(
-        name="Number of Cameras",
-        description="How many viewpoints are to be used?",
+        name="Cameras",
+        description="Number of camera viewpoints. 4 Cameras for a quick process, 16 for more details.",
         items=[
             ("4", "4 Camera Viewpoints", ""),
             ("9", "9 Camera Viewpoints", ""),
@@ -279,4 +279,3 @@ def unregister_properties():
     # del bpy.types.Scene.canny_controlnet_strength
     # del bpy.types.Scene.normal_controlnet_strength
     # del bpy.types.Scene.depth_controlnet_strength
-   

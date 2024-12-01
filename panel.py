@@ -1,5 +1,6 @@
 import bpy
 
+
 class OBJECT_PT_MainPanel(bpy.types.Panel):
     bl_label = "DiffusedTexture"
     bl_idname = "OBJECT_PT_diffused_texture_panel"
@@ -19,23 +20,49 @@ class OBJECT_PT_MainPanel(bpy.types.Panel):
         # UV Map Selection
         layout.prop(scene, "my_uv_map", text="UV Map")
 
+        box_sd = layout.box()
+        box_sd.label(text="Stable Diffusion Options")
+
         # Prompt Text Field
-        layout.prop(scene, "my_prompt", text="Prompt")
+        box_sd.prop(scene, "my_prompt", text="Prompt")
 
         # Negative Prompt Text Field
-        layout.prop(scene, "my_negative_prompt", text="Negative Prompt")
+        box_sd.prop(scene, "my_negative_prompt", text="Negative Prompt")
+
+        # Denoise
+        box_sd.prop(scene, "denoise_strength", text="Denoise Strength")
 
         # guidance_scale
-        layout.prop(scene, "guidance_scale", text="Guidance Scale")
+        box_sd.prop(scene, "guidance_scale", text="Guidance Scale")
+
+        box_dt = layout.box()
+        box_dt.label(text="DiffusedTexture Options")
+
+        # operation_mode Dropdown
+        box_dt.prop(scene, "operation_mode", text="Operation Mode")
 
         # Mesh Complexity Dropdown
-        layout.prop(scene, "mesh_complexity", text="Mesh Complexity")
+        box_dt.prop(scene, "mesh_complexity", text="Mesh Complexity")
+
+        # Num Cameras Dropdow
+        box_dt.prop(
+            scene,
+            "num_cameras",
+            text="Cameras",
+        )
+
+        # Warning for Many Cameras
+        if scene.num_cameras == "16":
+            box_dt.label(
+                text="Warning: long freeze, might produce OUT OF MEMORY error",
+                icon="ERROR",
+            )
 
         # Texture Resolution Dropdown
-        layout.prop(scene, "texture_resolution", text="Texture Resolution")
+        box_dt.prop(scene, "texture_resolution", text="Texture Resolution")
 
         # Texture Resolution Dropdown
-        layout.prop(scene, "render_resolution", text="Render Resolution")
+        box_dt.prop(scene, "render_resolution", text="Render Resolution")
 
         # Warning for low render Resolution
         if int(scene.render_resolution) <= int(scene.texture_resolution):
@@ -45,44 +72,24 @@ class OBJECT_PT_MainPanel(bpy.types.Panel):
             )
 
         # Output Directory Path
-        layout.prop(scene, "output_path", text="Output Path")
+        box_dt.prop(scene, "output_path", text="Output Path")
 
         # Warning for missing texture
         if scene.output_path == "":
-            layout.label(
+            box_dt.label(
                 text="Warning: No Output Path Given!",
                 icon="ERROR",
             )
 
         # Input Texture Path (for img2img or texture2texture pass)
-        layout.prop(
+        box_dt.prop(
             scene,
             "input_texture_path",
-            text="Input Texture (for img2img or texture2texture pass)",
+            text="Input Texture",
         )
-
-        # operation_mode Dropdown
-        layout.prop(scene, "operation_mode", text="Operation Mode")
-
-        # Denoise
-        layout.prop(scene, "denoise_strength", text="Denoise Strength")
-
-        # Num Cameras Dropdow
-        layout.prop(
-            scene,
-            "num_cameras",
-            text="Number of camera viewpoints. 4 Cameras for a quick process, 16 for more details.",
-        )
-
-        # Warning for Many Cameras
-        if scene.num_cameras == "16":
-            layout.label(
-                text="Warning: long freeze, might produce OUT OF MEMORY error",
-                icon="ERROR",
-            )
 
         # Seed Input Field
-        layout.prop(scene, "texture_seed", text="Seed")
+        box_dt.prop(scene, "texture_seed", text="Seed")
 
         # TODO: Checkpoint Selection which are converted to Diffusers
         # layout.prop(scene, "checkpoint_path", text="Checkpoint")
@@ -98,6 +105,7 @@ class OBJECT_PT_MainPanel(bpy.types.Panel):
             text="Start Texture Generation",
             icon="SHADERFX",
         )
+
 
 # TODO: Test if this Lora stuff even works
 class OBJECT_PT_LoRAPanel(bpy.types.Panel):
@@ -168,6 +176,7 @@ class OBJECT_OT_OpenNewIPAdapterImage(bpy.types.Operator):
         context.window_manager.fileselect_add(self)
         return {"RUNNING_MODAL"}
 
+
 # TODO: Give the user more options if they know the SD basics
 # class OBJECT_PT_AdvancedPanel(bpy.types.Panel):
 #     """Advanced Settings Panel"""
@@ -192,4 +201,3 @@ class OBJECT_OT_OpenNewIPAdapterImage(bpy.types.Operator):
 #             box.prop(scene, "canny_controlnet_strength", text="Canny Strength")
 #             box.prop(scene, "normal_controlnet_strength", text="Normal Strength")
 #             box.prop(scene, "depth_controlnet_strength", text="Depth Strength")
-
