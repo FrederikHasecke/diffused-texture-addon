@@ -2,7 +2,10 @@
 
 DiffusedTexture is a Blender add-on that uses Stable Diffusion to create textures directly on 3D meshes. 
 
-![Before](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/elephant_before.gif) ![After](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/elephant_after.gif)
+Before  |  After
+:------:|:------:
+![Before](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/elephant_before.gif) | ![After](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/elephant_after.gif)
+![Before](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/bunny_before.gif) | ![After](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/bunny_after.gif)
 
 ## Table of Contents
 - [DiffusedTexture: AI-Powered Texture Generation for Blender](#diffusedtexture-ai-powered-texture-generation-for-blender)
@@ -50,7 +53,7 @@ Open up the terminal (Window -> Toggle System Console) before you press "Install
 
 ## Usage
 
-![General Usage]([http://url/to/img.png](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/usage.gif))
+![General Usage](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/usage.gif)
 
 ### Main Workflow
 1. **Open a 3D Model**: Open the `.blend` file containing the 3D model to texture (or create one from scratch).
