@@ -116,6 +116,5 @@ GitHub.sublime-settings
 .history
 
 # Dont commit data by accident!
-*.png
 *.exr
 *.blend
