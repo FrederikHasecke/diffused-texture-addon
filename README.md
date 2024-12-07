@@ -31,10 +31,17 @@ DiffusedTexture is a Blender add-on that uses Stable Diffusion to create texture
 ## Installation (Windows)
 0. Download [7-Zip](https://7-zip.de/download.html) 
 1. Download all .tar files of the [latest release](https://github.com/FrederikHasecke/diffused-texture-addon/releases/latest)
-2. Untar the file `diffused_texture_addon.7z.001` this will automatically untar the other `.7z` files
-    >**WARNING:**    _DO NOT_ unzip the resulting `diffused_texture_addon.zip`
-3.  Install the `diffused_texture_addon.zip` file in Blender as an Add-On.
-    1.  `Edit` -> `Preferences...` -> Sidebar `Add-ons` -> Top right corner dropdown menu -> `Install from Disk...`
+2. Untar the file `diffused_texture_addon-0.0.1-windows_x64.7z.001` this will automatically untar the other `.7z` files
+    >**WARNING:**    _DO NOT_ unzip the resulting `diffused_texture_addon-0.0.1-windows_x64.zip`
+3.  Install the `diffused_texture_addon-0.0.1-windows_x64.zip` file in Blender as an Add-On.
+    -  `Edit` -> `Preferences...` -> Sidebar `Add-ons` -> Top right corner dropdown menu -> `Install from Disk...`
+    
+        ![Installatíon](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/install.png)
+    - If neccessary, provide a custom `HuggingFace Cache Path` to install and/or load the checkpoints, else the default path is choosen.
+
+        ![Download](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/download.png)
+    - Download necessary models (~10.6 GB total):
+      - **Tip:** Open Blender's system console (`Window > Toggle System Console`) __BEFORE__ starting the download to monitor download progress.
 
 ## Installation (Linux)
 - TODO: Test on Linux Instructions and test if it works
@@ -44,9 +51,7 @@ DiffusedTexture is a Blender add-on that uses Stable Diffusion to create texture
 1. Enable CUDA or OPTIX in Blender if using an NVIDIA GPU.
      - Go to `Edit > Preferences > System` and configure GPU settings.
      - **Note:** Requires a modern NVIDIA GPU with at least 12GB (TODO: Maybe 8?) VRAM.
-2. Download necessary models (~10.6 GB total):
-     - Optionally specify a custom cache directory via the `HuggingFace Cache Path` setting during installation.
-     - **Tip:** Open Blender's system console (`Window > Toggle System Console`) to monitor download progress.
+
 ## Usage
 
 ![General Usage](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/usage.gif)

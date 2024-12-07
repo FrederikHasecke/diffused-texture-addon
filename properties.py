@@ -54,6 +54,11 @@ def update_ipadapter_image(self, context):
             context.scene.ipadapter_image = image_data
 
 
+def update_output_path(self, context):
+    if self.output_path.startswith("//"):
+        self.output_path = bpy.path.abspath(self.output_path)
+
+
 def register_properties():
 
     try:
@@ -156,6 +161,7 @@ def register_properties():
         description="Directory to store the resulting texture and temporary files",
         subtype="DIR_PATH",
         default="",
+        update=update_output_path,
     )
 
     bpy.types.Scene.input_texture_path = StringProperty(
@@ -263,7 +269,6 @@ def unregister_properties():
     del bpy.types.Scene.ipadapter_strength
     del bpy.types.Scene.my_mesh_object
     del bpy.types.Scene.my_uv_map
-    del bpy.types.Scene.selected_image
     del bpy.types.Scene.my_prompt
     del bpy.types.Scene.my_negative_prompt
     del bpy.types.Scene.guidance_scale

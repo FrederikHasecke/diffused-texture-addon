@@ -379,6 +379,7 @@ def assemble_multiview_grid(
 
     # Resize grids to target resolution for SD model input
     resized_grids = resize_grids(grids, render_resolution, sd_resolution)
+    resized_grids["content_mask"] = create_content_mask(resized_grids["uv_grid"])
 
     # Create the canny for the resized grids
     resized_grids["canny_grid"] = np.stack(

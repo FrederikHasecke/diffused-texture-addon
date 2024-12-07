@@ -73,6 +73,9 @@ class OBJECT_PT_MainPanel(bpy.types.Panel):
 
         # Output Directory Path
         box_dt.prop(scene, "output_path", text="Output Path")
+        if scene.output_path.startswith("//"):
+            absolute_path = bpy.path.abspath(scene.output_path)
+            box_dt.label(text=f"Absolute Path: {absolute_path}", icon="FILE_FOLDER")
 
         # Warning for missing texture
         if scene.output_path == "":

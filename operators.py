@@ -26,6 +26,10 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
         if hf_cache_path:
             os.environ["HF_HOME"] = hf_cache_path
 
+        # Explizitly prevent online access if set by user
+        if not bpy.app.online_access:
+            os.environ["HF_HUB_OFFLINE"] = "1"
+
         # import affter setting the HF home
         from .diffusedtexture import first_pass, second_pass, third_pass
 

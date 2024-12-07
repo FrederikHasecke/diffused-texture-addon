@@ -1,21 +1,6 @@
-bl_info = {
-    "name": "DiffusedTexture",
-    "description": "Generate Diffuse Textures on Meshes with Stable Diffusion.",
-    "author": "Frederik Hasecke",
-    "version": (0, 1, 0),
-    "blender": (4, 2, 0),
-    "location": "View3D > Sidebar > DiffusedTexture",
-    "category": "Material",
-}
-
 import bpy
 import os
 import sys
-
-# zip it due File path length limits on Windows
-package_path = os.path.join(os.path.dirname(__file__), "python_packages.zip")
-if package_path not in sys.path:
-    sys.path.append(package_path)
 
 from .properties import register_properties, unregister_properties
 from .operators import OBJECT_OT_GenerateTexture, OBJECT_OT_SelectPipette
@@ -56,7 +41,11 @@ class InstallModelsOperator(bpy.types.Operator):
         if hf_cache_path:
             os.environ["HF_HOME"] = hf_cache_path
 
-        # Example logic for model installation (replace with your actual implementation)
+        # If blender is set to offline this will not work, but lets not sneak always on onto the user
+        if not bpy.app.online_access:
+            os.environ["HF_HUB_OFFLINE"] = "1"
+
+        # Logic for model installation
         try:
 
             # Import after setting HF_HOME
@@ -67,7 +56,7 @@ class InstallModelsOperator(bpy.types.Operator):
             if hf_cache_path:
                 os.makedirs(hf_cache_path, exist_ok=True)
 
-            # Create the pipeline (replace with your actual model setup logic)
+            # Create the pipeline
             mockup_scene = MockUpScene()
 
             pipe = create_first_pass_pipeline(mockup_scene)
@@ -83,7 +72,7 @@ class InstallModelsOperator(bpy.types.Operator):
 
 class DiffuseTexPreferences(bpy.types.AddonPreferences):
     # bl_idname = __package__
-    bl_idname = "diffused_texture_addon"
+    bl_idname = __package__
 
     # Path setting for HuggingFace cache directory
     hf_cache_path: bpy.props.StringProperty(
