@@ -59,6 +59,11 @@ def update_output_path(self, context):
         self.output_path = bpy.path.abspath(self.output_path)
 
 
+def update_input_texture_path(self, context):
+    if self.input_texture_path.startswith("//"):
+        self.input_texture_path = bpy.path.abspath(self.input_texture_path)
+
+
 def register_properties():
 
     try:
@@ -168,6 +173,8 @@ def register_properties():
         name="Input Texture",
         description="Select an input texture file for img2img or texture2texture pass.",
         subtype="FILE_PATH",
+        default="",
+        update=update_input_texture_path,
     )
 
     bpy.types.Scene.mesh_complexity = EnumProperty(

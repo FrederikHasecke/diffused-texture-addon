@@ -50,7 +50,7 @@ DiffusedTexture is a Blender add-on that uses Stable Diffusion to create texture
 ### Blender Configuration
 1. Enable CUDA or OPTIX in Blender if using an NVIDIA GPU.
      - Go to `Edit > Preferences > System` and configure GPU settings.
-     - **Note:** Requires a modern NVIDIA GPU with at least 12GB (TODO: Maybe 8?) VRAM.
+     - **Note:** Requires a modern NVIDIA GPU with at least 4GB(-ish) VRAM, 9 and 16 camera parallel runs will require more VRAM.
 
 ## Usage
 

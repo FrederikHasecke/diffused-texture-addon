@@ -90,6 +90,9 @@ class OBJECT_PT_MainPanel(bpy.types.Panel):
             "input_texture_path",
             text="Input Texture",
         )
+        if scene.input_texture_path.startswith("//"):
+            absolute_path = bpy.path.abspath(scene.input_texture_path)
+            box_dt.label(text=f"Absolute Path: {absolute_path}", icon="FILE_FOLDER")
 
         # Seed Input Field
         box_dt.prop(scene, "texture_seed", text="Seed")

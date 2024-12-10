@@ -237,6 +237,9 @@ def setup_render_settings(scene, resolution=(512, 512)):
     # Set the render resolution
     scene.render.resolution_x, scene.render.resolution_y = resolution
 
+    # put render resolution scale to 100%
+    scene.render.resolution_percentage = 100
+
     # Prevent interpolation for the UV, depth, and normal outputs
     scene.render.image_settings.file_format = "OPEN_EXR"
     scene.render.image_settings.color_depth = "32"  # Ensure high precision
