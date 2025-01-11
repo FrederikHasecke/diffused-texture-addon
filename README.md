@@ -2,12 +2,12 @@
 
 DiffusedTexture is a Blender add-on that uses Stable Diffusion to create textures directly on 3D meshes. 
 
-![https://www.cgtrader.com/free-3d-print-models/miniatures/other/elephant-natural-history-museum-1](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/elephant.gif)
-![https://graphics.stanford.edu/data/3Dscanrep/](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/rabbit.gif)
+![General Usage](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/usage.gif)
 
 ## Table of Contents
 - [DiffusedTexture: AI-Powered Texture Generation for Blender](#diffusedtexture-ai-powered-texture-generation-for-blender)
   - [Table of Contents](#table-of-contents)
+  - [Examples](#examples)
   - [Features](#features)
   - [Installation (Windows)](#installation-windows)
   - [Installation (Linux)](#installation-linux)
@@ -18,6 +18,11 @@ DiffusedTexture is a Blender add-on that uses Stable Diffusion to create texture
   - [Troubleshooting](#troubleshooting)
   - [**Roadmap**](#roadmap)
   - [**Acknowledgements**](#acknowledgements)
+
+## Examples
+![https://www.cgtrader.com/free-3d-print-models/miniatures/other/elephant-natural-history-museum-1](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/elephant.gif)
+![https://graphics.stanford.edu/data/3Dscanrep/](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/rabbit.gif)
+
 
 ## Features
 - **AI-Driven Texture Creation:** Generate diffuse textures directly on 3D models
@@ -31,10 +36,10 @@ DiffusedTexture is a Blender add-on that uses Stable Diffusion to create texture
 ## Installation (Windows)
 0. Download [7-Zip](https://7-zip.de/download.html) 
 1. Download all .tar files of the [latest release](https://github.com/FrederikHasecke/diffused-texture-addon/releases/latest)
-2. Untar the file `diffused_texture_addon-0.0.1-windows_x64.7z.001` this will automatically untar the other `.7z` files
-    >**WARNING:**    _DO NOT_ unzip the resulting `diffused_texture_addon-0.0.1-windows_x64.zip`
+2. Untar the file `diffused_texture_addon-0.0.2-windows_x64.7z.001` this will automatically untar the other `.7z` files
+    >**WARNING:**    _DO NOT_ unzip the resulting `diffused_texture_addon-0.0.2-windows_x64.zip`
 3. If you did not already do so: **__You need to "Allow Online Access" under "System" in the Preferences.__**
-4.  Install the `diffused_texture_addon-0.0.1-windows_x64.zip` file in Blender as an Add-On.
+4.  Install the `diffused_texture_addon-0.0.2-windows_x64.zip` file in Blender as an Add-On.
     -  `Edit` -> `Preferences...` -> Sidebar `Add-ons` -> Top right corner dropdown menu -> `Install from Disk...`
     
         ![Installatíon](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/install.png)
@@ -54,8 +59,6 @@ DiffusedTexture is a Blender add-on that uses Stable Diffusion to create texture
      - **Note:** Requires a modern NVIDIA GPU with at least 4GB(-ish) VRAM, 9 and 16 camera parallel runs will require more VRAM.
 
 ## Usage
-
-![General Usage](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/usage.gif)
 
 1. **Load a 3D Model**:
    - Import or create a `.blend` file containing the 3D model.

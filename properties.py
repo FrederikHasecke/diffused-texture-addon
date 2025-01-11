@@ -23,6 +23,19 @@ class LoRAModel(bpy.types.PropertyGroup):
     )
 
 
+def update_paths(self, context):
+    if context.scene.sd_version == "sd15":
+        context.scene.checkpoint_path = "runwayml/stable-diffusion-v1-5"
+        context.scene.canny_controlnet_path = "lllyasviel/sd-controlnet-canny"
+        context.scene.normal_controlnet_path = "lllyasviel/sd-controlnet-normal"
+        context.scene.depth_controlnet_path = "lllyasviel/sd-controlnet-depth"
+    elif context.scene.sd_version == "sdxl":
+        context.scene.checkpoint_path = "stabilityai/stable-diffusion-xl-base-1.0"
+        context.scene.canny_controlnet_path = "diffusers/controlnet-canny-sdxl-1.0"
+        context.scene.normal_controlnet_path = "xinsir/controlnet-union-sdxl-1.0"
+        context.scene.depth_controlnet_path = "diffusers/controlnet-depth-sdxl-1.0"
+
+
 def update_loras(self, context):
     scene = context.scene
     num_loras = scene.num_loras
@@ -33,14 +46,6 @@ def update_loras(self, context):
 
     while len(lora_models) > num_loras:
         lora_models.remove(len(lora_models) - 1)
-
-
-def update_operation_mode(self, context):
-    """Automatically adjust denoise strength based on the operation mode."""
-    if self.operation_mode in ["IMAGE2IMAGE_PARALLEL", "IMAGE2IMAGE_SEQUENTIAL"]:
-        self.denoise_strength = 0.4
-    else:
-        self.denoise_strength = 1.0
 
 
 def update_ipadapter_image(self, context):
@@ -54,14 +59,20 @@ def update_ipadapter_image(self, context):
             context.scene.ipadapter_image = image_data
 
 
+def update_input_image(self, context):
+    """Ensure the selected image from the preview window is set in scene.input_image."""
+    image = context.scene.input_texture_path
+    if image:
+        image_data = bpy.data.images.get(image.name)
+
+        # Only set the image if it's not already correctly set to prevent recursion
+        if image_data != context.scene.input_texture_path:
+            context.scene.input_texture_path = image_data
+
+
 def update_output_path(self, context):
     if self.output_path.startswith("//"):
         self.output_path = bpy.path.abspath(self.output_path)
-
-
-def update_input_texture_path(self, context):
-    if self.input_texture_path.startswith("//"):
-        self.input_texture_path = bpy.path.abspath(self.input_texture_path)
 
 
 def register_properties():
@@ -106,27 +117,39 @@ def register_properties():
         description="The complexity, polycount and detail of the selected mesh.",
         items=[
             (
-                "TEXT2IMAGE_PARALLEL",
-                "Text2Image Parallel",
-                "Generate textures using text prompts in parallel.",
+                "PARALLEL_IMG",
+                "Parallel Processing on Images",
+                "Generate textures by merging images in parallel.",
             ),
             (
-                "IMAGE2IMAGE_PARALLEL",
-                "Image2Image Parallel",
-                "Generate textures using input images in parallel.",
-            ),
-            (
-                "IMAGE2IMAGE_SEQUENTIAL",
-                "Image2Image Sequential",
-                "Generate textures using input images sequentially.",
+                "SEQUENTIAL_IMG",
+                "Sequential Processing on Images",
+                "Generate textures by merging images sequentially.",
             ),
             # (
-            #     "TEXTURE2TEXTURE_ENHANCEMENT",
-            #     "Texture2Texture Enhancement",
-            #     "Enhance textures using input textures.",
+            #     "PARALLEL_LATENT",
+            #     "Parallel Processing on Latents",
+            #     "Generate textures by merging latents in parallel.",
             # ),
+            # (
+            #     "SEQUENTIAL_LATENT",
+            #     "Sequential Processing on Latents",
+            #     "Generate textures by repeatedly merging latents sequentially.",
+            # )
+            # # (
+            # #     "TEXTURE2TEXTURE_ENHANCEMENT",
+            # #     "Texture2Texture Enhancement",
+            # #     "Enhance textures using input textures.",
+            # # ),
         ],
-        update=update_operation_mode,  # Add the update function
+        # update=update_operation_mode,  # Add the update function
+    )
+
+    bpy.types.Scene.num_inference_steps = IntProperty(
+        name="Number of Inference Steps",
+        description="Number of inference steps to run the model for",
+        default=50,
+        min=1,
     )
 
     bpy.types.Scene.denoise_strength = FloatProperty(
@@ -141,24 +164,24 @@ def register_properties():
         name="Texture Resolution",
         description="The final texture resolution of the selected mesh object.",
         items=[
-            ("256", "256x256", ""),
             ("512", "512x512", ""),
             ("1024", "1024x1024", ""),
             ("2048", "2048x2048", ""),
             ("4096", "4096x4096", ""),
         ],
+        default="1024",
     )
 
     bpy.types.Scene.render_resolution = EnumProperty(
         name="Render Resolution",
         description="The Render resolution used in Stable Diffusion.",
         items=[
-            ("512", "512x512", ""),
             ("1024", "1024x1024", ""),
             ("2048", "2048x2048", ""),
             ("4096", "4096x4096", ""),
             ("8192", "8192x8192", ""),
         ],
+        default="2048",
     )
 
     bpy.types.Scene.output_path = StringProperty(
@@ -169,12 +192,11 @@ def register_properties():
         update=update_output_path,
     )
 
-    bpy.types.Scene.input_texture_path = StringProperty(
+    bpy.types.Scene.input_texture_path = bpy.props.PointerProperty(
+        type=bpy.types.Image,
         name="Input Texture",
-        description="Select an input texture file for img2img or texture2texture pass.",
-        subtype="FILE_PATH",
-        default="",
-        update=update_input_texture_path,
+        description="Select an image to use as input texture",
+        update=update_input_image,  # Attach the update callback
     )
 
     bpy.types.Scene.mesh_complexity = EnumProperty(
@@ -238,32 +260,76 @@ def register_properties():
         soft_max=1.0,
     )
 
-    # bpy.types.Scene.show_advanced = bpy.props.BoolProperty(
-    #     name="Show Advanced Settings",
-    #     description="Toggle the visibility of advanced settings",
-    #     default=False,
-    # )
-    # bpy.types.Scene.canny_controlnet_strength = bpy.props.FloatProperty(
-    #     name="Canny ControlNet Strength",
-    #     description="Strength of the Canny ControlNet",
-    #     default=1.0,
-    #     min=0.0,
-    #     max=2.0,
-    # )
-    # bpy.types.Scene.normal_controlnet_strength = bpy.props.FloatProperty(
-    #     name="Normal ControlNet Strength",
-    #     description="Strength of the Normal ControlNet",
-    #     default=1.0,
-    #     min=0.0,
-    #     max=2.0,
-    # )
-    # bpy.types.Scene.depth_controlnet_strength = bpy.props.FloatProperty(
-    #     name="Depth ControlNet Strength",
-    #     description="Strength of the Depth ControlNet",
-    #     default=1.0,
-    #     min=0.0,
-    #     max=2.0,
-    # )
+    # Advanced settings
+    bpy.types.Scene.sd_version = EnumProperty(
+        name="Stable Diffusion Version",
+        description="Select the version of Stable Diffusion to use",
+        items=[
+            ("sd15", "Stable Diffusion 1.5", "Use Stable Diffusion 1.5 models"),
+            ("sdxl", "Stable Diffusion XL", "Use Stable Diffusion XL models"),
+        ],
+        default="sd15",
+        update=update_paths,
+    )
+
+    bpy.types.Scene.checkpoint_path = StringProperty(
+        name="Checkpoint Path",
+        description="Optional path to the Stable Diffusion base model checkpoint",
+        subtype="FILE_PATH",
+        default="runwayml/stable-diffusion-v1-5",
+    )
+
+    bpy.types.Scene.custom_sd_resolution = IntProperty(
+        name="Custom SD Resolution",
+        description="Custom resolution for Stable Diffusion",
+        default=0,
+        min=0,
+    )
+
+    bpy.types.Scene.canny_controlnet_path = StringProperty(
+        name="Canny ControlNet Path",
+        description="Optional path to the Canny ControlNet checkpoint",
+        subtype="FILE_PATH",
+        default="lllyasviel/sd-controlnet-canny",
+    )
+
+    bpy.types.Scene.normal_controlnet_path = StringProperty(
+        name="Normal ControlNet Path",
+        description="Optional path to the Normal ControlNet checkpoint",
+        subtype="FILE_PATH",
+        default="lllyasviel/sd-controlnet-normal",
+    )
+
+    bpy.types.Scene.depth_controlnet_path = StringProperty(
+        name="Depth ControlNet Path",
+        description="Optional path to the Depth ControlNet checkpoint",
+        subtype="FILE_PATH",
+        default="lllyasviel/sd-controlnet-depth",
+    )
+
+    bpy.types.Scene.canny_controlnet_strength = FloatProperty(
+        name="Canny ControlNet Strength",
+        description="Strength of the Canny ControlNet",
+        default=0.9,
+        min=0.0,
+        max=1.0,
+    )
+
+    bpy.types.Scene.normal_controlnet_strength = FloatProperty(
+        name="Normal ControlNet Strength",
+        description="Strength of the Normal ControlNet",
+        default=0.9,
+        min=0.0,
+        max=1.0,
+    )
+
+    bpy.types.Scene.depth_controlnet_strength = FloatProperty(
+        name="Depth ControlNet Strength",
+        description="Strength of the Depth ControlNet",
+        default=1.0,
+        min=0.0,
+        max=1.0,
+    )
 
 
 def unregister_properties():
@@ -286,8 +352,14 @@ def unregister_properties():
     del bpy.types.Scene.denoise_strength
     del bpy.types.Scene.output_path
     del bpy.types.Scene.texture_seed
-    # del bpy.types.Scene.checkpoint_path
-    # del bpy.types.Scene.show_advanced
-    # del bpy.types.Scene.canny_controlnet_strength
-    # del bpy.types.Scene.normal_controlnet_strength
-    # del bpy.types.Scene.depth_controlnet_strength
+    del bpy.types.Scene.num_inference_steps
+    del bpy.types.Scene.num_cameras
+    del bpy.types.Scene.input_texture_path
+    del bpy.types.Scene.sd_version
+    del bpy.types.Scene.checkpoint_path
+    del bpy.types.Scene.canny_controlnet_path
+    del bpy.types.Scene.normal_controlnet_path
+    del bpy.types.Scene.depth_controlnet_path
+    del bpy.types.Scene.canny_controlnet_strength
+    del bpy.types.Scene.normal_controlnet_strength
+    del bpy.types.Scene.depth_controlnet_strength

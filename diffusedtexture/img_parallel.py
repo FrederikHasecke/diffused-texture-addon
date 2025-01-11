@@ -1,54 +1,74 @@
+import math
 import numpy as np
+from PIL import Image
 
 from .diffusers_utils import (
-    create_first_pass_pipeline,
-    infer_first_pass_pipeline,
+    create_pipeline,
+    infer_pipeline,
 )
 from .process_operations import (
     process_uv_texture,
     generate_multiple_views,
     assemble_multiview_grid,
+    create_input_image_grid,
     delete_render_folders,
 )
 
 
-def first_pass(scene, max_size):
+def img_parallel(scene, max_size, texture=None):
     """Run the first pass for texture generation."""
 
     multiview_images, render_img_folders = generate_multiple_views(
         scene=scene,
         max_size=max_size,
-        suffix="first_pass",
+        suffix="img_parallel",
         render_resolution=int(scene.render_resolution),
     )
+
+    # sd_resolution = 512 if scene.sd_version == "sd15" else 1024
+
+    if scene.custom_sd_resolution:
+        sd_resolution = scene.custom_sd_resolution
+    else:
+        sd_resolution = 512 if scene.sd_version == "sd15" else 1024
 
     _, resized_multiview_grids = assemble_multiview_grid(
         multiview_images,
         render_resolution=int(scene.render_resolution),
-        sd_resolution=512,
+        sd_resolution=sd_resolution,
     )
 
-    input_image_sd = (255 * np.ones_like(resized_multiview_grids["canny_grid"])).astype(
-        np.uint8
-    )
+    if texture is not None:
+        # Flip texture vertically (blender y 0 is down, opencv y 0 is up)
+        texture = texture[::-1]
 
-    # TODO: Create the pipe with the optional addition of a new checkpoint and additional loras
-    pipe = create_first_pass_pipeline(scene)
-    output_grid = infer_first_pass_pipeline(
+        input_image_sd = create_input_image_grid(
+            texture,
+            resized_multiview_grids["uv_grid"],
+            resized_multiview_grids["uv_grid"],
+        )
+    else:
+        input_image_sd = (
+            255 * np.ones_like(resized_multiview_grids["canny_grid"])
+        ).astype(np.uint8)
+
+    pipe = create_pipeline(scene)
+    output_grid = infer_pipeline(
         pipe,
         scene,
-        input_image_sd,
+        Image.fromarray(input_image_sd),
         resized_multiview_grids["content_mask"],
         resized_multiview_grids["canny_grid"],
         resized_multiview_grids["normal_grid"],
         resized_multiview_grids["depth_grid"],
         strength=scene.denoise_strength,
         guidance_scale=scene.guidance_scale,
-    )
+    )[0]
 
     output_grid = np.array(output_grid)
 
-    filled_uv_texture_first_pass = process_uv_texture(
+    filled_uv_texture = process_uv_texture(
+        scene=scene,
         uv_images=multiview_images["uv"],
         facing_images=multiview_images["facing"],
         output_grid=output_grid,
@@ -60,4 +80,4 @@ def first_pass(scene, max_size):
     # delete all rendering folders
     delete_render_folders(render_img_folders)
 
-    return filled_uv_texture_first_pass
+    return filled_uv_texture

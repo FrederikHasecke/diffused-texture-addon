@@ -6,9 +6,11 @@ from .properties import register_properties, unregister_properties
 from .operators import OBJECT_OT_GenerateTexture, OBJECT_OT_SelectPipette
 from .panel import (
     OBJECT_PT_MainPanel,
+    OBJECT_OT_OpenNewInputImage,
     OBJECT_PT_IPAdapterPanel,
     OBJECT_OT_OpenNewIPAdapterImage,
     OBJECT_PT_LoRAPanel,
+    OBJECT_PT_AdvancedPanel,
 )
 
 
@@ -85,13 +87,35 @@ class DiffuseTexPreferences(bpy.types.AddonPreferences):
     def draw(self, context):
         layout = self.layout
 
+        # Add a text block to explain that the user needs to explicitly allow online access
+        box = layout.box()
+        row = box.row()
+        row.label(text="Please ensure that Blender is allowed to access the internet")
+        row = box.row()
+        row.label(text="in order to install models. Do so in:")
+        row = box.row()
+        row.label(text="Preferences > System > Network > Allow Online Access.")
+
         # HuggingFace Cache Path setting
         layout.prop(self, "hf_cache_path", text="HuggingFace Cache Path")
 
-        # Button to execute the model installation function
-        layout.operator(
-            InstallModelsOperator.bl_idname, text="Install Models", icon="IMPORT"
-        )
+        # make the Install Models button unavailable if the "online access" is disabled
+        if not bpy.app.online_access:
+            layout.label(
+                text="Online access is disabled. Enable it in Preferences > System > Network > Allow Online Access."
+            )
+
+            row = layout.row()
+            row.enabled = False
+            row.operator(
+                InstallModelsOperator.bl_idname, text="Install Models", icon="IMPORT"
+            )
+
+        else:
+            # Button to execute the model installation function
+            layout.operator(
+                InstallModelsOperator.bl_idname, text="Install Models", icon="IMPORT"
+            )
 
 
 classes = [
@@ -100,9 +124,11 @@ classes = [
     OBJECT_OT_GenerateTexture,
     OBJECT_OT_SelectPipette,
     OBJECT_PT_MainPanel,
-    OBJECT_PT_LoRAPanel,
+    OBJECT_OT_OpenNewInputImage,
+    OBJECT_PT_AdvancedPanel,
     OBJECT_PT_IPAdapterPanel,
     OBJECT_OT_OpenNewIPAdapterImage,
+    OBJECT_PT_LoRAPanel,
 ]
 
 

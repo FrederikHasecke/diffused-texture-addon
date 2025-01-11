@@ -1,13 +1,18 @@
 import os
 import threading
+
 import bpy
 import copy
 import traceback
+import datetime
 import numpy as np
 from pathlib import Path
 
+from .diffusedtexture import img_parallel, img_sequential, latent_parallel
+
 from .object_ops import move_object_to_origin, calculate_mesh_midpoint
 from .scene_backup import clean_scene, clean_object
+from .utils import image_to_numpy
 
 
 class OBJECT_OT_GenerateTexture(bpy.types.Operator):
@@ -30,25 +35,8 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
         if not bpy.app.online_access:
             os.environ["HF_HUB_OFFLINE"] = "1"
 
-        # import affter setting the HF home
-        from .diffusedtexture import first_pass, second_pass, third_pass
-
-        # Check if an input texture is selected
-        input_texture_path = Path(bpy.path.abspath(scene.input_texture_path))
-
-        if not input_texture_path and (
-            scene.operation_mode
-            in [
-                "IMAGE2IMAGE_PARALLEL",
-                "IMAGE2IMAGE_SEQUENTIAL",
-                # "TEXTURE2TEXTURE_ENHANCEMENT",
-            ]
-        ):
-            self.report(
-                {"ERROR"},
-                "No input texture selected. Please select a texture for img2img or texture2texture pass.",
-            )
-            return {"CANCELLED"}
+        # # import affter setting the HF home
+        # from .diffusedtexture import img_parallel
 
         selected_mesh_name = scene.my_mesh_object
         selected_object = bpy.data.objects.get(selected_mesh_name)
@@ -80,57 +68,85 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
             max_size = calculate_mesh_midpoint(selected_object)
             move_object_to_origin(selected_object)
 
-            texture_final = None
-
             # Execute texture passes based on user selection
-            if scene.operation_mode == "TEXT2IMAGE_PARALLEL":
-                texture_first_pass = first_pass.first_pass(scene, 1.25 * max_size)
+            if scene.operation_mode == "PARALLEL_IMG":
 
-                # flip along the v axis
-                texture_first_pass = texture_first_pass[::-1]
+                if scene.input_texture_path:
+                    # texture_input = self.load_texture(str(input_texture_path))
+                    texture_input = image_to_numpy(scene.input_texture_path)
+                else:
+                    texture_input = None
 
-                texture_final = copy.deepcopy(texture_first_pass)
-
-                # Save texture as texture_first_pass
-                self.save_texture(texture_final, str(output_path / "first_pass.png"))
-                self.save_texture(texture_final, str(output_path / "final_texture.png"))
-
-            elif scene.operation_mode == "IMAGE2IMAGE_PARALLEL":
-
-                texture_input = self.load_texture(str(input_texture_path))
-
-                texture_second_pass = second_pass.second_pass(
+                texture_output = img_parallel.img_parallel(
                     scene, 1.25 * max_size, texture_input
                 )
 
                 # flip along the v axis
-                texture_second_pass = texture_second_pass[::-1]
+                texture_output = texture_output[::-1]
 
-                texture_final = copy.deepcopy(texture_second_pass)
-
-                # # flip along the v axis
-                # texture_final = texture_final[::-1]
-
-                # Save texture as texture_first_pass
-                self.save_texture(texture_final, str(output_path / "second_pass.png"))
-                self.save_texture(texture_final, str(output_path / "final_texture.png"))
-
-            elif scene.operation_mode == "IMAGE2IMAGE_SEQUENTIAL":
-
-                texture_input = self.load_texture(str(input_texture_path))
-
-                texture_third_pass = third_pass.third_pass(
-                    scene, 1.25 * max_size, texture_input
+                output_file_name = str(
+                    output_path
+                    / (
+                        f"PARALLEL_IMG_"
+                        + datetime.datetime.now().strftime(r"%y-%m-%d_%H-%M-%S")
+                        + ".png"
+                    )
                 )
 
-                texture_final = copy.deepcopy(texture_third_pass)
+                # Save texture
+                self.save_texture(texture_output, output_file_name)
 
+            elif scene.operation_mode == "SEQUENTIAL_IMG":
+
+                if scene.input_texture_path:
+                    texture_input = image_to_numpy(scene.input_texture_path)
+                else:
+                    texture_input = None
+
+                texture_output = img_sequential.img_sequential(
+                    scene, 1.25 * max_size, texture_input
+                )
                 # flip along the v axis
-                texture_final = texture_final[::-1]
+                texture_output = texture_output[::-1]
 
-                # Save texture_final as texture_second_pass
-                self.save_texture(texture_final, str(output_path / "third_pass.png"))
-                self.save_texture(texture_final, str(output_path / "final_texture.png"))
+                output_file_name = str(
+                    output_path
+                    / (
+                        f"SEQUENTIAL_IMG_"
+                        + datetime.datetime.now().strftime(r"%y-%m-%d_%H-%M-%S")
+                        + ".png"
+                    )
+                )
+
+                # Save texture
+                self.save_texture(texture_output, output_file_name)
+
+            # elif scene.operation_mode == "PARALLEL_LATENT":
+
+            #     if scene.input_texture_path:
+            #         # texture_input = self.load_texture(str(input_texture_path))
+            #         texture_input = image_to_numpy(scene.input_texture_path)
+            #     else:
+            #         texture_input = None
+
+            #     texture_output = latent_parallel.latent_parallel(
+            #         scene=scene, max_size=1.25 * max_size, texture=texture_input
+            #     )
+
+            #     # flip along the v axis
+            #     texture_output = texture_output[::-1]
+
+            #     output_file_name = str(
+            #         output_path
+            #         / (
+            #             f"PARALLEL_LATENT_"
+            #             + datetime.datetime.now().strftime(r"%y-%m-%d_%H-%M-%S")
+            #             + ".png"
+            #         )
+            #     )
+
+            #     # Save texture
+            #     self.save_texture(texture_output, output_file_name)
 
             # TODO: At one point revisit this part. Limit to texture parts and leave texture patch borders out
             # elif scene.operation_mode == "TEXTURE2TEXTURE_ENHANCEMENT":
@@ -146,7 +162,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
 
             else:
                 raise NotImplementedError(
-                    "Only the three modes 'TEXT2IMAGE_PARALLEL', 'IMAGE2IMAGE_PARALLEL', 'IMAGE2IMAGE_SEQUENTIAL' are implemented"
+                    "Only the two modes 'PARALLEL_IMG' and 'SEQUENTIAL_IMG' are implemented"
                 )
 
             # Process complete
@@ -181,7 +197,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
 
             # Assign the texture_final to the object
             self.assign_texture_to_object(
-                selected_object, str(output_path / "final_texture.png")
+                selected_object, str(output_path / output_file_name)
             )
 
         return {"FINISHED"}
@@ -283,6 +299,8 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
         if bsdf is None:
             bsdf = nodes.new(type="ShaderNodeBsdfPrincipled")
             nodes["Material Output"].location = (400, 0)
+
+        # TODO: check if some image node is already connected to the diffuse Input of the BSDF, only create a new node if not present, else replace the image
 
         # Create a new image texture node
         texture_node = nodes.new(type="ShaderNodeTexImage")

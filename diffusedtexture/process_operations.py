@@ -6,6 +6,7 @@ import bpy
 import mathutils
 import cv2
 import numpy as np
+import torch
 from scipy.spatial.transform import Rotation
 from pathlib import Path
 
@@ -39,7 +40,240 @@ def delete_render_folders(render_img_folders):
             print(f"Folder not found or not a directory: {render_folder}")
 
 
+def latent_mixing_parallel(
+    scene, uv_list, facing_list, latents, mixing_mode="weighted"
+):
+    """
+    Perform latent mixing using the provided latents and return the mixed latents.
+
+    Args:
+        scene (bpy.types.Scene): The Blender scene object.
+        uv_list (list): List of UV images corresponding to different camera views.
+        facing_list (list): List of facing images corresponding to different camera views.
+        latents (numpy.ndarray): Numpy array of all latents in one image corresponding to different camera views.
+    """
+
+    # remove the batch dimension
+    latents = latents.squeeze(0)
+
+    # support "mean", "weighted" and "max" mixing
+    if mixing_mode not in ["mean", "weighted", "max"]:
+        raise ValueError("Invalid mixing mode, can only be 'mean', 'weighted' or 'max'")
+
+    # save the device of the latents
+    device = latents.device
+
+    # move the latents to the cpu
+    latents = latents.cpu().numpy()
+
+    # latents shape is torch.Size([4, 64, 64]) for sd15 and torch.Size([4, 128, 128]) for sdxl
+
+    # get the target resolution of a latent image
+    latent_resolution = (
+        64 if scene.sd_version == "sd15" else 128
+    )  # We cant use the size of the latents since they are multiple ones together
+
+    # change the latents from torch.Size([4, 64, 64]) to (64, 64, 4)
+    latents = np.moveaxis(latents, 0, -1)
+
+    # split the latents into the different views
+    num_cameras = len(uv_list)
+    latent_images = []
+    for cam_index in range(num_cameras):
+        # Calculate the position in the grid
+        row = int((cam_index // int(math.sqrt(num_cameras))) * latent_resolution)
+        col = int((cam_index % int(math.sqrt(num_cameras))) * latent_resolution)
+
+        output_chunk = latents[
+            row : row + latent_resolution, col : col + latent_resolution
+        ]
+
+        latent_images.append(output_chunk)
+
+    # create a num_camera*latent_res*latent_res*-1 mixed latents array (one channel for each grid img)
+    mixed_latents = np.zeros(
+        (
+            num_cameras,
+            latent_resolution,
+            latent_resolution,
+            4,
+        ),
+        dtype=np.float32,
+    )
+
+    if mixing_mode == "mean":
+        weights_latents = np.ones(
+            (num_cameras, latent_resolution, latent_resolution), dtype=np.float32
+        )
+        weights_latents = weights_latents / num_cameras  # all weights are equal
+
+    else:
+        # create a num_camera*latent_res*latent_res mixed latents array (one for each grid img)
+        weights_latents = np.zeros(
+            (
+                num_cameras,
+                latent_resolution,
+                latent_resolution,
+            ),
+            dtype=np.float32,
+        )
+
+    for cam_index in range(num_cameras):
+        # Calculate the position in the grid
+        row = int((cam_index // int(math.sqrt(num_cameras))) * latent_resolution)
+        col = int((cam_index % int(math.sqrt(num_cameras))) * latent_resolution)
+
+        # load the uv image
+        uv_image = uv_list[cam_index]
+        uv_image = uv_image[..., :2]  # Keep only u and v
+
+        # resize the uv_image to the latent_resolution
+        uv_image = cv2.resize(
+            uv_image,
+            (latent_resolution, latent_resolution),
+            interpolation=cv2.INTER_NEAREST,
+        )
+
+        content_mask = np.zeros((latent_resolution, latent_resolution))
+        content_mask[np.sum(uv_image, axis=-1) > 0] = 255
+        content_mask = content_mask.astype(np.uint8)
+
+        uv_image[content_mask == 0] = 0
+
+        # resize the uv values to 0-511
+        uv_coordinates = (
+            (uv_image * int(latent_resolution - 1)).astype(np.uint16).reshape(-1, 2)
+        )
+
+        # the uvs are meant to start from the bottom left corner, so we flip the y axis (v axis)
+        uv_coordinates[:, 1] = int(latent_resolution - 1) - uv_coordinates[:, 1]
+
+        # in case we have uv coordinates beyond the texture
+        uv_coordinates = uv_coordinates % int(latent_resolution)
+
+        mixed_latents[cam_index, uv_coordinates[:, 1], uv_coordinates[:, 0], ...] = (
+            latent_images[cam_index].reshape(-1, 4)
+        )
+
+        # adjust the facing weight to the chosen percentile
+        cur_facing_image = facing_list[cam_index]
+
+        # resize the facing image to the latent_resolution
+        cur_facing_image = cv2.resize(
+            cur_facing_image,
+            (latent_resolution, latent_resolution),
+            interpolation=cv2.INTER_LINEAR,
+        )
+
+        if mixing_mode != "mean":
+            weights_latents[
+                cam_index, uv_coordinates[:, 1], uv_coordinates[:, 0], ...
+            ] = cur_facing_image.reshape(
+                -1,
+            )
+
+    if mixing_mode == "max":
+        max_latents = np.argmax(weights_latents, axis=0)
+
+        weighted_latents_texture = mixed_latents[
+            max_latents, np.arange(latent_resolution), np.arange(latent_resolution)
+        ]
+
+        # reshape the weighted latents to the original shape
+        weighted_latents_texture = weighted_latents_texture.reshape(
+            latent_resolution, latent_resolution, -1
+        )
+
+    else:
+        # multiply the texture channels by the point at factor
+        weighted_latents_texture = (
+            np.stack(
+                (
+                    weights_latents,
+                    weights_latents,
+                    weights_latents,
+                    weights_latents,
+                ),
+                axis=-1,
+            )
+            * mixed_latents
+        )
+
+        weighted_latents_texture = np.sum(weighted_latents_texture, axis=0) / np.stack(
+            (
+                np.sum(weights_latents, axis=0),
+                np.sum(weights_latents, axis=0),
+                np.sum(weights_latents, axis=0),
+                np.sum(weights_latents, axis=0),
+            ),
+            axis=-1,
+        )
+
+    # project the weighted_latents_texture to the original views and stitch them back together
+    weighted_latents = np.copy(latents)
+
+    for cam_index in range(num_cameras):
+        # Calculate the position in the grid
+        row = int((cam_index // int(math.sqrt(num_cameras))) * latent_resolution)
+        col = int((cam_index % int(math.sqrt(num_cameras))) * latent_resolution)
+
+        # load the uv image
+        uv_image = uv_list[cam_index]
+        uv_image = uv_image[..., :2]  # Keep only u and v
+
+        # resize the uv_image to the latent_resolution
+        uv_image = cv2.resize(
+            uv_image,
+            (latent_resolution, latent_resolution),
+            interpolation=cv2.INTER_NEAREST,
+        )
+
+        content_mask = np.zeros((latent_resolution, latent_resolution))
+        content_mask[np.sum(uv_image, axis=-1) > 0] = 255
+        content_mask = content_mask.astype(np.uint8)
+
+        uv_image[content_mask == 0] = 0
+
+        # resize the uv values to 0 .. latent_res-1
+        uv_coordinates = (
+            (uv_image * int(latent_resolution - 1)).astype(np.uint16).reshape(-1, 2)
+        )
+
+        # the uvs are meant to start from the bottom left corner, so we flip the y axis (v axis)
+        uv_coordinates[:, 1] = int(latent_resolution - 1) - uv_coordinates[:, 1]
+
+        # in case we have uv coordinates beyond the texture
+        uv_coordinates = uv_coordinates % int(latent_resolution)
+
+        # only replace the parts that are in the content mask
+        cams_latent_image = latent_images[cam_index].copy()
+
+        cams_weighted_latents_texture = weighted_latents_texture[
+            uv_coordinates[:, 1], uv_coordinates[:, 0], ...
+        ].reshape(latent_resolution, latent_resolution, 4)
+
+        cams_latent_image[content_mask == 255] = cams_weighted_latents_texture[
+            content_mask == 255
+        ]
+
+        weighted_latents[
+            row : row + latent_resolution, col : col + latent_resolution
+        ] = cams_latent_image
+
+    # change the latents from torch.Size([4, 64, 64]) to (64, 64, 4)
+    weighted_latents = np.moveaxis(weighted_latents, -1, 0)
+
+    # move the latents back to the device
+    weighted_latents = torch.tensor(weighted_latents, device=device)
+
+    # add the batch dimension back
+    weighted_latents = weighted_latents.unsqueeze(0)
+
+    return weighted_latents
+
+
 def process_uv_texture(
+    scene,
     uv_images,
     facing_images,
     output_grid,
@@ -63,12 +297,21 @@ def process_uv_texture(
     # Convert the output grid to a NumPy array and save it for debugging
     output_grid = np.array(output_grid)
 
+    if scene.custom_sd_resolution:
+        sd_resolution = scene.custom_sd_resolution
+    else:
+        sd_resolution = 512 if scene.sd_version == "sd15" else 1024
+
     # Resize output_grid to render resolution
     output_grid = cv2.resize(
         output_grid,
         (
-            int(output_grid.shape[0] * render_resolution / 512),
-            int(output_grid.shape[0] * render_resolution / 512),
+            int(
+                (output_grid.shape[0] * render_resolution / sd_resolution),
+            ),
+            int(
+                (output_grid.shape[0] * render_resolution / sd_resolution),
+            ),
         ),
         interpolation=cv2.INTER_LANCZOS4,
     )
@@ -336,7 +579,7 @@ def generate_multiple_views(
 
 
 def assemble_multiview_grid(
-    multiview_images, render_resolution=2048, sd_resolution=512
+    multiview_images, render_resolution=2048, sd_resolution=512, latent_resolution=None
 ):
     """
     Assembles images from multiple views into a structured grid, applies a mask, and resizes the outputs.
@@ -380,6 +623,14 @@ def assemble_multiview_grid(
     # Resize grids to target resolution for SD model input
     resized_grids = resize_grids(grids, render_resolution, sd_resolution)
     resized_grids["content_mask"] = create_content_mask(resized_grids["uv_grid"])
+
+    if latent_resolution is not None:
+        latent_grids = resize_grids(
+            grids, render_resolution, latent_resolution, interpolation=cv2.INTER_LINEAR
+        )
+        # Add the latent resolution grids to the resized grids with "latent_" prefix
+        for key, grid in latent_grids.items():
+            resized_grids[f"latent_{key}"] = grid
 
     # Create the canny for the resized grids
     resized_grids["canny_grid"] = np.stack(
@@ -437,7 +688,9 @@ def create_content_mask(uv_img):
     return cv2.dilate(content_mask, np.ones((10, 10), np.uint8), iterations=3)
 
 
-def resize_grids(grids, render_resolution, sd_resolution):
+def resize_grids(
+    grids, render_resolution, sd_resolution, interpolation=cv2.INTER_NEAREST
+):
     """Resize grids to target resolution for Stable Diffusion model."""
 
     scale_factor = sd_resolution / render_resolution
@@ -446,7 +699,7 @@ def resize_grids(grids, render_resolution, sd_resolution):
 
         height, width = grid.shape[:2]
 
-        interpolation = cv2.INTER_NEAREST if "mask" in key else cv2.INTER_LINEAR
+        interpolation = interpolation if "mask" in key else cv2.INTER_LINEAR
         resized_grids[key] = cv2.resize(
             grid,
             (int(scale_factor * height), int(scale_factor * width)),
