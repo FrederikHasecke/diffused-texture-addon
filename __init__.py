@@ -24,6 +24,14 @@ class MockUpScene:
         self.use_ipadapter = True
         self.ipadapter_strength = 0.5
         self.mesh_complexity = "HIGH"
+        self.depth_controlnet_strength = 1.0
+        self.canny_controlnet_strength = 1.0
+        self.normal_controlnet_strength = 1.0
+        self.sd_version = "sd15"
+        self.checkpoint_path = "runwayml/stable-diffusion-v1-5"
+        self.canny_controlnet_path = "lllyasviel/sd-controlnet-canny"
+        self.normal_controlnet_path = "lllyasviel/sd-controlnet-normal"
+        self.depth_controlnet_path = "lllyasviel/sd-controlnet-depth"
 
 
 class InstallModelsOperator(bpy.types.Operator):
@@ -52,7 +60,7 @@ class InstallModelsOperator(bpy.types.Operator):
 
             # Import after setting HF_HOME
             import diffusers
-            from .diffusedtexture.diffusers_utils import create_first_pass_pipeline
+            from .diffusedtexture.diffusers_utils import create_pipeline
 
             # Safely create the cache directory if it does not exist
             if hf_cache_path:
@@ -61,7 +69,7 @@ class InstallModelsOperator(bpy.types.Operator):
             # Create the pipeline
             mockup_scene = MockUpScene()
 
-            pipe = create_first_pass_pipeline(mockup_scene)
+            pipe = create_pipeline(mockup_scene)
             del pipe  # Clean up to avoid memory issues
 
             self.report({"INFO"}, f"Models installed successfully in {hf_cache_path}.")
