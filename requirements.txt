@@ -1,10 +1,7 @@
-# numpy
 scipy
 opencv-python-headless==4.8.1.78
-
 --extra-index-url https://download.pytorch.org/whl/cu118
 torch>=2.0
-
 accelerate
 diffusers
 transformers

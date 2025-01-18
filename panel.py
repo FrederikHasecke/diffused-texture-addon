@@ -168,7 +168,6 @@ class OBJECT_OT_OpenNewInputImage(bpy.types.Operator):
         return {"RUNNING_MODAL"}
 
 
-# TODO: Test if this Lora stuff even works
 class OBJECT_PT_LoRAPanel(bpy.types.Panel):
     bl_label = "LoRA Models"
     bl_idname = "OBJECT_PT_lora_panel"
@@ -189,6 +188,13 @@ class OBJECT_PT_LoRAPanel(bpy.types.Panel):
             lora_box.label(text=f"LoRA Model {i+1}")
             lora = scene.lora_models[i]
             lora_box.prop(lora, "path", text="Path LoRA")
+
+            if lora.path.startswith("//"):
+                absolute_path = bpy.path.abspath(lora.path)
+                lora_box.label(
+                    text=f"Absolute Path: {absolute_path}", icon="FILE_FOLDER"
+                )
+
             lora_box.prop(lora, "strength", text="Strength LoRA")
 
 
