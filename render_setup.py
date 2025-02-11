@@ -268,6 +268,9 @@ def setup_render_settings(scene, resolution=(512, 512)):
     # scene.world.light_settings.ao_factor = 1.0
     scene.view_layers["ViewLayer"].use_pass_ambient_occlusion = True  # Enable AO pass
 
+    # output path for the render
+    scene.render.filepath = scene.output_path + "RenderOutput/render_"
+
     # Create output nodes for each pass
     output_nodes = {}
 

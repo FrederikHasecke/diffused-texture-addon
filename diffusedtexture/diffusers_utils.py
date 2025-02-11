@@ -4,19 +4,75 @@ from PIL import Image
 
 from ..utils import image_to_numpy
 
-# import torch
-# from diffusers import (
-#     StableDiffusionControlNetInpaintPipeline,
-#     ControlNetModel,
-# )
-# from transformers import CLIPVisionModelWithProjection
-
 
 def get_controlnet_config(scene):
     import torch
-    from diffusers import (
-        ControlNetModel,
-    )
+    from diffusers import ControlNetModel, ControlNetUnionModel
+
+    if scene.controlnet_type == "UNION":
+        # https://github.com/xinsir6/ControlNetPlus/blob/main/promax/controlnet_union_test_inpainting.py
+        # 0 -- openpose
+        # 1 -- depth
+        # 2 -- hed/pidi/scribble/ted
+        # 3 -- canny/lineart/anime_lineart/mlsd
+        # 4 -- normal
+        # 5 -- segment
+        # 6 -- tile
+        # 7 -- repaint
+
+        controlnet_config = {
+            "LOW": {
+                "union_control": True,
+                "control_mode": [1],
+                "controlnets": ControlNetUnionModel.from_pretrained(
+                    scene.controlnet_union_path, torch_dtype=torch.float16
+                ),
+                "conditioning_scale": scene.union_controlnet_strength,
+                "inputs": [
+                    # None,
+                    "depth",
+                    # None, None, None, None, None, None
+                ],
+            },
+            "MEDIUM": {
+                "union_control": True,
+                "control_mode": [1, 3],
+                "controlnets": ControlNetUnionModel.from_pretrained(
+                    scene.controlnet_union_path, torch_dtype=torch.float16
+                ),
+                "conditioning_scale": scene.union_controlnet_strength,
+                "inputs": [
+                    # None,
+                    "depth",
+                    # None,
+                    "canny",
+                    # None,
+                    #  None,
+                    #  None,
+                    #  None
+                ],
+            },
+            "HIGH": {
+                "union_control": True,
+                "control_mode": [1, 3, 4],
+                "controlnets": ControlNetUnionModel.from_pretrained(
+                    scene.controlnet_union_path, torch_dtype=torch.float16
+                ),
+                "conditioning_scale": scene.union_controlnet_strength,
+                "inputs": [
+                    # None,
+                    "depth",
+                    # None,
+                    "canny",
+                    "normal",
+                    # None,
+                    # None,
+                    # None,
+                ],
+            },
+        }
+
+        return controlnet_config
 
     # Create a dictionary to map model complexities to their corresponding controlnet weights and inputs
     controlnet_config = {
@@ -74,6 +130,7 @@ def create_pipeline(scene):
     from diffusers import (
         StableDiffusionControlNetInpaintPipeline,
         StableDiffusionXLControlNetInpaintPipeline,
+        StableDiffusionXLControlNetUnionInpaintPipeline,
     )
 
     controlnet_config = get_controlnet_config(scene)
@@ -117,22 +174,42 @@ def create_pipeline(scene):
     elif scene.sd_version == "sdxl":
 
         if str(scene.checkpoint_path).endswith(".safetensors"):
-            pipe = StableDiffusionXLControlNetInpaintPipeline.from_single_file(
-                scene.checkpoint_path,
-                use_safetensors=True,
-                torch_dtype=torch.float16,
-                variant="fp16",
-                safety_checker=None,
-            )
 
-        elif str(scene.checkpoint_path).endswith((".ckpt", ".pt", ".pth", ".bin")):
-            try:
-                pipe = StableDiffusionXLControlNetInpaintPipeline.from_single_file(
+            if scene.controlnet_type == "UNION":
+                pipe = StableDiffusionXLControlNetUnionInpaintPipeline.from_single_file(
                     scene.checkpoint_path,
+                    use_safetensors=True,
                     torch_dtype=torch.float16,
                     variant="fp16",
                     safety_checker=None,
                 )
+
+            else:
+
+                pipe = StableDiffusionXLControlNetInpaintPipeline.from_single_file(
+                    scene.checkpoint_path,
+                    use_safetensors=True,
+                    torch_dtype=torch.float16,
+                    variant="fp16",
+                    safety_checker=None,
+                )
+
+        elif str(scene.checkpoint_path).endswith((".ckpt", ".pt", ".pth", ".bin")):
+            try:
+                if scene.controlnet_type == "UNION":
+                    pipe = StableDiffusionXLControlNetUnionInpaintPipeline.from_single_file(
+                        scene.checkpoint_path,
+                        torch_dtype=torch.float16,
+                        variant="fp16",
+                        safety_checker=None,
+                    )
+                else:
+                    pipe = StableDiffusionXLControlNetInpaintPipeline.from_single_file(
+                        scene.checkpoint_path,
+                        torch_dtype=torch.float16,
+                        variant="fp16",
+                        safety_checker=None,
+                    )
             except:
                 # untested so raise verbose error
                 raise ValueError(
@@ -140,13 +217,22 @@ def create_pipeline(scene):
                 )
 
         else:
-            pipe = StableDiffusionXLControlNetInpaintPipeline.from_pretrained(
-                scene.checkpoint_path,
-                controlnet=controlnet_config[scene.mesh_complexity]["controlnets"],
-                torch_dtype=torch.float16,
-                use_safetensors=True,
-                safety_checker=None,
-            )
+            if scene.controlnet_type == "UNION":
+                pipe = StableDiffusionXLControlNetUnionInpaintPipeline.from_pretrained(
+                    scene.checkpoint_path,
+                    controlnet=controlnet_config[scene.mesh_complexity]["controlnets"],
+                    torch_dtype=torch.float16,
+                    use_safetensors=True,
+                    safety_checker=None,
+                )
+            else:
+                pipe = StableDiffusionXLControlNetInpaintPipeline.from_pretrained(
+                    scene.checkpoint_path,
+                    controlnet=controlnet_config[scene.mesh_complexity]["controlnets"],
+                    torch_dtype=torch.float16,
+                    use_safetensors=True,
+                    safety_checker=None,
+                )
     else:
         raise ValueError("Invalid SD Version, can only be 'sd15' or 'sdxl'")
 
@@ -215,6 +301,8 @@ def infer_pipeline(
             control_images.append(Image.fromarray(canny_img))
         elif entry == "normal":
             control_images.append(Image.fromarray(normal_img))
+        # elif entry is None:
+        #     control_images.append(0)
 
     ip_adapter_image = None
     if scene.use_ipadapter:
@@ -223,23 +311,45 @@ def infer_pipeline(
     if num_inference_steps is None:
         num_inference_steps = scene.num_inference_steps
 
-    output = pipe(
-        prompt=scene.my_prompt,
-        negative_prompt=scene.my_negative_prompt,
-        image=input_image,
-        mask_image=Image.fromarray(uv_mask),
-        control_image=control_images,
-        ip_adapter_image=ip_adapter_image,
-        num_images_per_prompt=1,
-        controlnet_conditioning_scale=controlnet_config[scene.mesh_complexity][
-            "conditioning_scale"
-        ],
-        num_inference_steps=num_inference_steps,
-        denoising_start=denoising_start,
-        denoising_end=denoising_end,
-        strength=strength,
-        guidance_scale=guidance_scale,
-        output_type=output_type,
-    ).images
+    if scene.controlnet_type == "UNION":
+        output = pipe(
+            prompt=scene.my_prompt,
+            negative_prompt=scene.my_negative_prompt,
+            image=input_image,
+            mask_image=Image.fromarray(uv_mask),
+            control_image=control_images,
+            control_mode=controlnet_config[scene.mesh_complexity]["control_mode"],
+            ip_adapter_image=ip_adapter_image,
+            num_images_per_prompt=1,
+            controlnet_conditioning_scale=controlnet_config[scene.mesh_complexity][
+                "conditioning_scale"
+            ],
+            num_inference_steps=num_inference_steps,
+            denoising_start=denoising_start,
+            denoising_end=denoising_end,
+            strength=strength,
+            guidance_scale=guidance_scale,
+            output_type=output_type,
+        ).images
+
+    else:
+        output = pipe(
+            prompt=scene.my_prompt,
+            negative_prompt=scene.my_negative_prompt,
+            image=input_image,
+            mask_image=Image.fromarray(uv_mask),
+            control_image=control_images,
+            ip_adapter_image=ip_adapter_image,
+            num_images_per_prompt=1,
+            controlnet_conditioning_scale=controlnet_config[scene.mesh_complexity][
+                "conditioning_scale"
+            ],
+            num_inference_steps=num_inference_steps,
+            denoising_start=denoising_start,
+            denoising_end=denoising_end,
+            strength=strength,
+            guidance_scale=guidance_scale,
+            output_type=output_type,
+        ).images
 
     return output

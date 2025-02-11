@@ -513,6 +513,8 @@ def generate_multiple_views(
 
         render_img_folders.append(str(output_nodes[output_type].base_path))
 
+    render_img_folders.append(str(output_path / "RenderOutput"))
+
     # Update to make new cameras available
     bpy.context.view_layer.update()
 

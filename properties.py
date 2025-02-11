@@ -3,6 +3,7 @@ import bpy
 from bpy.props import (
     StringProperty,
     FloatProperty,
+    BoolProperty,
     IntProperty,
     CollectionProperty,
     EnumProperty,
@@ -31,9 +32,14 @@ def update_paths(self, context):
         context.scene.depth_controlnet_path = "lllyasviel/sd-controlnet-depth"
     elif context.scene.sd_version == "sdxl":
         context.scene.checkpoint_path = "stabilityai/stable-diffusion-xl-base-1.0"
+
+        # Set the default controlnet paths for Stable Diffusion XL
         context.scene.canny_controlnet_path = "diffusers/controlnet-canny-sdxl-1.0"
-        context.scene.normal_controlnet_path = "xinsir/controlnet-union-sdxl-1.0"
+        context.scene.normal_controlnet_path = (
+            "xinsir/controlnet-union-sdxl-1.0"  # TODO: Change this to a normal only CN
+        )
         context.scene.depth_controlnet_path = "diffusers/controlnet-depth-sdxl-1.0"
+        context.scene.controlnet_union_path = "xinsir/controlnet-union-sdxl-1.0"
 
 
 def update_loras(self, context):
@@ -286,6 +292,24 @@ def register_properties():
         min=0,
     )
 
+    # Add a dropdown menu to switch between ControlNet Union or multiple ControlNets (only available if SDXL is used)
+    bpy.types.Scene.controlnet_type = EnumProperty(
+        name="ControlNet Type",
+        description="Select the type of ControlNet to use",
+        items=[
+            ("MULTIPLE", "Multiple ControlNets", "Use multiple normal ControlNets"),
+            ("UNION", "ControlNet Union", "Use the ControlNet Union model"),
+        ],
+        default="MULTIPLE",
+    )
+
+    # Boolean properties for enabling/disabling ControlNet Union inputs
+    bpy.types.Scene.controlnet_union_path = StringProperty(
+        name="ControlNet Union Path",
+        description="Optional path to the ControlNet Union checkpoint",
+        subtype="FILE_PATH",
+        default="xinsir/controlnet-union-sdxl-1.0",
+    )
     bpy.types.Scene.canny_controlnet_path = StringProperty(
         name="Canny ControlNet Path",
         description="Optional path to the Canny ControlNet checkpoint",
@@ -331,6 +355,14 @@ def register_properties():
         max=1.0,
     )
 
+    bpy.types.Scene.union_controlnet_strength = FloatProperty(
+        name="Union ControlNet Strength",
+        description="Strength of ControlNet Union",
+        default=1.0,
+        min=0.0,
+        max=1.0,
+    )
+
 
 def unregister_properties():
 
@@ -363,3 +395,6 @@ def unregister_properties():
     del bpy.types.Scene.canny_controlnet_strength
     del bpy.types.Scene.normal_controlnet_strength
     del bpy.types.Scene.depth_controlnet_strength
+    del bpy.types.Scene.union_controlnet_strength
+    del bpy.types.Scene.custom_sd_resolution
+    del bpy.types.Scene.controlnet_type

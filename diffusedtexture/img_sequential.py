@@ -32,8 +32,6 @@ def prepare_texture(texture, texture_resolution):
 def prepare_uv_coordinates(uv_image, texture_resolution, target_resolution=None):
     """Prepare UV coordinates scaled to the texture resolution."""
 
-    print("Target Resolution for UVs: ", target_resolution)
-
     if target_resolution is not None:
         uv_image = cv2.resize(
             uv_image,
@@ -154,17 +152,8 @@ def blend_output(
     overlay_mask = cv2.blur(overlay_mask, (3, 3))
     overlay_mask = np.stack([overlay_mask] * 3, axis=-1).astype(np.float32) / 255
 
-    print(
-        "overlay_mask: ",
-        overlay_mask.min(),
-        overlay_mask.max(),
-        np.unique(overlay_mask),
-    )
-
     # blended = (1 - overlay_mask) * input_render_resolution + overlay_mask * output
     blended = (1 - overlay_mask) * input_render_resolution + overlay_mask * output
-
-    print("blended: ", blended.min(), blended.max())
 
     return np.clip(blended, 0, 255).astype(np.uint8)
 
@@ -177,6 +166,14 @@ def content_mask_texture_to_render_sd(
     content_mask_sd = content_mask_texture[
         uv_coordinates_sd[:, 1], uv_coordinates_sd[:, 0]
     ]
+
+    input_resolution = np.sqrt(len(uv_coordinates_sd)).astype(np.int32)
+
+    content_mask_sd = cv2.resize(
+        content_mask_sd.reshape(input_resolution, input_resolution),
+        (target_resolution, target_resolution),
+        interpolation=cv2.INTER_NEAREST,
+    )
 
     content_mask_sd = content_mask_sd.reshape(
         target_resolution, target_resolution
@@ -271,13 +268,6 @@ def img_sequential(scene, max_size, texture):
                 i,
             )
         )
-
-        print("SD Input: ")
-        print("input_image_sd: ", input_image_sd.shape)
-        print("content_mask_render_sd: ", content_mask_render_sd.shape)
-        print("canny_img: ", canny_img.shape)
-        print("normal_img: ", normal_img.shape)
-        print("depth_img: ", depth_img.shape)
 
         output = infer_pipeline(
             pipe,
