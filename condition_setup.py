@@ -40,7 +40,6 @@ def bpy_img_to_numpy(img_path):
 
 
 def create_depth_condition(depth_image_path):
-
     depth_array = bpy_img_to_numpy(depth_image_path)[..., 0]
 
     # Replace large values with NaN (assuming 1e10 represents invalid depth)

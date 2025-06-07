@@ -7,7 +7,6 @@ import mathutils
 import cv2
 import numpy as np
 import torch
-from scipy.spatial.transform import Rotation
 from pathlib import Path
 
 from ..condition_setup import (
@@ -298,7 +297,9 @@ def process_uv_texture(
     output_grid = np.array(output_grid)
 
     if scene.custom_sd_resolution:
-        sd_resolution = scene.custom_sd_resolution
+        sd_resolution = int(
+            int(scene.custom_sd_resolution) // np.sqrt(int(scene.num_cameras))
+        )
     else:
         sd_resolution = 512 if scene.sd_version == "sd15" else 1024
 
@@ -619,6 +620,8 @@ def assemble_multiview_grid(
             render_resolution,
         )
 
+    # TODO: Use ambient occlusion grid as input image for SD model
+
     # Generate content mask and input image
     grids["content_mask"] = create_content_mask(grids["uv_grid"])
 
@@ -655,6 +658,7 @@ def initialize_grids(grid_size, render_resolution):
         "normal_grid": np.zeros((*grid_shape, 3), dtype=np.uint8),
         "facing_grid": np.zeros(grid_shape, dtype=np.uint8),
         "uv_grid": np.zeros((*grid_shape, 3), dtype=np.float32),
+        "ambient_occlusion": np.zeros(grid_shape, dtype=np.uint8),
     }
 
 
@@ -678,9 +682,13 @@ def populate_grids(
     grids["facing_grid"][
         row : row + render_resolution, col : col + render_resolution
     ] = (255 * facing_img).astype(np.uint8)
-    grids["uv_grid"][
-        row : row + render_resolution, col : col + render_resolution
-    ] = uv_img
+    grids["uv_grid"][row : row + render_resolution, col : col + render_resolution] = (
+        uv_img
+    )
+    grids["ambient_occlusion"] = np.copy(grids["facing_grid"])
+
+    # make the grey bg values white
+    grids["ambient_occlusion"][grids["ambient_occlusion"] == 0] = 255
 
 
 def create_content_mask(uv_img):
@@ -698,7 +706,6 @@ def resize_grids(
     scale_factor = sd_resolution / render_resolution
     resized_grids = {}
     for key, grid in grids.items():
-
         height, width = grid.shape[:2]
 
         interpolation = interpolation if "mask" in key else cv2.INTER_LINEAR

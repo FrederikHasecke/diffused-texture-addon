@@ -6,51 +6,30 @@ import mathutils
 def create_cameras_on_one_ring(
     num_cameras=16, max_size=1, name_prefix="Camera", fov=22.5
 ):
-    """
-    Create n cameras evenly distributed on a ring around the world origin (Z-axis).
-
-    :param max_size: The maximum size of the object to be captured by the cameras.
-    :param name_prefix: Prefix for naming the cameras.
-    :param fov: Field of view for the cameras in degrees.
-    :return: List of created camera objects.
-    """
     cameras = []
-
-    # Convert FOV from degrees to radians
     fov_rad = math.radians(fov)
-
-    # Calculate the distance from the origin such that the FOV covers max_size
     radius = (max_size * 0.5) / math.tan(fov_rad * 0.5)
+    angle_offset = math.pi / num_cameras
+    elevation = radius * 0.25
 
-    angle_offset = math.pi / num_cameras  # Offset for the ring cameras
-
-    # Set the vertical offset for the rings (small elevation above/below the object)
-    elevation = radius * 0.25  # Adjust this value to control the elevation
-
-    # Loop to create the ring (around Z-axis), offset by half an angle
     for i in range(num_cameras):
         theta = (2 * math.pi / num_cameras) * i + angle_offset
-
-        # Position for the upper ring (XZ-plane)
         x = radius * math.cos(theta)
         y = radius * math.sin(theta)
         location = mathutils.Vector((x, y, elevation))
 
-        # Create upper ring camera
-        bpy.ops.object.camera_add(location=location)
-        camera = bpy.context.object
-        camera.name = f"{name_prefix}_{i+1}"
+        cam_data = bpy.data.cameras.new(f"{name_prefix}_{i + 1}")
+        cam_data.lens_unit = "FOV"
+        cam_data.angle = fov_rad
 
-        # Set the camera's FOV
-        camera.data.lens_unit = "FOV"
-        camera.data.angle = fov_rad
+        cam_obj = bpy.data.objects.new(f"{name_prefix}_{i + 1}", cam_data)
+        cam_obj.location = location
 
-        # Point the camera at the origin
-        direction_upper = camera.location - mathutils.Vector((0, 0, 0))
-        rot_quat_upper = direction_upper.to_track_quat("Z", "Y")
-        camera.rotation_euler = rot_quat_upper.to_euler()
+        direction = location - mathutils.Vector((0, 0, 0))
+        cam_obj.rotation_euler = direction.to_track_quat("Z", "Y").to_euler()
 
-        cameras.append(camera)
+        bpy.context.collection.objects.link(cam_obj)
+        cameras.append(cam_obj)
 
     return cameras
 
@@ -58,79 +37,46 @@ def create_cameras_on_one_ring(
 def create_cameras_on_two_rings(
     num_cameras=16, max_size=1, name_prefix="Camera", fov=22.5
 ):
-    """
-    Create 16 cameras evenly distributed on two rings around the world origin (Z-axis).
-    Each ring will have 8 cameras, with the upper and lower rings' cameras placed in the gaps of each other.
-
-    :param max_size: The maximum size of the object to be captured by the cameras.
-    :param name_prefix: Prefix for naming the cameras.
-    :param fov: Field of view for the cameras in degrees.
-    :return: List of created camera objects.
-    """
     cameras = []
-
-    # Convert FOV from degrees to radians
     fov_rad = math.radians(fov)
-
-    # Calculate the distance from the origin such that the FOV covers max_size
     radius = (max_size * 0.5) / math.tan(fov_rad * 0.5)
 
     num_cameras_per_ring = num_cameras // 2
-    angle_offset = math.pi / num_cameras_per_ring  # Offset for the upper ring cameras
-
-    # Set the vertical offset for the rings (small elevation above/below the object)
-    elevation_upper = radius * 0.5  # Adjust this value to control the elevation
+    angle_offset = math.pi / num_cameras_per_ring
+    elevation_upper = radius * 0.5
     elevation_lower = -radius * 0.5
 
-    # Loop to create the lower ring (around Z-axis)
     for i in range(num_cameras_per_ring):
         theta = (2 * math.pi / num_cameras_per_ring) * i
+        x, y = radius * math.cos(theta), radius * math.sin(theta)
+        loc = mathutils.Vector((x, y, elevation_lower))
 
-        # Position for the lower ring (XZ-plane)
-        x = radius * math.cos(theta)
-        y = radius * math.sin(theta)
-        location_lower = mathutils.Vector((x, y, elevation_lower))
+        cam_data = bpy.data.cameras.new(f"{name_prefix}_LowerRing_{i + 1}")
+        cam_data.lens_unit = "FOV"
+        cam_data.angle = fov_rad
 
-        # Create lower ring camera
-        bpy.ops.object.camera_add(location=location_lower)
-        camera_lower = bpy.context.object
-        camera_lower.name = f"{name_prefix}_LowerRing_{i+1}"
+        cam_obj = bpy.data.objects.new(f"{name_prefix}_LowerRing_{i + 1}", cam_data)
+        cam_obj.location = loc
+        cam_obj.rotation_euler = loc.to_track_quat("Z", "Y").to_euler()
 
-        # Set the camera's FOV
-        camera_lower.data.lens_unit = "FOV"
-        camera_lower.data.angle = fov_rad
+        bpy.context.collection.objects.link(cam_obj)
+        cameras.append(cam_obj)
 
-        # Point the camera at the origin
-        direction_lower = camera_lower.location - mathutils.Vector((0, 0, 0))
-        rot_quat_lower = direction_lower.to_track_quat("Z", "Y")
-        camera_lower.rotation_euler = rot_quat_lower.to_euler()
-
-        cameras.append(camera_lower)
-
-    # Loop to create the upper ring (around Z-axis), offset by half an angle
     for i in range(num_cameras_per_ring):
         theta = (2 * math.pi / num_cameras_per_ring) * i + angle_offset
+        x, y = radius * math.cos(theta), radius * math.sin(theta)
+        loc = mathutils.Vector((x, y, elevation_upper))
 
-        # Position for the upper ring (XZ-plane)
-        x = radius * math.cos(theta)
-        y = radius * math.sin(theta)
-        location_upper = mathutils.Vector((x, y, elevation_upper))
+        cam_data = bpy.data.cameras.new(f"{name_prefix}_UpperRing_{i + 1}")
+        cam_data.lens_unit = "FOV"
+        cam_data.angle = fov_rad
 
-        # Create upper ring camera
-        bpy.ops.object.camera_add(location=location_upper)
-        camera_upper = bpy.context.object
-        camera_upper.name = f"{name_prefix}_UpperRing_{i+1}"
+        cam_obj = bpy.data.objects.new(f"{name_prefix}_UpperRing_{i + 1}", cam_data)
+        cam_obj.location = loc
+        cam_obj.rotation_euler = loc.to_track_quat("Z", "Y").to_euler()
 
-        # Set the camera's FOV
-        camera_upper.data.lens_unit = "FOV"
-        camera_upper.data.angle = fov_rad
-
-        # Point the camera at the origin
-        direction_upper = camera_upper.location - mathutils.Vector((0, 0, 0))
-        rot_quat_upper = direction_upper.to_track_quat("Z", "Y")
-        camera_upper.rotation_euler = rot_quat_upper.to_euler()
-
-        cameras.append(camera_upper)
+        bpy.context.collection.objects.link(cam_obj)
+        cameras.append(cam_obj)
 
     return cameras
 
@@ -138,56 +84,30 @@ def create_cameras_on_two_rings(
 def create_cameras_on_sphere(
     num_cameras=16, max_size=1, name_prefix="Camera", fov=22.5
 ):
-    """
-    Create cameras evenly distributed on a sphere around the world origin,
-    with each camera positioned such that it perfectly frames an object of size
-    max_size using a field of view of fov.
-
-    :param num_cameras: Number of cameras to create.
-    :param max_size: The maximum size of the object to be captured by the cameras.
-    :param name_prefix: Prefix for naming the cameras.
-    :param offset: Offset to change views slightly.
-    :param fov: Field of view for the cameras in degrees.
-    :return: List of created camera objects.
-    """
-
     cameras = []
-    phi = math.pi * (3.0 - math.sqrt(5.0))  # Golden angle in radians
-
-    # Convert FOV from degrees to radians
+    phi = math.pi * (3.0 - math.sqrt(5.0))
     fov_rad = math.radians(fov)
-
-    # Calculate the distance from the origin such that the FOV covers max_size
     radius = (max_size * 0.5) / math.tan(fov_rad * 0.5)
 
     for i in range(num_cameras):
-        y = 1 - (i / float(num_cameras - 1)) * 2  # y goes from 1 to -1
-        radius_at_y = math.sqrt(1 - y * y)  # Radius at y
-        theta = (phi) * i  # Golden angle increment
+        y = 1 - (i / float(num_cameras - 1)) * 2
+        radius_at_y = math.sqrt(1 - y * y)
+        theta = phi * i
 
         x = math.cos(theta) * radius_at_y
         z = math.sin(theta) * radius_at_y
-        location = mathutils.Vector((x, y, z)) * radius
+        loc = mathutils.Vector((x, y, z)) * radius
 
-        # if offset:
-        #     # Swap coordinates: x -> y, y -> z, z -> x
-        #     location = mathutils.Vector((location.y, location.z, location.x))
+        cam_data = bpy.data.cameras.new(f"{name_prefix}_{i + 1}")
+        cam_data.lens_unit = "FOV"
+        cam_data.angle = fov_rad
 
-        # Create camera
-        bpy.ops.object.camera_add(location=location)
-        camera = bpy.context.object
-        camera.name = f"{name_prefix}_{i+1}"
+        cam_obj = bpy.data.objects.new(f"{name_prefix}_{i + 1}", cam_data)
+        cam_obj.location = loc
+        cam_obj.rotation_euler = loc.to_track_quat("Z", "Y").to_euler()
 
-        # Set the camera's FOV
-        camera.data.lens_unit = "FOV"
-        camera.data.angle = fov_rad
-
-        # Point the camera at the origin
-        direction = camera.location - mathutils.Vector((0, 0, 0))
-        rot_quat = direction.to_track_quat("Z", "Y")
-        camera.rotation_euler = rot_quat.to_euler()
-
-        cameras.append(camera)
+        bpy.context.collection.objects.link(cam_obj)
+        cameras.append(cam_obj)
 
     return cameras
 

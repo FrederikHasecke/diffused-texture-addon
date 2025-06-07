@@ -1,4 +1,5 @@
 import os
+import torch
 
 from PIL import Image
 
@@ -9,70 +10,114 @@ def get_controlnet_config(scene):
     import torch
     from diffusers import ControlNetModel, ControlNetUnionModel
 
-    if scene.controlnet_type == "UNION":
-        # https://github.com/xinsir6/ControlNetPlus/blob/main/promax/controlnet_union_test_inpainting.py
-        # 0 -- openpose
-        # 1 -- depth
-        # 2 -- hed/pidi/scribble/ted
-        # 3 -- canny/lineart/anime_lineart/mlsd
-        # 4 -- normal
-        # 5 -- segment
-        # 6 -- tile
-        # 7 -- repaint
+    if scene.sd_version == "sdxl":
+        if scene.controlnet_type == "UNION":
+            # https://github.com/xinsir6/ControlNetPlus/blob/main/promax/controlnet_union_test_inpainting.py
+            # 0 -- openpose
+            # 1 -- depth
+            # 2 -- hed/pidi/scribble/ted
+            # 3 -- canny/lineart/anime_lineart/mlsd
+            # 4 -- normal
+            # 5 -- segment
+            # 6 -- tile
+            # 7 -- repaint
 
-        controlnet_config = {
-            "LOW": {
-                "union_control": True,
-                "control_mode": [1],
-                "controlnets": ControlNetUnionModel.from_pretrained(
-                    scene.controlnet_union_path, torch_dtype=torch.float16
-                ),
-                "conditioning_scale": scene.union_controlnet_strength,
-                "inputs": [
-                    # None,
-                    "depth",
-                    # None, None, None, None, None, None
-                ],
-            },
-            "MEDIUM": {
-                "union_control": True,
-                "control_mode": [1, 3],
-                "controlnets": ControlNetUnionModel.from_pretrained(
-                    scene.controlnet_union_path, torch_dtype=torch.float16
-                ),
-                "conditioning_scale": scene.union_controlnet_strength,
-                "inputs": [
-                    # None,
-                    "depth",
-                    # None,
-                    "canny",
-                    # None,
-                    #  None,
-                    #  None,
-                    #  None
-                ],
-            },
-            "HIGH": {
-                "union_control": True,
-                "control_mode": [1, 3, 4],
-                "controlnets": ControlNetUnionModel.from_pretrained(
-                    scene.controlnet_union_path, torch_dtype=torch.float16
-                ),
-                "conditioning_scale": scene.union_controlnet_strength,
-                "inputs": [
-                    # None,
-                    "depth",
-                    # None,
-                    "canny",
-                    "normal",
-                    # None,
-                    # None,
-                    # None,
-                ],
-            },
-        }
+            controlnet_config = {
+                "LOW": {
+                    "union_control": True,
+                    "control_mode": [1],
+                    "controlnets": ControlNetUnionModel.from_pretrained(
+                        scene.controlnet_union_path, torch_dtype=torch.float16
+                    ),
+                    "conditioning_scale": scene.union_controlnet_strength,
+                    "inputs": [
+                        # None,
+                        "depth",
+                        # None, None, None, None, None, None
+                    ],
+                },
+                "MEDIUM": {
+                    "union_control": True,
+                    "control_mode": [1, 3],
+                    "controlnets": ControlNetUnionModel.from_pretrained(
+                        scene.controlnet_union_path, torch_dtype=torch.float16
+                    ),
+                    "conditioning_scale": scene.union_controlnet_strength,
+                    "inputs": [
+                        # None,
+                        "depth",
+                        # None,
+                        "canny",
+                        # None,
+                        #  None,
+                        #  None,
+                        #  None
+                    ],
+                },
+                "HIGH": {
+                    "union_control": True,
+                    "control_mode": [1, 3, 4],
+                    "controlnets": ControlNetUnionModel.from_pretrained(
+                        scene.controlnet_union_path, torch_dtype=torch.float16
+                    ),
+                    "conditioning_scale": scene.union_controlnet_strength,
+                    "inputs": [
+                        # None,
+                        "depth",
+                        # None,
+                        "canny",
+                        "normal",
+                        # None,
+                        # None,
+                        # None,
+                    ],
+                },
+            }
 
-        return controlnet_config
+            return controlnet_config
+
+        elif scene.controlnet_type == "MULTIPLE":
+            controlnet_config = {
+                "LOW": {
+                    "conditioning_scale": [scene.depth_controlnet_strength],  # 0.8,
+                    "controlnets": [
+                        ControlNetModel.from_pretrained(
+                            scene.depth_controlnet_path, torch_dtype=torch.float16
+                        ),
+                    ],
+                    "inputs": ["depth"],
+                },
+                "MEDIUM": {
+                    "conditioning_scale": [
+                        scene.depth_controlnet_strength,
+                        scene.canny_controlnet_strength,
+                    ],  # [0.7, 0.8],
+                    "controlnets": [
+                        ControlNetModel.from_pretrained(
+                            scene.depth_controlnet_path, torch_dtype=torch.float16
+                        ),
+                        ControlNetModel.from_pretrained(
+                            scene.canny_controlnet_path, torch_dtype=torch.float16
+                        ),
+                    ],
+                    "inputs": ["depth", "canny"],
+                },
+                "HIGH": {
+                    "conditioning_scale": [
+                        scene.depth_controlnet_strength,
+                        scene.canny_controlnet_strength,
+                    ],  # [1.0, 0.9, 0.9],
+                    "controlnets": [
+                        ControlNetModel.from_pretrained(
+                            scene.depth_controlnet_path, torch_dtype=torch.float16
+                        ),
+                        ControlNetModel.from_pretrained(
+                            scene.canny_controlnet_path, torch_dtype=torch.float16
+                        ),
+                    ],
+                    "inputs": ["depth", "canny"],
+                },
+            }
 
     # Create a dictionary to map model complexities to their corresponding controlnet weights and inputs
     controlnet_config = {
@@ -124,7 +169,6 @@ def get_controlnet_config(scene):
 
 
 def create_pipeline(scene):
-
     # re-import if hf_home was re-set
     import torch
     from diffusers import (
@@ -136,7 +180,6 @@ def create_pipeline(scene):
     controlnet_config = get_controlnet_config(scene)
 
     if scene.sd_version == "sd15":
-
         # Load the model from a checkpoint if provided as safe tensor or checkpoint
         if str(scene.checkpoint_path).endswith(".safetensors"):
             pipe = StableDiffusionControlNetInpaintPipeline.from_single_file(
@@ -172,9 +215,7 @@ def create_pipeline(scene):
             )
 
     elif scene.sd_version == "sdxl":
-
         if str(scene.checkpoint_path).endswith(".safetensors"):
-
             if scene.controlnet_type == "UNION":
                 pipe = StableDiffusionXLControlNetUnionInpaintPipeline.from_single_file(
                     scene.checkpoint_path,
@@ -185,7 +226,6 @@ def create_pipeline(scene):
                 )
 
             else:
-
                 pipe = StableDiffusionXLControlNetInpaintPipeline.from_single_file(
                     scene.checkpoint_path,
                     use_safetensors=True,
@@ -237,9 +277,7 @@ def create_pipeline(scene):
         raise ValueError("Invalid SD Version, can only be 'sd15' or 'sdxl'")
 
     if scene.num_loras > 0:
-
         for lora in scene.lora_models:
-
             # Extract the directory (everything but the file name)
             file_path = os.path.dirname(lora.path)
 
@@ -288,7 +326,6 @@ def infer_pipeline(
     denoising_end=None,
     output_type="pil",
 ):
-
     controlnet_config = get_controlnet_config(scene)
 
     # run the pipeline
@@ -311,45 +348,52 @@ def infer_pipeline(
     if num_inference_steps is None:
         num_inference_steps = scene.num_inference_steps
 
-    if scene.controlnet_type == "UNION":
-        output = pipe(
-            prompt=scene.my_prompt,
-            negative_prompt=scene.my_negative_prompt,
-            image=input_image,
-            mask_image=Image.fromarray(uv_mask),
-            control_image=control_images,
-            control_mode=controlnet_config[scene.mesh_complexity]["control_mode"],
-            ip_adapter_image=ip_adapter_image,
-            num_images_per_prompt=1,
-            controlnet_conditioning_scale=controlnet_config[scene.mesh_complexity][
-                "conditioning_scale"
-            ],
-            num_inference_steps=num_inference_steps,
-            denoising_start=denoising_start,
-            denoising_end=denoising_end,
-            strength=strength,
-            guidance_scale=guidance_scale,
-            output_type=output_type,
-        ).images
+    try:
+        if scene.controlnet_type == "MULTIPLE":
+            output = pipe(
+                prompt=scene.my_prompt,
+                negative_prompt=scene.my_negative_prompt,
+                image=input_image,
+                mask_image=Image.fromarray(uv_mask),
+                control_image=control_images,
+                ip_adapter_image=ip_adapter_image,
+                num_images_per_prompt=1,
+                controlnet_conditioning_scale=controlnet_config[scene.mesh_complexity][
+                    "conditioning_scale"
+                ],
+                num_inference_steps=num_inference_steps,
+                denoising_start=denoising_start,
+                denoising_end=denoising_end,
+                strength=strength,
+                guidance_scale=guidance_scale,
+                output_type=output_type,
+            ).images
 
-    else:
-        output = pipe(
-            prompt=scene.my_prompt,
-            negative_prompt=scene.my_negative_prompt,
-            image=input_image,
-            mask_image=Image.fromarray(uv_mask),
-            control_image=control_images,
-            ip_adapter_image=ip_adapter_image,
-            num_images_per_prompt=1,
-            controlnet_conditioning_scale=controlnet_config[scene.mesh_complexity][
-                "conditioning_scale"
-            ],
-            num_inference_steps=num_inference_steps,
-            denoising_start=denoising_start,
-            denoising_end=denoising_end,
-            strength=strength,
-            guidance_scale=guidance_scale,
-            output_type=output_type,
-        ).images
+        else:
+            output = pipe(
+                prompt=scene.my_prompt,
+                negative_prompt=scene.my_negative_prompt,
+                image=input_image,
+                mask_image=Image.fromarray(uv_mask),
+                control_image=control_images,
+                control_mode=controlnet_config[scene.mesh_complexity]["control_mode"],
+                ip_adapter_image=ip_adapter_image,
+                num_images_per_prompt=1,
+                controlnet_conditioning_scale=controlnet_config[scene.mesh_complexity][
+                    "conditioning_scale"
+                ],
+                num_inference_steps=num_inference_steps,
+                denoising_start=denoising_start,
+                denoising_end=denoising_end,
+                strength=strength,
+                guidance_scale=guidance_scale,
+                output_type=output_type,
+            ).images
+
+    except torch.cuda.OutOfMemoryError as oom:
+        print(oom)
+        del pipe
+        torch.cuda.empty_cache()
+        output = None
 
     return output

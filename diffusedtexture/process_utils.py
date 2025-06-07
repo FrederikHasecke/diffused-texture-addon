@@ -1,7 +1,10 @@
 import numpy as np
+import bpy
 
 
-def blendercs_to_ccs(points_bcs, camera, rotation_only=False):
+def blendercs_to_ccs(
+    points_bcs=np.ndarray, camera=bpy.data.camera, rotation_only=False
+):
     """
     Converts a point cloud from the Blender coordinate system to the camera coordinate system.
     """

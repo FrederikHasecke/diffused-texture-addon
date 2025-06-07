@@ -1,0 +1,59 @@
+import bpy
+
+
+class OBJECT_PT_IPAdapterPanel(bpy.types.Panel):
+    bl_label = "IPAdapter"
+    bl_idname = "OBJECT_PT_ipadapter_panel"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "DiffusedTexture"
+    bl_options = {"DEFAULT_CLOSED"}
+    bl_order = 2
+
+    def draw(self, context):
+        layout = self.layout
+        scene = context.scene
+
+        # IPAdapter Activation Checkbox
+        layout.prop(scene, "use_ipadapter", text="Activate IPAdapter")
+
+        # IPAdapter Image Preview and Selection
+        row = layout.row()
+
+        # disable the IPAdapter image selection if the IPAdapter is not activated
+        row.enabled = scene.use_ipadapter
+        row.template_ID_preview(scene, "ipadapter_image", rows=2, cols=6)
+
+        row = layout.row()
+        row.enabled = scene.use_ipadapter
+        # Button to open the file browser and load a new image
+        row.operator(
+            "image.open_new_ipadapter_image",
+            text="Open New IPAdapter Image",
+            icon="IMAGE_DATA",
+        )
+
+        # IPAdapter Strength Slider
+        row = layout.row()
+        row.enabled = scene.use_ipadapter
+        row.prop(scene, "ipadapter_strength", text="Strength IPAdapter")
+
+
+class OBJECT_OT_OpenNewIPAdapterImage(bpy.types.Operator):
+    """Operator to open a new image for IPAdapter"""
+
+    bl_idname = "image.open_new_ipadapter_image"
+    bl_label = "Open New IPAdapter Image"
+    bl_order = 3
+
+    filepath: bpy.props.StringProperty(subtype="FILE_PATH")
+
+    def execute(self, context):
+        # Load the new image using the provided filepath
+        image = bpy.data.images.load(self.filepath)
+        context.scene.ipadapter_image = image
+        return {"FINISHED"}
+
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}

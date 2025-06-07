@@ -1,9 +1,12 @@
-import os
 import numpy as np
 from PIL import Image
 
 import cv2
-from .diffusers_utils import create_pipeline, infer_pipeline
+
+# from utils import save_debug_images
+# from .diffusers_utils import create_pipeline, infer_pipeline
+from .pipeline.pipeline_builder import create_diffusion_pipeline
+from .pipeline.pipeline_runner import run_pipeline
 from .process_operations import (
     generate_multiple_views,
     create_input_image,
@@ -69,7 +72,9 @@ def generate_inputs_for_inference(
     # sd_resolution = 512 if scene.sd_version == "sd15" else 1024
 
     if scene.custom_sd_resolution:
-        sd_resolution = scene.custom_sd_resolution
+        sd_resolution = int(
+            int(scene.custom_sd_resolution) // np.sqrt(int(scene.num_cameras))
+        )
     else:
         sd_resolution = 512 if scene.sd_version == "sd15" else 1024
 
@@ -103,39 +108,6 @@ def generate_inputs_for_inference(
     )
 
     return input_image_sd, content_mask_sd, canny_img, normal_img, depth_img
-
-
-def save_debug_images(
-    scene,
-    i,
-    input_image_sd,
-    content_mask_render_sd,
-    content_mask_texture,
-    canny_img,
-    normal_img,
-    depth_img,
-    output,
-):
-    """Save intermediate debugging images."""
-    output_path = scene.output_path
-    cv2.imwrite(
-        f"{output_path}/input_image_sd_{i}.png",
-        cv2.cvtColor(input_image_sd, cv2.COLOR_RGB2BGR),
-    )
-    cv2.imwrite(f"{output_path}/content_mask_render_sd_{i}.png", content_mask_render_sd)
-    cv2.imwrite(f"{output_path}/content_mask_texture_{i}.png", content_mask_texture)
-    cv2.imwrite(
-        f"{output_path}/canny_{i}.png", cv2.cvtColor(canny_img, cv2.COLOR_RGB2BGR)
-    )
-    cv2.imwrite(
-        f"{output_path}/normal_{i}.png", cv2.cvtColor(normal_img, cv2.COLOR_RGB2BGR)
-    )
-    cv2.imwrite(
-        f"{output_path}/depth_{i}.png", cv2.cvtColor(depth_img, cv2.COLOR_RGB2BGR)
-    )
-    cv2.imwrite(
-        f"{output_path}/output_{i}.png", cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
-    )
 
 
 def blend_output(
@@ -197,7 +169,7 @@ def img_sequential(scene, max_size, texture):
     pixel_status = np.zeros((texture_resolution, texture_resolution))
     max_angle_status = np.zeros((texture_resolution, texture_resolution))
 
-    pipe = create_pipeline(scene)
+    pipe = create_diffusion_pipeline(scene)
 
     for i in range(num_cameras):
         _, input_render_resolution, _ = create_input_image(
@@ -269,7 +241,7 @@ def img_sequential(scene, max_size, texture):
             )
         )
 
-        output = infer_pipeline(
+        output = run_pipeline(
             pipe,
             scene,
             Image.fromarray(input_image_sd),
@@ -286,17 +258,17 @@ def img_sequential(scene, max_size, texture):
             interpolation=cv2.INTER_LINEAR,
         )
 
-        save_debug_images(
-            scene,
-            i,
-            input_image_sd,
-            content_mask_render_sd,
-            content_mask_texture,
-            canny_img,
-            normal_img,
-            depth_img,
-            output,
-        )
+        # save_debug_images(
+        #     scene,
+        #     i,
+        #     input_image_sd,
+        #     content_mask_render_sd,
+        #     content_mask_texture,
+        #     canny_img,
+        #     normal_img,
+        #     depth_img,
+        #     output,
+        # )
 
         uv_coordinates_render = prepare_uv_coordinates(
             uv_image, texture_resolution, render_resolution
@@ -304,8 +276,6 @@ def img_sequential(scene, max_size, texture):
         content_mask_render = content_mask_texture_to_render_sd(
             content_mask_texture, uv_coordinates_render, scene, render_resolution
         )
-
-        # TODO: Implement feathered overlay
 
         if i > 0:
             output = blend_output(

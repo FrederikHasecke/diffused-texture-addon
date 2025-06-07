@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "diffused_texture_addon"
-version = "0.0.4"
+version = "0.0.6"
 name = "DiffusedTexture"
 tagline = "Generate Diffuse Textures on Meshes with Stable Diffusion"
 maintainer = "Frederik Hasecke <frederik@hasecke.eu>"
@@ -19,42 +19,42 @@ platforms = ["windows-x64", "linux-x64"]
 # ✅ Flat list of wheels - Blender will split them automatically
 wheels = [
   # Common wheels (cross-platform)
-  "./wheels/certifi-2024.12.14-py3-none-any.whl",
+  "./wheels/certifi-2025.1.31-py3-none-any.whl",
   "./wheels/colorama-0.4.6-py2.py3-none-any.whl",
-  "./wheels/filelock-3.16.1-py3-none-any.whl",
-  "./wheels/fsspec-2024.12.0-py3-none-any.whl",
+  "./wheels/filelock-3.18.0-py3-none-any.whl",
+  "./wheels/fsspec-2025.3.2-py3-none-any.whl",
   "./wheels/idna-3.10-py3-none-any.whl",
-  "./wheels/importlib_metadata-8.5.0-py3-none-any.whl",
-  "./wheels/jinja2-3.1.5-py3-none-any.whl",
+  "./wheels/importlib_metadata-8.6.1-py3-none-any.whl",
+  "./wheels/jinja2-3.1.6-py3-none-any.whl",
   "./wheels/mpmath-1.3.0-py3-none-any.whl",
   "./wheels/networkx-3.4.2-py3-none-any.whl",
-  "./wheels/packaging-24.2-py3-none-any.whl",
-  "./wheels/peft-0.14.0-py3-none-any.whl",
+  "./wheels/packaging-25.0-py3-none-any.whl",
+  "./wheels/peft-0.15.2-py3-none-any.whl",
   "./wheels/requests-2.32.3-py3-none-any.whl",
   "./wheels/sympy-1.13.1-py3-none-any.whl",
   "./wheels/tqdm-4.67.1-py3-none-any.whl",
-  "./wheels/typing_extensions-4.12.2-py3-none-any.whl",
-  "./wheels/urllib3-2.3.0-py3-none-any.whl",
+  "./wheels/typing_extensions-4.13.2-py3-none-any.whl",
+  "./wheels/urllib3-2.4.0-py3-none-any.whl",
   "./wheels/zipp-3.21.0-py3-none-any.whl",
-  "./wheels/huggingface_hub-0.27.1-py3-none-any.whl",
-  "./wheels/accelerate-1.3.0-py3-none-any.whl",
-  "./wheels/transformers-4.48.0-py3-none-any.whl",
-  "./wheels/diffusers-0.32.2-py3-none-any.whl",
+  "./wheels/huggingface_hub-0.30.2-py3-none-any.whl",
+  "./wheels/accelerate-1.6.0-py3-none-any.whl",
+  "./wheels/transformers-4.51.3-py3-none-any.whl",
+  "./wheels/diffusers-0.33.1-py3-none-any.whl",
 
-  # ✅ Windows-specific wheels
-  "./wheels/scipy-1.15.1-cp311-cp311-win_amd64.whl",
+  # Windows-specific wheels
+  "./wheels/scipy-1.15.2-cp311-cp311-win_amd64.whl",
   "./wheels/charset_normalizer-3.4.1-cp311-cp311-win_amd64.whl",
   "./wheels/MarkupSafe-3.0.2-cp311-cp311-win_amd64.whl",
   "./wheels/PyYAML-6.0.2-cp311-cp311-win_amd64.whl",
-  "./wheels/psutil-6.1.1-cp311-abi3-win_amd64.whl",
+  "./wheels/psutil-7.0.0-cp311-abi3-win_amd64.whl",
   "./wheels/regex-2024.11.6-cp311-cp311-win_amd64.whl",
-  "./wheels/pillow-11.1.0-cp311-cp311-win_amd64.whl",
+  "./wheels/pillow-11.2.1-cp311-cp311-win_amd64.whl",
   "./wheels/opencv_python_headless-4.8.1.78-cp311-abi3-win_amd64.whl",
-  "./wheels/torch-2.5.1+cu118-cp311-cp311-win_amd64.whl",
-  "./wheels/tokenizers-0.21.0-cp311-abi3-win_amd64.whl",
-  "./wheels/safetensors-0.5.2-cp311-abi3-win_amd64.whl",
+  "./wheels/torch-2.6.0+cu118-cp311-cp311-win_amd64.whl",
+  "./wheels/tokenizers-0.21.1-cp311-abi3-win_amd64.whl",
+  "./wheels/safetensors-0.5.3-cp311-abi3-win_amd64.whl",
 
-  # ✅ Linux-specific wheels
+  # Linux-specific wheels
   "./wheels/scipy-1.15.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
   "./wheels/charset_normalizer-3.4.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
   "./wheels/MarkupSafe-3.0.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",

@@ -1,3 +1,4 @@
+import cv2
 import bpy
 import numpy as np
 
@@ -74,3 +75,73 @@ def image_to_numpy(image):
     pixels = (pixels * 255).astype(np.uint8)
 
     return pixels
+
+
+def save_debug_images(
+    scene,
+    i,
+    input_image_sd,
+    content_mask_render_sd,
+    content_mask_texture,
+    canny_img,
+    normal_img,
+    depth_img,
+    output,
+):
+    """Save intermediate debugging images."""
+    output_path = scene.output_path
+    cv2.imwrite(
+        f"{output_path}/input_image_sd_{i}.png",
+        cv2.cvtColor(input_image_sd, cv2.COLOR_RGB2BGR),
+    )
+    cv2.imwrite(f"{output_path}/content_mask_render_sd_{i}.png", content_mask_render_sd)
+    cv2.imwrite(f"{output_path}/content_mask_texture_{i}.png", content_mask_texture)
+    cv2.imwrite(
+        f"{output_path}/canny_{i}.png", cv2.cvtColor(canny_img, cv2.COLOR_RGB2BGR)
+    )
+    cv2.imwrite(
+        f"{output_path}/normal_{i}.png", cv2.cvtColor(normal_img, cv2.COLOR_RGB2BGR)
+    )
+    cv2.imwrite(
+        f"{output_path}/depth_{i}.png", cv2.cvtColor(depth_img, cv2.COLOR_RGB2BGR)
+    )
+    cv2.imwrite(
+        f"{output_path}/output_{i}.png", cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
+    )
+
+
+def isolate_object(obj):
+    """Temporarily hide all other objects and move this one to origin."""
+    hidden_objects = []
+
+    for other in bpy.data.objects:
+        if other != obj:
+            if not other.hide_get():
+                other.hide_set(True)
+                hidden_objects.append(other)
+
+            if not other.hide_render:
+                other.hide_render = True
+
+    # Save original transform
+    original_location = obj.location.copy()
+
+    # Move to origin
+    obj.location = (0.0, 0.0, 0.0)
+
+    return {
+        "hidden_objects": hidden_objects,
+        "target_object": obj,
+        "original_location": original_location,
+    }
+
+
+def restore_scene(backup_data):
+    """Restore object position and re-show hidden objects."""
+
+    obj = backup_data["target_object"]
+    obj.location = backup_data["original_location"]
+
+    for o in backup_data["hidden_objects"]:
+        o.hide_set(False)
+        o.hide_render = False

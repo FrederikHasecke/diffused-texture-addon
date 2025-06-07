@@ -32,7 +32,9 @@ def latent_parallel(scene, max_size, texture=None):
     )
 
     if scene.custom_sd_resolution:
-        sd_resolution = scene.custom_sd_resolution
+        sd_resolution = int(
+            int(scene.custom_sd_resolution) // np.sqrt(int(scene.num_cameras))
+        )
     else:
         sd_resolution = 512 if scene.sd_version == "sd15" else 1024
 
@@ -67,7 +69,6 @@ def latent_parallel(scene, max_size, texture=None):
         (0.5, 0.75),
         (0.75, 1.0),
     ]:
-
         if latents is None:
             latents = infer_pipeline(
                 pipe,
@@ -86,7 +87,6 @@ def latent_parallel(scene, max_size, texture=None):
             )
 
         else:
-
             # Mix latents via normal face direction
             latents = latent_mixing_parallel(
                 scene=scene,

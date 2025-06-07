@@ -1,11 +1,13 @@
-import math
 import numpy as np
 from PIL import Image
 
-from .diffusers_utils import (
-    create_pipeline,
-    infer_pipeline,
-)
+# from .diffusers_utils import (
+#     create_pipeline,
+#     infer_pipeline,
+# )
+from .pipeline.pipeline_builder import create_diffusion_pipeline
+from .pipeline.pipeline_runner import run_pipeline
+
 from .process_operations import (
     process_uv_texture,
     generate_multiple_views,
@@ -28,7 +30,9 @@ def img_parallel(scene, max_size, texture=None):
     # sd_resolution = 512 if scene.sd_version == "sd15" else 1024
 
     if scene.custom_sd_resolution:
-        sd_resolution = scene.custom_sd_resolution
+        sd_resolution = int(
+            int(scene.custom_sd_resolution) // np.sqrt(int(scene.num_cameras))
+        )
     else:
         sd_resolution = 512 if scene.sd_version == "sd15" else 1024
 
@@ -52,8 +56,8 @@ def img_parallel(scene, max_size, texture=None):
             255 * np.ones_like(resized_multiview_grids["canny_grid"])
         ).astype(np.uint8)
 
-    pipe = create_pipeline(scene)
-    output_grid = infer_pipeline(
+    pipe = create_diffusion_pipeline(scene)
+    output_grid = run_pipeline(
         pipe,
         scene,
         Image.fromarray(input_image_sd),
