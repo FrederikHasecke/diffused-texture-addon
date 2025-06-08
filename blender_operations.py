@@ -51,7 +51,8 @@ def render_views(scene: bpy.scene.context, obj: bpy.data.object) -> dict:
             name_prefix="RenderCam",
         )
     else:
-        raise ValueError("Only 4, 9, or 16 cameras are supported.")
+        msg = "Only 4, 9, or 16 cameras are supported."
+        raise ValueError(msg)
 
     # Set up render nodes
     render_img_folders = setup_render_settings(scene)
