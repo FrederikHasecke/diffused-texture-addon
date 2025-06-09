@@ -1,13 +1,15 @@
 import bpy
-from bpy.props import StringProperty, FloatProperty
+from bpy.props import FloatProperty, StringProperty  # type: ignore  # noqa: PGH003
 
 
-def register_prompt_properties():
+def register_prompt_properties() -> None:
     bpy.types.Scene.my_prompt = StringProperty(
-        name="Prompt", description="Define what the object should be"
+        name="Prompt",
+        description="Define what the object should be",
     )
     bpy.types.Scene.my_negative_prompt = StringProperty(
-        name="Negative Prompt", description="Define what the object should NOT be"
+        name="Negative Prompt",
+        description="Define what the object should NOT be",
     )
     bpy.types.Scene.guidance_scale = FloatProperty(
         name="Guidance Scale",
@@ -18,7 +20,7 @@ def register_prompt_properties():
     )
 
 
-def unregister_prompt_properties():
+def unregister_prompt_properties() -> None:
     del bpy.types.Scene.my_prompt
     del bpy.types.Scene.my_negative_prompt
     del bpy.types.Scene.guidance_scale

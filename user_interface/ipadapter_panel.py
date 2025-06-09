@@ -2,15 +2,26 @@ import bpy
 
 
 class OBJECT_PT_IPAdapterPanel(bpy.types.Panel):
+    """IpAdapter Panel.
+
+    Args:
+        bpy (_type_): _description_
+    """
+
     bl_label = "IPAdapter"
     bl_idname = "OBJECT_PT_ipadapter_panel"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "DiffusedTexture"
-    bl_options = {"DEFAULT_CLOSED"}
+    bl_options = {"DEFAULT_CLOSED"}  # noqa: RUF012
     bl_order = 2
 
-    def draw(self, context):
+    def draw(self, context: bpy.scene.context) -> None:
+        """Draw function.
+
+        Args:
+            context (bpy.scene.context): _description_
+        """
         layout = self.layout
         scene = context.scene
 
@@ -40,20 +51,36 @@ class OBJECT_PT_IPAdapterPanel(bpy.types.Panel):
 
 
 class OBJECT_OT_OpenNewIPAdapterImage(bpy.types.Operator):
-    """Operator to open a new image for IPAdapter"""
+    """Operator to open a new image for IPAdapter."""
 
     bl_idname = "image.open_new_ipadapter_image"
     bl_label = "Open New IPAdapter Image"
     bl_order = 3
 
-    filepath: bpy.props.StringProperty(subtype="FILE_PATH")
+    filepath: bpy.props.StringProperty(subtype="FILE_PATH")  # type: ignore  # noqa: PGH003
 
-    def execute(self, context):
+    def execute(self, context: bpy.scene.context) -> set[str]:
+        """Execute.
+
+        Args:
+            context (bpy.scene.context): _description_
+
+        Returns:
+            set[str]: _description_
+        """
         # Load the new image using the provided filepath
         image = bpy.data.images.load(self.filepath)
         context.scene.ipadapter_image = image
         return {"FINISHED"}
 
-    def invoke(self, context, event):
+    def invoke(self, context: bpy.scene.context) -> set[str]:
+        """Invoke.
+
+        Args:
+            context (bpy.scene.context): _description_
+
+        Returns:
+            set[str]: _description_
+        """
         context.window_manager.fileselect_add(self)
         return {"RUNNING_MODAL"}

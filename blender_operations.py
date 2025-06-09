@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import Any
 
 import bpy
@@ -17,11 +18,11 @@ def prepare_scene(obj: bpy.data.objects) -> dict[str, Any]:
     return backup_data
 
 
-def render_views(scene: bpy.scene.context, obj: bpy.data.object) -> dict:
+def render_views(context: bpy.context, obj: bpy.data.object) -> dict:
     """Render views and save to folders.
 
     Args:
-        scene (bpy.scene.context): _description_
+        context (bpy.context): _description_
         obj (bpy.data.object): _description_
 
     Raises:
@@ -31,20 +32,20 @@ def render_views(scene: bpy.scene.context, obj: bpy.data.object) -> dict:
         dict: _description_
     """
     # Set up cameras
-    num_cameras = int(scene.num_cameras)
+    num_cameras = int(context.scene.num_cameras)
     max_size = max(obj.dimensions)
 
     # Set parameters
-    num_cameras = int(scene.num_cameras)
+    num_cameras = int(context.scene.num_cameras)
 
     # Create cameras based on the number specified in the scene
-    if num_cameras == 4:
+    if num_cameras == NumCameras.four:
         cameras = create_cameras_on_one_ring(
             num_cameras=num_cameras,
             max_size=max_size,
             name_prefix="RenderCam",
         )
-    elif num_cameras in [9, 16]:
+    elif num_cameras in [NumCameras.nine, NumCameras.sixteen]:
         cameras = create_cameras_on_sphere(
             num_cameras=num_cameras,
             max_size=max_size,
@@ -55,11 +56,11 @@ def render_views(scene: bpy.scene.context, obj: bpy.data.object) -> dict:
         raise ValueError(msg)
 
     # Set up render nodes
-    render_img_folders = setup_render_settings(scene)
+    render_img_folders = setup_render_settings(context)
 
     # Render for each camera
     for camera in cameras:
-        scene.camera = camera
+        context.scene.camera = camera
         bpy.ops.render.render(write_still=True)
 
     return render_img_folders

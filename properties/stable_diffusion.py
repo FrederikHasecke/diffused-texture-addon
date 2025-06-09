@@ -1,22 +1,25 @@
 import bpy
-from bpy.props import StringProperty, EnumProperty, IntProperty
+from bpy.props import (  # type: ignore  # noqa: PGH003
+    EnumProperty,
+    IntProperty,
+    StringProperty,
+)
+
+from ..config.config_parameters import stable_diffusion_paths
 
 
-def update_sd_paths(self, context):
+def update_sd_paths(context: bpy.context) -> None:
     if context.scene.sd_version == "sd15":
-        context.scene.checkpoint_path = "runwayml/stable-diffusion-v1-5"
-        context.scene.canny_controlnet_path = "lllyasviel/sd-controlnet-canny"
-        context.scene.normal_controlnet_path = "lllyasviel/sd-controlnet-normal"
-        context.scene.depth_controlnet_path = "lllyasviel/sd-controlnet-depth"
+        context.scene.checkpoint_path = stable_diffusion_paths.sd15_ckpt
+        context.scene.canny_controlnet_path = stable_diffusion_paths.sd15_cn_canny
+        context.scene.normal_controlnet_path = stable_diffusion_paths.sd15_cn_normal
+        context.scene.depth_controlnet_path = stable_diffusion_paths.sd15_cn_depth
     elif context.scene.sd_version == "sdxl":
-        context.scene.checkpoint_path = "stabilityai/stable-diffusion-xl-base-1.0"
-        context.scene.canny_controlnet_path = "diffusers/controlnet-canny-sdxl-1.0"
-        context.scene.normal_controlnet_path = ""
-        context.scene.depth_controlnet_path = "diffusers/controlnet-depth-sdxl-1.0"
-        context.scene.controlnet_union_path = "xinsir/controlnet-union-sdxl-1.0"
+        context.scene.checkpoint_path = stable_diffusion_paths.sdxl_ckpt
+        context.scene.controlnet_union_path = stable_diffusion_paths.sdxl_cn_union
 
 
-def register_stable_diffusion_properties():
+def register_stable_diffusion_properties() -> None:
     bpy.types.Scene.sd_version = EnumProperty(
         name="Stable Diffusion Version",
         description="Choose between SD 1.5 or SDXL",
@@ -43,7 +46,7 @@ def register_stable_diffusion_properties():
     )
 
 
-def unregister_stable_diffusion_properties():
+def unregister_stable_diffusion_properties() -> None:
     del bpy.types.Scene.sd_version
     del bpy.types.Scene.checkpoint_path
     del bpy.types.Scene.custom_sd_resolution

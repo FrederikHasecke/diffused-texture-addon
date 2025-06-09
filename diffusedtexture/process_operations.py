@@ -1,13 +1,13 @@
+import math
 import os
 import shutil
-import math
+from pathlib import Path
 
 import bpy
-import mathutils
 import cv2
+import mathutils
 import numpy as np
 import torch
-from pathlib import Path
 
 from ..condition_setup import (
     bpy_img_to_numpy,
@@ -15,20 +15,14 @@ from ..condition_setup import (
     create_normal_condition,
     create_similar_angle_image,
 )
-
 from ..render_setup import (
-    setup_render_settings,
-    create_cameras_on_sphere,
     create_cameras_on_one_ring,
+    create_cameras_on_sphere,
+    setup_render_settings,
 )
 
 
-def delete_render_folders(render_img_folders):
-    """
-    Deletes all rendering folders and their contents if they exist.
-
-    :param render_img_folders: List of folder paths to delete.
-    """
+def delete_render_folders(render_img_folders: list) -> None:
     for render_folder in render_img_folders:
         # Check if the folder exists
         if os.path.exists(render_folder) and os.path.isdir(render_folder):
@@ -272,36 +266,23 @@ def latent_mixing_parallel(
 
 
 def process_uv_texture(
-    scene,
-    uv_images,
-    facing_images,
-    output_grid,
-    target_resolution=512,
-    render_resolution=2048,
-    facing_percentile=1.0,
-):
-    """
-    Processes the UV texture from multiple images and applies the inpainting on missing pixels.
-
-    :param scene: Blender scene object, used to get the output path.
-    :param uv_images: List of UV images corresponding to different camera views.
-    :param output_grid: Output grid image containing the combined render.
-    :param target_resolution: Resolution for each UV grid image.
-    :param render_resolution: Resolution of each render in the output_grid.
-    :return: Inpainted UV texture.
-    """
-
+    context: bpy.context,
+    uv_images: list[np.ndarray],
+    facing_images: list[np.ndarray],
+    output_grid: np.ndarray,
+    target_resolution: int = 512,
+    render_resolution: int = 2048,
+    facing_percentile: float = 1.0,
+) -> np.ndarray:
     num_cameras = len(uv_images)
 
-    # Convert the output grid to a NumPy array and save it for debugging
-    output_grid = np.array(output_grid)
-
-    if scene.custom_sd_resolution:
+    if context.scene.custom_sd_resolution:
         sd_resolution = int(
-            int(scene.custom_sd_resolution) // np.sqrt(int(scene.num_cameras))
+            int(context.scene.custom_sd_resolution)
+            // np.sqrt(int(context.scene.num_cameras))
         )
     else:
-        sd_resolution = 512 if scene.sd_version == "sd15" else 1024
+        sd_resolution = 512 if context.scene.sd_version == "sd15" else 1024
 
     # Resize output_grid to render resolution
     output_grid = cv2.resize(
@@ -463,21 +444,14 @@ def rotate_cameras_around_origin(angle_degrees):
 
 
 def generate_multiple_views(
-    scene, max_size, suffix, render_resolution=2048, offset_additional=0
-):
-    """
-    Generates texture maps for a 3D model using multiple views and saves outputs for depth, normal, UV, position, and image maps.
-
-    :param scene: The Blender scene object.
-    :param max_size: Maximum bounding box size of the model.
-    :param create_cameras_on_one_ring: Function to create cameras on a single ring around the object.
-    :param create_cameras_on_sphere: Function to create cameras in a spherical arrangement.
-    :param setup_render_settings: Function to set up render settings and node outputs.
-    :return: A dictionary of rendered images with keys: 'depth', 'normal', 'uv', 'position', 'image', 'facing'.
-    """
-
+    context: bpy.context,
+    max_size: float,
+    suffix: str,
+    render_resolution: int = 2048,
+    offset_additional: float = 0,
+) -> tuple[dict[str, list], list]:
     # Set parameters
-    num_cameras = int(scene.num_cameras)
+    num_cameras = int(context.scene.num_cameras)
 
     # Create cameras based on the number specified in the scene
     if num_cameras == 4:
@@ -500,9 +474,9 @@ def generate_multiple_views(
         rotate_cameras_around_origin(offset_additional)
 
     # Set up render nodes and paths
-    output_path = Path(scene.output_path)
+    output_path = Path(context.scene.output_path)
     output_nodes = setup_render_settings(
-        scene, resolution=(render_resolution, render_resolution)
+        context.scene, resolution=(render_resolution, render_resolution)
     )
     output_dirs = ["depth", "normal", "uv", "position", "img"]
     render_img_folders = []
@@ -528,11 +502,11 @@ def generate_multiple_views(
         img_images,
         facing_images,
     ) = ([] for _ in range(6))
-    frame_number = scene.frame_current
+    frame_number = context.scene.frame_current
 
     # Render and load images for each camera
     for i, camera in enumerate(cameras):
-        scene.camera = camera  # Set active camera
+        context.scene.camera = camera  # Set active camera
 
         # Set file paths for each render pass
         for pass_type in output_dirs:

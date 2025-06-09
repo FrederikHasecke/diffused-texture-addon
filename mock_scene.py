@@ -12,4 +12,3 @@ class MockUpScene:
         self.canny_controlnet_path = "lllyasviel/sd-controlnet-canny"
         self.normal_controlnet_path = "lllyasviel/sd-controlnet-normal"
         self.depth_controlnet_path = "lllyasviel/sd-controlnet-depth"
-        self.controlnet_type = "MULTIPLE"

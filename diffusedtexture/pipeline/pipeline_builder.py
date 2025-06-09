@@ -1,48 +1,59 @@
-import os
+from pathlib import Path
+
+import bpy
 import torch
+from diffusers.pipelines.controlnet.pipeline_controlnet_inpaint import (
+    StableDiffusionControlNetInpaintPipeline,
+)
+from diffusers.pipelines.controlnet.pipeline_controlnet_union_inpaint_sd_xl import (
+    StableDiffusionXLControlNetUnionInpaintPipeline,
+)
+
 from .controlnet_config import build_controlnet_config
 
 
-def create_diffusion_pipeline(scene):
+def create_diffusion_pipeline(
+    context: bpy.context,
+) -> (
+    StableDiffusionControlNetInpaintPipeline
+    | StableDiffusionXLControlNetUnionInpaintPipeline
+):
     from diffusers import (
         StableDiffusionControlNetInpaintPipeline,
-        StableDiffusionXLControlNetInpaintPipeline,
         StableDiffusionXLControlNetUnionInpaintPipeline,
     )
 
-    config = build_controlnet_config(scene)
+    config = build_controlnet_config(context.scene)
     pipe_cls = None
 
-    if scene.sd_version == "sd15":
+    if context.scene.sd_version == "sd15":
         pipe_cls = StableDiffusionControlNetInpaintPipeline
-    elif scene.sd_version == "sdxl":
-        if scene.controlnet_type == "UNION":
-            pipe_cls = StableDiffusionXLControlNetUnionInpaintPipeline
-        else:
-            pipe_cls = StableDiffusionXLControlNetInpaintPipeline
+    elif context.scene.sd_version == "sdxl":
+        pipe_cls = StableDiffusionXLControlNetUnionInpaintPipeline
     else:
-        raise ValueError("Unknown SD version: must be 'sd15' or 'sdxl'")
+        msg = "Unknown SD version: must be 'sd15' or 'sdxl'"
+        raise ValueError(msg)
 
-    controlnets = config[scene.mesh_complexity]["controlnets"]
+    controlnets = config[context.scene.mesh_complexity]["controlnets"]
 
-    if str(scene.checkpoint_path).endswith(".safetensors"):
+    if str(context.scene.checkpoint_path).endswith(".safetensors"):
         pipe = pipe_cls.from_single_file(
-            scene.checkpoint_path,
+            context.scene.checkpoint_path,
             use_safetensors=True,
             torch_dtype=torch.float16,
             variant="fp16",
             safety_checker=None,
         )
-    elif str(scene.checkpoint_path).endswith((".ckpt", ".pt", ".pth", ".bin")):
+    elif str(context.scene.checkpoint_path).endswith((".ckpt", ".pt", ".pth", ".bin")):
         pipe = pipe_cls.from_single_file(
-            scene.checkpoint_path,
+            context.scene.checkpoint_path,
             torch_dtype=torch.float16,
             variant="fp16",
             safety_checker=None,
         )
     else:
         pipe = pipe_cls.from_pretrained(
-            scene.checkpoint_path,
+            context.scene.checkpoint_path,
             controlnet=controlnets,
             torch_dtype=torch.float16,
             use_safetensors=True,
@@ -50,18 +61,21 @@ def create_diffusion_pipeline(scene):
         )
 
     # LoRA
-    if scene.num_loras > 0:
-        for lora in scene.lora_models:
+    if context.scene.num_loras > 0:
+        for lora in context.scene.lora_models:
             pipe.load_lora_weights(
-                os.path.dirname(lora.path), weight_name=os.path.basename(lora.path)
+                str(Path(lora.path).parent),
+                weight_name=str(Path(lora.path).name),
             )
             pipe.fuse_lora(lora_scale=lora.strength)
 
     # IPAdapter
-    if scene.use_ipadapter:
-        if scene.sd_version == "sd15":
+    if context.scene.use_ipadapter:
+        if context.scene.sd_version == "sd15":
             pipe.load_ip_adapter(
-                "h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin"
+                "h94/IP-Adapter",
+                subfolder="models",
+                weight_name="ip-adapter_sd15.bin",
             )
         else:
             pipe.load_ip_adapter(
@@ -69,7 +83,7 @@ def create_diffusion_pipeline(scene):
                 subfolder="sdxl_models",
                 weight_name="ip-adapter_sdxl.bin",
             )
-        pipe.set_ip_adapter_scale(scene.ipadapter_strength)
+        pipe.set_ip_adapter_scale(context.scene.ipadapter_strength)
 
     pipe.to("cuda")
     pipe.enable_model_cpu_offload()

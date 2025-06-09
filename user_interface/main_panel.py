@@ -2,34 +2,67 @@ import bpy
 
 
 class OBJECT_OT_SelectPipette(bpy.types.Operator):
+    """Operator to select and object."""
+
     bl_idname = "object.select_pipette"
     bl_label = "Select Object with Pipette"
 
-    def execute(self, context):
+    def execute(self, context: bpy.scene.context) -> set[str]:
+        """.
+
+        Args:
+            context (bpy.scene.context): _description_
+
+        Returns:
+            set[str]: _description_
+        """
         context.scene.my_mesh_object = context.object.name
         return {"FINISHED"}
 
 
 class OBJECT_OT_OpenNewInputImage(bpy.types.Operator):
-    """Operator to open a new image for the input texture"""
+    """Operator to open a new image for the input texture."""
 
     bl_idname = "image.open_new_input_image"
     bl_label = "Open New Input Image"
 
-    filepath: bpy.props.StringProperty(subtype="FILE_PATH")
+    filepath: bpy.props.StringProperty(subtype="FILE_PATH")  # type: ignore  # noqa: PGH003
 
-    def execute(self, context):
+    def execute(self, context: bpy.scene.context) -> set[str]:
+        """Execute image load.
+
+        Args:
+            context (bpy.scene.context): _description_
+
+        Returns:
+            set[str]: _description_
+        """
         # Load the new image using the provided filepath
         image = bpy.data.images.load(self.filepath)
         context.scene.input_texture_path = image
         return {"FINISHED"}
 
-    def invoke(self, context, event):
+    def invoke(self, context: bpy.scene.context) -> set[str]:
+        """Select the file.
+
+        Args:
+            context (bpy.scene.context): _description_
+            event (_type_): _description_
+
+        Returns:
+            set[str]: _description_
+        """
         context.window_manager.fileselect_add(self)
         return {"RUNNING_MODAL"}
 
 
 class OBJECT_PT_DiffusedTextureMainPanel(bpy.types.Panel):
+    """Main Panel.
+
+    Args:
+        bpy (_type_): _description_
+    """
+
     bl_label = "DiffusedTexture"
     bl_idname = "OBJECT_PT_diffused_texture_panel"
     bl_space_type = "VIEW_3D"
@@ -37,7 +70,12 @@ class OBJECT_PT_DiffusedTextureMainPanel(bpy.types.Panel):
     bl_category = "DiffusedTexture"
     bl_order = 0
 
-    def draw(self, context):
+    def draw(self, context: bpy.context) -> None:
+        """Draw Function.
+
+        Args:
+            context (bpy.context.scene): _description_
+        """
         layout = self.layout
         scene = context.scene
 
@@ -65,7 +103,8 @@ class OBJECT_PT_DiffusedTextureMainPanel(bpy.types.Panel):
 
         if scene.num_cameras == "16":
             box_dt.label(
-                text="Warning: 16 cameras may freeze Blender or cause OOM", icon="ERROR"
+                text="Warning: 16 cameras may freeze Blender or cause OOM",
+                icon="ERROR",
             )
 
         box_dt.prop(scene, "texture_resolution", text="Texture Resolution")
@@ -93,13 +132,16 @@ class OBJECT_PT_DiffusedTextureMainPanel(bpy.types.Panel):
         row = layout.row()
         row.template_ID_preview(scene, "input_texture_path", rows=2, cols=6)
         layout.operator(
-            "image.open_new_input_image", text="Open Input Texture", icon="IMAGE_DATA"
+            "image.open_new_input_image",
+            text="Open Input Texture",
+            icon="IMAGE_DATA",
         )
 
         # Texture Generation Button
         if not scene.output_path.strip():
             layout.label(
-                text="Please set output path to start generation", icon="ERROR"
+                text="Please set output path to start generation",
+                icon="ERROR",
             )
             row = layout.row()
             row.scale_y = 2.0

@@ -1,8 +1,13 @@
 import bpy
-from bpy.props import EnumProperty, StringProperty, FloatProperty
+from bpy.props import (  # type: ignore  # noqa: PGH003
+    EnumProperty,
+    FloatProperty,
+    StringProperty,
+)
 
 
-def register_controlnet_properties():
+def register_controlnet_properties() -> None:
+    """Register ControlNet Properties."""
     bpy.types.Scene.controlnet_type = EnumProperty(
         name="ControlNet Type",
         description="Choose between traditional or union-style ControlNet",
@@ -74,7 +79,7 @@ def register_controlnet_properties():
     )
 
 
-def unregister_controlnet_properties():
+def unregister_controlnet_properties() -> None:
     del bpy.types.Scene.controlnet_type
     del bpy.types.Scene.controlnet_union_path
     del bpy.types.Scene.union_controlnet_strength

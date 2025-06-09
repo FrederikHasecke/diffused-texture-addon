@@ -1,3 +1,4 @@
+# ruff: noqa
 import os
 import bpy
 import cv2
@@ -6,10 +7,6 @@ from pathlib import Path
 
 from ..condition_setup import (
     bpy_img_to_numpy,
-)
-from .diffusers_utils import (
-    create_uv_pass_pipeline,
-    infer_uv_pass_pipeline,
 )
 
 

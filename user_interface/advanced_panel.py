@@ -47,88 +47,85 @@ class OBJECT_PT_AdvancedPanel(bpy.types.Panel):
                 icon="ERROR",
             )
 
-        # If the user selected SDXL, offer a dropdown menu for ControlNets, to switch between the default (multiple paths) and the Controlnet Union (single path)
         if context.scene.sd_version == "sdxl":
-            box.label(text="ControlNet Mode:")
-            box.prop(context.scene, "controlnet_type", text="")
-
-            # If ControlNet Union is selected, show tick-boxes instead of paths
-            if context.scene.controlnet_type == "UNION":
-                box.label(text="ControlNet Union Inputs:")
-                box.prop(
-                    context.scene, "controlnet_union_path", text="ControlNet Union Path"
-                )
-
-                box.label(text="ControlNet Strength:")
-                box.prop(
-                    context.scene,
-                    "union_controlnet_strength",
-                    text="Union Control Strength",
-                )
-
-            # If Multiple ControlNets are selected, show the paths and strengths
-            else:
-                box.label(text="ControlNet Checkpoints:")
-                box.label(text="Change the `Mesh Complexity` to enable more options.")
-                box.prop(context.scene, "depth_controlnet_path", text="Depth Path")
-
-                # Disable the canny_controlnet_path option if the mesh complexity is set to LOW
-                row = box.row()
-                row.enabled = context.scene.mesh_complexity != "LOW"
-                row.prop(context.scene, "canny_controlnet_path", text="Canny Path")
-
-                # Disable the normal_controlnet_path option if the mesh complexity is set to LOW or MID
-                row = box.row()
-                row.enabled = context.scene.mesh_complexity == "HIGH"
-                row.prop(context.scene, "normal_controlnet_path", text="Normal Path")
-
-                box.label(text="ControlNet Strengths:")
-                box.prop(
-                    context.scene, "depth_controlnet_strength", text="Depth Strength"
-                )
-
-                # Disable the canny_controlnet_strength option if the mesh complexity is set to LOW
-                row = box.row()
-                row.enabled = context.scene.mesh_complexity != "LOW"
-                row.prop(
-                    context.scene, "canny_controlnet_strength", text="Canny Strength"
-                )
-
-                # Disable the normal_controlnet_strength option if the mesh complexity is set to LOW or MID
-                row = box.row()
-                row.enabled = context.scene.mesh_complexity == "HIGH"
-                row.prop(
-                    context.scene, "normal_controlnet_strength", text="Normal Strength"
-                )
+            self.panel_sdxl_controlnets(context=context, controlnet_panel=box)
 
         else:
-            # Add advanced settings
-            box.label(text="ControlNet Checkpoints:")
-            box.prop(context.scene, "depth_controlnet_path", text="Depth Path")
+            self.panel_sd15_controlnets(context=context, controlnet_panel=box)
 
-            # disable the canny_controlnet_path option if the mesh complexity is set to LOW
-            row = box.row()
-            row.enabled = context.scene.mesh_complexity != "LOW"
-            row.prop(context.scene, "canny_controlnet_path", text="Canny Path")
+    def panel_sd15_controlnets(
+        self,
+        context: bpy.scene.context,
+        controlnet_panel: bpy.types.Panel.layout,
+    ) -> None:
+        """Draw the panel for SD 1.5 ControlNet Paths.
 
-            # disable the normal_controlnet_path option if the mesh complexity is set to LOW or MID
-            row = box.row()
-            row.enabled = context.scene.mesh_complexity == "HIGH"
-            row.prop(context.scene, "normal_controlnet_path", text="Normal Path")
+        Args:
+            context (bpy.scene.context): Blender Context
+            controlnet_panel (bpy.types.Panel.layout): Panel
+        """
+        # Add advanced settings
+        controlnet_panel.label(text="ControlNet Checkpoints:")
+        controlnet_panel.prop(context.scene, "depth_controlnet_path", text="Depth Path")
 
-            box.label(text="ControlNet Strengths:")
-            box.prop(context.scene, "depth_controlnet_strength", text="Depth Strength")
+        # disable the canny_controlnet_path option
+        # if the mesh complexity is set to LOW
+        row = controlnet_panel.row()
+        row.enabled = context.scene.mesh_complexity != "LOW"
+        row.prop(context.scene, "canny_controlnet_path", text="Canny Path")
 
-            # disable the canny_controlnet_strength option if the mesh complexity is set to LOW
-            row = box.row()
-            row.enabled = context.scene.mesh_complexity != "LOW"
-            row.prop(context.scene, "canny_controlnet_strength", text="Canny Strength")
+        # disable the normal_controlnet_path option
+        # if the mesh complexity is set to LOW or MID
+        row = controlnet_panel.row()
+        row.enabled = context.scene.mesh_complexity == "HIGH"
+        row.prop(context.scene, "normal_controlnet_path", text="Normal Path")
 
-            # disable the normal_controlnet_strength option if the mesh complexity is set to LOW or MID
-            row = box.row()
-            row.enabled = context.scene.mesh_complexity == "HIGH"
-            row.prop(
-                context.scene,
-                "normal_controlnet_strength",
-                text="Normal Strength",
-            )
+        controlnet_panel.label(text="ControlNet Strengths:")
+        controlnet_panel.prop(
+            context.scene,
+            "depth_controlnet_strength",
+            text="Depth Strength",
+        )
+
+        # disable the canny_controlnet_strength option
+        # if the mesh complexity is set to LOW
+        row = controlnet_panel.row()
+        row.enabled = context.scene.mesh_complexity != "LOW"
+        row.prop(context.scene, "canny_controlnet_strength", text="Canny Strength")
+
+        # disable the normal_controlnet_strength option
+        # if the mesh complexity is set to LOW or MID
+        row = controlnet_panel.row()
+        row.enabled = context.scene.mesh_complexity == "HIGH"
+        row.prop(
+            context.scene,
+            "normal_controlnet_strength",
+            text="Normal Strength",
+        )
+
+    def panel_sdxl_controlnets(
+        self,
+        context: bpy.scene.context,
+        controlnet_panel: bpy.types.Panel.layout,
+    ) -> None:
+        """Draw the panel for SD XL ControlNet Paths.
+
+        Args:
+            context (bpy.scene.context): Blender Context
+            controlnet_panel (bpy.types.Panel.layout): Panel
+        """
+        controlnet_panel.label(text="ControlNet Mode:")
+
+        controlnet_panel.label(text="ControlNet Union Inputs:")
+        controlnet_panel.prop(
+            context.scene,
+            "controlnet_union_path",
+            text="ControlNet Union Path",
+        )
+
+        controlnet_panel.label(text="ControlNet Strength:")
+        controlnet_panel.prop(
+            context.scene,
+            "union_controlnet_strength",
+            text="Union Control Strength",
+        )

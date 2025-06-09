@@ -3,8 +3,6 @@ from PIL import Image
 
 import cv2
 
-# from utils import save_debug_images
-# from .diffusers_utils import create_pipeline, infer_pipeline
 from .pipeline.pipeline_builder import create_diffusion_pipeline
 from .pipeline.pipeline_runner import run_pipeline
 from .process_operations import (
@@ -15,7 +13,6 @@ from .process_operations import (
 )
 
 
-# Helper Functions
 def prepare_texture(texture, texture_resolution):
     """Prepare the texture by flipping and scaling."""
     if texture is None:

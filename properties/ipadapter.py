@@ -1,8 +1,8 @@
-import bpy
-from bpy.props import BoolProperty, PointerProperty, FloatProperty
+import bpy  # noqa: I001
+from bpy.props import BoolProperty, PointerProperty, FloatProperty  # type: ignore  # noqa: PGH003
 
 
-def update_ipadapter_image(self, context):
+def update_ipadapter_image(context: bpy.context) -> None:
     image = context.scene.ipadapter_image
     if image:
         image_data = bpy.data.images.get(image.name)
@@ -10,7 +10,8 @@ def update_ipadapter_image(self, context):
             context.scene.ipadapter_image = image_data
 
 
-def register_ipadapter_properties():
+def register_ipadapter_properties() -> None:
+    """Register all IPAdapter Properties."""
     bpy.types.Scene.use_ipadapter = BoolProperty(
         name="Use IPAdapter",
         description="Enable IPAdapter for image-based conditioning",
@@ -31,7 +32,7 @@ def register_ipadapter_properties():
     )
 
 
-def unregister_ipadapter_properties():
+def unregister_ipadapter_properties() -> None:
     del bpy.types.Scene.use_ipadapter
     del bpy.types.Scene.ipadapter_image
     del bpy.types.Scene.ipadapter_strength

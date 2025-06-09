@@ -112,7 +112,7 @@ def create_cameras_on_sphere(
     return cameras
 
 
-def setup_render_settings(scene, resolution=(512, 512)):
+def setup_render_settings(context: bpy.context, resolution=(512, 512)):
     """
     Configure render settings, including enabling specific passes and setting up the node tree.
 
@@ -122,7 +122,7 @@ def setup_render_settings(scene, resolution=(512, 512)):
     """
 
     # Enable Cycles (Eevee does not offer UV output)
-    scene.render.engine = "CYCLES"
+    context.scene.render.engine = "CYCLES"
 
     # Attempt to enable GPU support with preference order: OPTIX, CUDA, OPENCL, CPU
     preferences = bpy.context.preferences.addons["cycles"].preferences
@@ -138,58 +138,62 @@ def setup_render_settings(scene, resolution=(512, 512)):
             raise SystemError("You need an NVidia GPU for this Addon!")
 
     # Set rendering samples and noise threshold
-    scene.cycles.samples = 1  # Reduce to 1 sample for no anti-aliasing in Cycles
-    scene.cycles.use_denoising = False
-    scene.cycles.use_light_tree = False
-    scene.cycles.max_bounces = 1
-    scene.cycles.diffuse_bounces = 1
-    scene.cycles.glossy_bounces = 0
-    scene.cycles.transmission_bounces = 0
-    scene.cycles.volume_bounces = 0
-    scene.cycles.transparent_max_bounces = 0
+    context.scene.cycles.samples = (
+        1  # Reduce to 1 sample for no anti-aliasing in Cycles
+    )
+    context.scene.cycles.use_denoising = False
+    context.scene.cycles.use_light_tree = False
+    context.scene.cycles.max_bounces = 1
+    context.scene.cycles.diffuse_bounces = 1
+    context.scene.cycles.glossy_bounces = 0
+    context.scene.cycles.transmission_bounces = 0
+    context.scene.cycles.volume_bounces = 0
+    context.scene.cycles.transparent_max_bounces = 0
 
     # Set filter size to minimum (0.01 to disable most filtering)
-    scene.render.filter_size = 0.01
+    context.scene.render.filter_size = 0.01
 
     # Enable transparent background
-    scene.render.film_transparent = True
+    context.scene.render.film_transparent = True
 
     # Set the render resolution
-    scene.render.resolution_x, scene.render.resolution_y = resolution
+    context.scene.render.resolution_x, context.scene.render.resolution_y = resolution
 
     # put render resolution scale to 100%
-    scene.render.resolution_percentage = 100
+    context.scene.render.resolution_percentage = 100
 
     # Prevent interpolation for the UV, depth, and normal outputs
-    scene.render.image_settings.file_format = "OPEN_EXR"
-    scene.render.image_settings.color_depth = "32"  # Ensure high precision
+    context.scene.render.image_settings.file_format = "OPEN_EXR"
+    context.scene.render.image_settings.color_depth = "32"  # Ensure high precision
 
     # Ensure the scene uses nodes
-    scene.use_nodes = True
+    context.scene.use_nodes = True
 
     # Clear existing nodes
-    if scene.node_tree:
-        scene.node_tree.nodes.clear()
+    if context.scene.node_tree:
+        context.scene.node_tree.nodes.clear()
 
     # Create a new node tree
-    tree = scene.node_tree
+    tree = context.scene.node_tree
     links = tree.links
 
     # Create render layers node
     render_layers = tree.nodes.new("CompositorNodeRLayers")
 
     # Enable necessary passes
-    scene.view_layers["ViewLayer"].use_pass_z = True
-    scene.view_layers["ViewLayer"].use_pass_normal = True
-    scene.view_layers["ViewLayer"].use_pass_uv = True
-    scene.view_layers["ViewLayer"].use_pass_position = True
+    context.scene.view_layers["ViewLayer"].use_pass_z = True
+    context.scene.view_layers["ViewLayer"].use_pass_normal = True
+    context.scene.view_layers["ViewLayer"].use_pass_uv = True
+    context.scene.view_layers["ViewLayer"].use_pass_position = True
 
     # scene.world.light_settings.use_ambient_occlusion = True  # turn AO on
     # scene.world.light_settings.ao_factor = 1.0
-    scene.view_layers["ViewLayer"].use_pass_ambient_occlusion = True  # Enable AO pass
+    context.scene.view_layers[
+        "ViewLayer"
+    ].use_pass_ambient_occlusion = True  # Enable AO pass
 
     # output path for the render
-    scene.render.filepath = scene.output_path + "RenderOutput/render_"
+    context.scene.render.filepath = context.scene.output_path + "RenderOutput/render_"
 
     # Create output nodes for each pass
     output_nodes = {}
