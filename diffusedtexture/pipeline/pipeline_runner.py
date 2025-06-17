@@ -15,7 +15,7 @@ from diffusers.pipelines.controlnet.pipeline_controlnet_union_inpaint_sd_xl impo
 def run_pipeline(
     pipe: StableDiffusionControlNetInpaintPipeline
     | StableDiffusionXLControlNetUnionInpaintPipeline,
-    context: bpy.context,
+    context: bpy.types.Context,
     input_image: Image,
     uv_mask: Image,
     canny_img: Image,

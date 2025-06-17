@@ -8,7 +8,7 @@ from bpy.props import (  # type: ignore  # noqa: PGH003
 from ..config.config_parameters import stable_diffusion_paths
 
 
-def update_sd_paths(context: bpy.context) -> None:
+def update_sd_paths(context: bpy.types.Context) -> None:
     if context.scene.sd_version == "sd15":
         context.scene.checkpoint_path = stable_diffusion_paths.sd15_ckpt
         context.scene.canny_controlnet_path = stable_diffusion_paths.sd15_cn_canny

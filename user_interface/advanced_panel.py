@@ -14,7 +14,7 @@ class OBJECT_PT_AdvancedPanel(bpy.types.Panel):
     bl_options = {"DEFAULT_CLOSED"}  # noqa: RUF012
     bl_order = 1
 
-    def draw(self, context: bpy.context) -> None:
+    def draw(self, context: bpy.types.Context) -> None:
         """Draw the panel for the advanced options.
 
         Args:

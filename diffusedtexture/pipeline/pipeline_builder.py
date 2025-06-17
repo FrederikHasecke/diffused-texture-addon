@@ -13,7 +13,7 @@ from .controlnet_config import build_controlnet_config
 
 
 def create_diffusion_pipeline(
-    context: bpy.context,
+    context: bpy.types.Context,
 ) -> (
     StableDiffusionControlNetInpaintPipeline
     | StableDiffusionXLControlNetUnionInpaintPipeline

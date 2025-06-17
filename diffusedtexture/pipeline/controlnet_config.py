@@ -5,7 +5,7 @@ import torch
 from diffusers import ControlNetModel, ControlNetUnionModel
 
 
-def build_controlnet_config(context: bpy.context) -> dict[str, dict[str, Any]]:
+def build_controlnet_config(context: bpy.types.Context) -> dict[str, dict[str, Any]]:
     """Return a controlnet configuration dictionary for a given scene."""
     if context.scene.sd_version == "sdxl":
         controlnet_model = ControlNetUnionModel.from_pretrained(

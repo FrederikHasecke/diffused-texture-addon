@@ -23,7 +23,7 @@ class LoRAModel(bpy.types.PropertyGroup):
     )  # type: ignore  # noqa: PGH003
 
 
-def update_loras(context: bpy.context) -> None:
+def update_loras(context: bpy.types.Context) -> None:
     num_loras = context.scene.num_loras
     lora_models = context.scene.lora_models
 

@@ -1,23 +1,17 @@
-import os
 from pathlib import Path
+from typing import Any
 
-
-import bpy
 import numpy as np
+from numpy.typing import NDArray
 from PIL import Image
 
-from .diffusedtexture.pipeline.pipeline_builder import create_diffusion_pipeline
-from .diffusedtexture.pipeline.pipeline_runner import run_pipeline
-from .diffusedtexture.process_operations import (
-    assemble_multiview_grid,
-    create_input_image_grid,
-    process_uv_texture,
-)
+from blender_operations import ProcessParameters
+from diffusedtexture.img_parallel import img_parallel
+from diffusedtexture.img_sequential import img_sequential
+from diffusedtexture.uv_pass import uv_pass
 
 
-def run_texture_generation(context: bpy.context, render_img_folders: list) -> None:
-    """Run the texture generation in a separate thread."""
-    # Assemble grids from rendered images
+def load_multiview_images(render_img_folders: str) -> dict[str, list[NDArray[Any]]]:
     multiview_images = {"depth": [], "normal": [], "uv": [], "facing": []}
 
     for folder in render_img_folders:
@@ -33,43 +27,34 @@ def run_texture_generation(context: bpy.context, render_img_folders: list) -> No
             elif "facing" in file_name:
                 multiview_images["facing"].append(image)
 
-    # Assemble grids
-    grids, resized_grids = assemble_multiview_grid(
-        multiview_images, render_resolution=int(context.scene.render_resolution)
-    )
+    return multiview_images
 
-    # Create the diffusion pipeline
-    pipeline = create_diffusion_pipeline(context)
 
-    # Input grid
-    input_image_grid = create_input_image_grid(
-        np.ones_like(resized_grids["uv_grid"]),
-        resized_grids["uv_grid"],
-        resized_grids["uv_grid"],
-    )
+def run_texture_generation(
+    process_parameter: ProcessParameters,
+    render_img_folders: dict[str, NDArray | str],
+    texture: NDArray[Any] | None = None,
+) -> None:
+    """Run the texture generation in a separate thread."""
+    if process_parameter.operation_mode == "UV":
+        output_texture = uv_pass(process_parameter, render_img_folders, texture)
 
-    # Run pipeline
-    output_grid = run_pipeline(
-        pipeline,
-        context,
-        Image.fromarray(input_image_grid),
-        Image.fromarray(resized_grids["content_mask"]),
-        Image.fromarray(resized_grids["canny_grid"]),
-        Image.fromarray(resized_grids["normal_grid"]),
-        Image.fromarray(resized_grids["depth_grid"]),
-        strength=context.scene.denoise_strength,
-        guidance_scale=context.scene.guidance_scale,
-    )[0]
+    else:
+        # Assemble grids from rendered images
+        multiview_images = load_multiview_images(render_img_folders)
 
-    # Process UV texture
-    filled_uv_texture = process_uv_texture(
-        context=context,
-        uv_images=multiview_images["uv"],
-        facing_images=multiview_images["facing"],
-        output_grid=np.array(output_grid),
-        target_resolution=int(context.scene.texture_resolution),
-    )
+        if process_parameter.operation_mode == "PARALLEL_IMG":
+            output_texture = img_parallel(multiview_images, process_parameter, texture)
+        elif process_parameter.operation_mode == "SEQUENTIAL_IMG":
+            output_texture = img_sequential(
+                multiview_images,
+                process_parameter,
+                texture,
+            )
+        elif process_parameter.operation_mode == "PARA_SEQUENTIAL_IMG":
+            msg = "PARA_SEQUENTIAL_IMG mode not yet available"
+            raise NotImplementedError(msg)
 
     # Save the resulting texture
-    output_path = Path(context.scene.output_path) / "final_texture.png"
-    Image.fromarray(filled_uv_texture).save(output_path)
+    output_path = Path(process_parameter.output_path) / "final_texture.png"
+    Image.fromarray(output_texture).save(output_path)

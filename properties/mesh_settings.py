@@ -9,18 +9,18 @@ from bpy.props import (  # type: ignore  # noqa: PGH003
 from ..utils import get_mesh_objects, update_uv_maps
 
 
-def update_input_image(context: bpy.context) -> None:
+def update_input_image(context: bpy.types.Context) -> None:
     """Ensure the selected image from the preview window is set in scene.input_image."""
-    image = context.scene.input_texture_path
+    image = context.scene.input_texture
     if image:
         image_data = bpy.data.images.get(image.name)
 
         # Only set the image if it's not already correctly set to prevent recursion
-        if image_data != context.scene.input_texture_path:
-            context.scene.input_texture_path = image_data
+        if image_data != context.scene.input_texture:
+            context.scene.input_texture = image_data
 
 
-def update_output_path(context: bpy.context) -> None:
+def update_output_path(context: bpy.types.Context) -> None:
     if context.scene.output_path.startswith("//"):
         context.scene.output_path = bpy.path.abspath(context.scene.output_path)
 
@@ -45,7 +45,7 @@ def register_mesh_properties() -> None:
         min=0,
     )
 
-    bpy.types.Scene.input_texture_path = bpy.props.PointerProperty(
+    bpy.types.Scene.input_texture = bpy.props.PointerProperty(
         type=bpy.types.Image,
         name="Input Texture",
         description="Select an image to use as input texture",
@@ -99,6 +99,7 @@ def register_mesh_properties() -> None:
         items=[
             ("PARALLEL_IMG", "Parallel", "Run views in parallel"),
             ("SEQUENTIAL_IMG", "Sequential", "Run views one by one"),
+            ("PARA_SEQUENTIAL_IMG", "Para-Sequential", "Run subsets parallel"),
         ],
         default="PARALLEL_IMG",
     )

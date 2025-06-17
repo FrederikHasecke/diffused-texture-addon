@@ -3,10 +3,12 @@ import os
 import bpy
 import cv2
 import numpy as np
+from numpy.typing import NDArray
 from pathlib import Path
 
-from ..condition_setup import (
-    bpy_img_to_numpy,
+from ..blender_operations import (
+    ProcessParameters,
+    load_img_to_numpy,
 )
 
 
@@ -63,25 +65,34 @@ def export_uv_layout(obj_name, export_path, uv_map_name=None, size=(1024, 1024))
     )
 
 
-def uv_pass(scene, texture_input):
+def uv_pass(
+    process_parameter: ProcessParameters,
+    baked_texture_dict: dict[str, NDArray[np.float32]],
+    texture_input: NDArray[np.float32] | None = None,
+) -> NDArray[np.float32]:
     """Run the UV space refinement pass."""
 
-    obj_name = scene.my_mesh_object
-    uv_map_name = scene.my_uv_map
+    obj_name = process_parameter.my_mesh_object
+    uv_map_name = process_parameter.my_uv_map
 
     # uv output path
-    uv_map_path = Path(scene.output_path)  # Use Path for OS-independent path handling
+    uv_map_path = Path(
+        process_parameter.output_path
+    )  # Use Path for OS-independent path handling
     uv_map_path = str(uv_map_path / "uv_map_layout.png")
 
     export_uv_layout(
         obj_name,
         uv_map_path,
         uv_map_name=uv_map_name,
-        size=(int(scene.texture_resolution), int(scene.texture_resolution)),
+        size=(
+            int(process_parameter.texture_resolution),
+            int(process_parameter.texture_resolution),
+        ),
     )
 
     # load the uv layout
-    uv_layout_image = bpy_img_to_numpy(str(uv_map_path))
+    uv_layout_image = load_img_to_numpy(str(uv_map_path))
 
     uv_layout_image = uv_layout_image / np.max(uv_layout_image)
     uv_layout_image = uv_layout_image * 255

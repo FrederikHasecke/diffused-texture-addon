@@ -2,15 +2,19 @@ import math
 import os
 import shutil
 from pathlib import Path
+from typing import Any
 
 import bpy
 import cv2
 import mathutils
 import numpy as np
-import torch
+from numpy.typing import NDArray
+
+from config.config_parameters import NumCameras
+
+from ..blender_operations import load_img_to_numpy
 
 from ..condition_setup import (
-    bpy_img_to_numpy,
     create_depth_condition,
     create_normal_condition,
     create_similar_angle_image,
@@ -25,261 +29,26 @@ from ..render_setup import (
 def delete_render_folders(render_img_folders: list) -> None:
     for render_folder in render_img_folders:
         # Check if the folder exists
-        if os.path.exists(render_folder) and os.path.isdir(render_folder):
+        if Path(render_folder).exists() and Path(render_folder).is_dir():
             # Delete the folder and all its contents
             shutil.rmtree(render_folder)
-            print(f"Deleted folder: {render_folder}")
-        else:
-            print(f"Folder not found or not a directory: {render_folder}")
 
 
-def latent_mixing_parallel(
-    scene, uv_list, facing_list, latents, mixing_mode="weighted"
-):
-    """
-    Perform latent mixing using the provided latents and return the mixed latents.
-
-    Args:
-        scene (bpy.types.Scene): The Blender scene object.
-        uv_list (list): List of UV images corresponding to different camera views.
-        facing_list (list): List of facing images corresponding to different camera views.
-        latents (numpy.ndarray): Numpy array of all latents in one image corresponding to different camera views.
-    """
-
-    # remove the batch dimension
-    latents = latents.squeeze(0)
-
-    # support "mean", "weighted" and "max" mixing
-    if mixing_mode not in ["mean", "weighted", "max"]:
-        raise ValueError("Invalid mixing mode, can only be 'mean', 'weighted' or 'max'")
-
-    # save the device of the latents
-    device = latents.device
-
-    # move the latents to the cpu
-    latents = latents.cpu().numpy()
-
-    # latents shape is torch.Size([4, 64, 64]) for sd15 and torch.Size([4, 128, 128]) for sdxl
-
-    # get the target resolution of a latent image
-    latent_resolution = (
-        64 if scene.sd_version == "sd15" else 128
-    )  # We cant use the size of the latents since they are multiple ones together
-
-    # change the latents from torch.Size([4, 64, 64]) to (64, 64, 4)
-    latents = np.moveaxis(latents, 0, -1)
-
-    # split the latents into the different views
-    num_cameras = len(uv_list)
-    latent_images = []
-    for cam_index in range(num_cameras):
-        # Calculate the position in the grid
-        row = int((cam_index // int(math.sqrt(num_cameras))) * latent_resolution)
-        col = int((cam_index % int(math.sqrt(num_cameras))) * latent_resolution)
-
-        output_chunk = latents[
-            row : row + latent_resolution, col : col + latent_resolution
-        ]
-
-        latent_images.append(output_chunk)
-
-    # create a num_camera*latent_res*latent_res*-1 mixed latents array (one channel for each grid img)
-    mixed_latents = np.zeros(
-        (
-            num_cameras,
-            latent_resolution,
-            latent_resolution,
-            4,
-        ),
-        dtype=np.float32,
-    )
-
-    if mixing_mode == "mean":
-        weights_latents = np.ones(
-            (num_cameras, latent_resolution, latent_resolution), dtype=np.float32
-        )
-        weights_latents = weights_latents / num_cameras  # all weights are equal
-
-    else:
-        # create a num_camera*latent_res*latent_res mixed latents array (one for each grid img)
-        weights_latents = np.zeros(
-            (
-                num_cameras,
-                latent_resolution,
-                latent_resolution,
-            ),
-            dtype=np.float32,
-        )
-
-    for cam_index in range(num_cameras):
-        # Calculate the position in the grid
-        row = int((cam_index // int(math.sqrt(num_cameras))) * latent_resolution)
-        col = int((cam_index % int(math.sqrt(num_cameras))) * latent_resolution)
-
-        # load the uv image
-        uv_image = uv_list[cam_index]
-        uv_image = uv_image[..., :2]  # Keep only u and v
-
-        # resize the uv_image to the latent_resolution
-        uv_image = cv2.resize(
-            uv_image,
-            (latent_resolution, latent_resolution),
-            interpolation=cv2.INTER_NEAREST,
-        )
-
-        content_mask = np.zeros((latent_resolution, latent_resolution))
-        content_mask[np.sum(uv_image, axis=-1) > 0] = 255
-        content_mask = content_mask.astype(np.uint8)
-
-        uv_image[content_mask == 0] = 0
-
-        # resize the uv values to 0-511
-        uv_coordinates = (
-            (uv_image * int(latent_resolution - 1)).astype(np.uint16).reshape(-1, 2)
-        )
-
-        # the uvs are meant to start from the bottom left corner, so we flip the y axis (v axis)
-        uv_coordinates[:, 1] = int(latent_resolution - 1) - uv_coordinates[:, 1]
-
-        # in case we have uv coordinates beyond the texture
-        uv_coordinates = uv_coordinates % int(latent_resolution)
-
-        mixed_latents[cam_index, uv_coordinates[:, 1], uv_coordinates[:, 0], ...] = (
-            latent_images[cam_index].reshape(-1, 4)
-        )
-
-        # adjust the facing weight to the chosen percentile
-        cur_facing_image = facing_list[cam_index]
-
-        # resize the facing image to the latent_resolution
-        cur_facing_image = cv2.resize(
-            cur_facing_image,
-            (latent_resolution, latent_resolution),
-            interpolation=cv2.INTER_LINEAR,
-        )
-
-        if mixing_mode != "mean":
-            weights_latents[
-                cam_index, uv_coordinates[:, 1], uv_coordinates[:, 0], ...
-            ] = cur_facing_image.reshape(
-                -1,
-            )
-
-    if mixing_mode == "max":
-        max_latents = np.argmax(weights_latents, axis=0)
-
-        weighted_latents_texture = mixed_latents[
-            max_latents, np.arange(latent_resolution), np.arange(latent_resolution)
-        ]
-
-        # reshape the weighted latents to the original shape
-        weighted_latents_texture = weighted_latents_texture.reshape(
-            latent_resolution, latent_resolution, -1
-        )
-
-    else:
-        # multiply the texture channels by the point at factor
-        weighted_latents_texture = (
-            np.stack(
-                (
-                    weights_latents,
-                    weights_latents,
-                    weights_latents,
-                    weights_latents,
-                ),
-                axis=-1,
-            )
-            * mixed_latents
-        )
-
-        weighted_latents_texture = np.sum(weighted_latents_texture, axis=0) / np.stack(
-            (
-                np.sum(weights_latents, axis=0),
-                np.sum(weights_latents, axis=0),
-                np.sum(weights_latents, axis=0),
-                np.sum(weights_latents, axis=0),
-            ),
-            axis=-1,
-        )
-
-    # project the weighted_latents_texture to the original views and stitch them back together
-    weighted_latents = np.copy(latents)
-
-    for cam_index in range(num_cameras):
-        # Calculate the position in the grid
-        row = int((cam_index // int(math.sqrt(num_cameras))) * latent_resolution)
-        col = int((cam_index % int(math.sqrt(num_cameras))) * latent_resolution)
-
-        # load the uv image
-        uv_image = uv_list[cam_index]
-        uv_image = uv_image[..., :2]  # Keep only u and v
-
-        # resize the uv_image to the latent_resolution
-        uv_image = cv2.resize(
-            uv_image,
-            (latent_resolution, latent_resolution),
-            interpolation=cv2.INTER_NEAREST,
-        )
-
-        content_mask = np.zeros((latent_resolution, latent_resolution))
-        content_mask[np.sum(uv_image, axis=-1) > 0] = 255
-        content_mask = content_mask.astype(np.uint8)
-
-        uv_image[content_mask == 0] = 0
-
-        # resize the uv values to 0 .. latent_res-1
-        uv_coordinates = (
-            (uv_image * int(latent_resolution - 1)).astype(np.uint16).reshape(-1, 2)
-        )
-
-        # the uvs are meant to start from the bottom left corner, so we flip the y axis (v axis)
-        uv_coordinates[:, 1] = int(latent_resolution - 1) - uv_coordinates[:, 1]
-
-        # in case we have uv coordinates beyond the texture
-        uv_coordinates = uv_coordinates % int(latent_resolution)
-
-        # only replace the parts that are in the content mask
-        cams_latent_image = latent_images[cam_index].copy()
-
-        cams_weighted_latents_texture = weighted_latents_texture[
-            uv_coordinates[:, 1], uv_coordinates[:, 0], ...
-        ].reshape(latent_resolution, latent_resolution, 4)
-
-        cams_latent_image[content_mask == 255] = cams_weighted_latents_texture[
-            content_mask == 255
-        ]
-
-        weighted_latents[
-            row : row + latent_resolution, col : col + latent_resolution
-        ] = cams_latent_image
-
-    # change the latents from torch.Size([4, 64, 64]) to (64, 64, 4)
-    weighted_latents = np.moveaxis(weighted_latents, -1, 0)
-
-    # move the latents back to the device
-    weighted_latents = torch.tensor(weighted_latents, device=device)
-
-    # add the batch dimension back
-    weighted_latents = weighted_latents.unsqueeze(0)
-
-    return weighted_latents
-
-
-def process_uv_texture(
-    context: bpy.context,
-    uv_images: list[np.ndarray],
-    facing_images: list[np.ndarray],
-    output_grid: np.ndarray,
+def process_uv_texture(  # noqa: PLR0913
+    context: bpy.types.Context,
+    uv_images: list[NDArray],
+    facing_images: list[NDArray],
+    output_grid: NDArray,
     target_resolution: int = 512,
     render_resolution: int = 2048,
     facing_percentile: float = 1.0,
-) -> np.ndarray:
+) -> NDArray:
     num_cameras = len(uv_images)
 
     if context.scene.custom_sd_resolution:
         sd_resolution = int(
             int(context.scene.custom_sd_resolution)
-            // np.sqrt(int(context.scene.num_cameras))
+            // np.sqrt(int(context.scene.num_cameras)),
         )
     else:
         sd_resolution = 512 if context.scene.sd_version == "sd15" else 1024
@@ -305,19 +74,22 @@ def process_uv_texture(
         col = int((cam_index % int(math.sqrt(num_cameras))) * render_resolution)
 
         output_chunk = output_grid[
-            row : row + render_resolution, col : col + render_resolution
+            row : row + render_resolution,
+            col : col + render_resolution,
         ]
 
         resized_tiles.append(output_chunk)
 
     # create a 16x512x512x3 uv map (one for each grid img)
     uv_texture_first_pass = np.zeros(
-        (num_cameras, target_resolution, target_resolution, 3), dtype=np.float32
+        (num_cameras, target_resolution, target_resolution, 3),
+        dtype=np.float32,
     )
 
     # create a 16x512x512x3 uv map (one for each grid img)
     uv_texture_first_pass_weight = np.zeros(
-        (num_cameras, target_resolution, target_resolution), dtype=np.float32
+        (num_cameras, target_resolution, target_resolution),
+        dtype=np.float32,
     )
 
     for cam_index in range(num_cameras):
@@ -340,20 +112,25 @@ def process_uv_texture(
             (uv_image * int(target_resolution - 1)).astype(np.uint16).reshape(-1, 2)
         )
 
-        # the uvs are meant to start from the bottom left corner, so we flip the y axis (v axis)
+        # the uvs are meant to start from the bottom left corner
+        # so we flip the y axis (v axis)
         uv_coordinates[:, 1] = int(target_resolution - 1) - uv_coordinates[:, 1]
 
         # in case we have uv coordinates beyond the texture
         uv_coordinates = uv_coordinates % int(target_resolution)
 
         uv_texture_first_pass[
-            cam_index, uv_coordinates[:, 1], uv_coordinates[:, 0], ...
+            cam_index,
+            uv_coordinates[:, 1],
+            uv_coordinates[:, 0],
+            ...,
         ] = resized_tiles[cam_index].reshape(-1, 3)
 
         # adjust the facing weight to the chosen percentile
         cur_facing_image = facing_images[cam_index]
 
-        # goes from 0 to 1, we cut of the bottom 1.0-facing_percentile and stretch the rest 0 to 1
+        # goes from 0 to 1
+        # we cut of the bottom 1.0-facing_percentile and stretch the rest 0 to 1
         cur_facing_image = cur_facing_image * (
             1.0 + facing_percentile
         )  # 0..1 now 0..1.2
@@ -361,11 +138,27 @@ def process_uv_texture(
         cur_facing_image[cur_facing_image < 0] = 0
 
         uv_texture_first_pass_weight[
-            cam_index, uv_coordinates[:, 1], uv_coordinates[:, 0], ...
+            cam_index,
+            uv_coordinates[:, 1],
+            uv_coordinates[:, 0],
+            ...,
         ] = cur_facing_image.reshape(
             -1,
         )
 
+    return inpaint_missing(
+        target_resolution,
+        uv_texture_first_pass,
+        uv_texture_first_pass_weight,
+    )
+
+
+def inpaint_missing(
+    target_resolution: int,
+    uv_texture_first_pass: NDArray,
+    uv_texture_first_pass_weight: NDArray,
+    lower_bound: float = 0.1,
+) -> NDArray:
     # multiply the texture channels by the point at factor
     weighted_tex = (
         np.stack(
@@ -390,42 +183,59 @@ def process_uv_texture(
 
     # make the unpainted mask 0-255 uint8
     unpainted_mask = np.zeros((target_resolution, target_resolution))
-    unpainted_mask[np.sum(uv_texture_first_pass_weight, axis=0) <= 0.1] = 255
+    unpainted_mask[np.sum(uv_texture_first_pass_weight, axis=0) <= lower_bound] = 255
 
     # inpaint all the missing pixels
-    filled_uv_texture = cv2.inpaint(
+    return cv2.inpaint(
         weighted_tex.astype(np.uint8),
         unpainted_mask.astype(np.uint8),
         inpaintRadius=3,
         flags=cv2.INPAINT_TELEA,
     )
 
-    return filled_uv_texture
 
-
-def load_image(base_path, index, frame_number, prefix=""):
+def load_image(
+    base_path: str,
+    index: int,
+    frame_number: int,
+    prefix: str = "",
+) -> NDArray[Any]:
     """Helper function to load an image file as a numpy array."""
     file_path = Path(base_path) / f"{prefix}camera_{index:02d}_{frame_number:04d}.exr"
-    return bpy_img_to_numpy(str(file_path))[..., :3]
+    return load_img_to_numpy(str(file_path))[..., :3]
 
 
-def load_depth_image(base_path, index, frame_number):
+def load_depth_image(
+    base_path: str,
+    index: int,
+    frame_number: int,
+) -> NDArray[Any]:
     """Helper function to load and process a depth image."""
     file_path = Path(base_path) / f"depth_camera_{index:02d}_{frame_number:04d}.exr"
     return create_depth_condition(str(file_path))[..., :3]
 
 
-def load_normal_image(base_path, index, frame_number, camera):
+def load_normal_image(
+    base_path: str,
+    index: int,
+    frame_number: int,
+    camera: bpy.types.Camera,
+) -> NDArray[Any]:
     """Helper function to load and process a normal image."""
     file_path = Path(base_path) / f"normal_camera_{index:02d}_{frame_number:04d}.exr"
     return create_normal_condition(str(file_path), camera)[..., :3]
 
 
-def rotate_cameras_around_origin(angle_degrees):
-    """
-    Rotates all cameras in the current Blender scene around the world origin by the specified angle.
+def rotate_cameras_around_origin(
+    angle_degrees: float,
+    cameras: list[bpy.types.Camera],
+) -> None:
+    """Rotates all cameras around the world origin by the specified angle.
 
-    :param angle_degrees: The angle in degrees to rotate the cameras.
+    Args:
+        angle_degrees (float): The angle in degrees to rotate the cameras.
+        cameras (list[bpy.types.Camera]): The available cameras.
+
     """
     # Convert angle to radians
     angle_radians = math.radians(angle_degrees)
@@ -433,18 +243,17 @@ def rotate_cameras_around_origin(angle_degrees):
     # Create a rotation matrix for rotation around the Z-axis
     rotation_matrix = mathutils.Matrix.Rotation(angle_radians, 4, "Z")
 
-    # Iterate through all objects in the scene
-    for obj in bpy.data.objects:
-        if obj.type == "CAMERA":
-            # Apply the rotation matrix to the object's location
-            obj.location = rotation_matrix @ obj.location
+    # Iterate through all cameras
+    for cam_obj in cameras:
+        # Apply the rotation matrix to the object's location
+        cam_obj.location = rotation_matrix @ cam_obj.location
 
-            # Rotate the camera's orientation as well
-            obj.rotation_euler.rotate(rotation_matrix)
+        # Rotate the camera's orientation as well
+        cam_obj.rotation_euler.rotate(rotation_matrix)
 
 
 def generate_multiple_views(
-    context: bpy.context,
+    context: bpy.types.Context,
     max_size: float,
     suffix: str,
     render_resolution: int = 2048,
@@ -454,37 +263,40 @@ def generate_multiple_views(
     num_cameras = int(context.scene.num_cameras)
 
     # Create cameras based on the number specified in the scene
-    if num_cameras == 4:
+    if num_cameras == NumCameras.four:
         cameras = create_cameras_on_one_ring(
             num_cameras=num_cameras,
             max_size=max_size,
             name_prefix=f"Camera_{suffix}",
         )
-    elif num_cameras in [9, 16]:
+    elif num_cameras in [NumCameras.nine, NumCameras.sixteen]:
         cameras = create_cameras_on_sphere(
             num_cameras=num_cameras,
             max_size=max_size,
             name_prefix=f"Camera_{suffix}",
         )
     else:
-        raise ValueError("Only 4, 9, or 16 cameras are supported.")
+        msg = "Only 4, 9, or 16 cameras are supported."
+        raise ValueError(msg)
 
     # To have different viewpoints between modes
     if offset_additional > 0:
-        rotate_cameras_around_origin(offset_additional)
+        rotate_cameras_around_origin(cameras)
 
     # Set up render nodes and paths
     output_path = Path(context.scene.output_path)
     output_nodes = setup_render_settings(
-        context.scene, resolution=(render_resolution, render_resolution)
+        context.scene,
+        resolution=(render_resolution, render_resolution),
     )
     output_dirs = ["depth", "normal", "uv", "position", "img"]
     render_img_folders = []
     for output_type in output_dirs:
         output_nodes[output_type].base_path = str(
-            output_path / f"first_pass_{output_type}"
+            output_path / f"first_pass_{output_type}",
         )
-        os.makedirs(output_nodes[output_type].base_path, exist_ok=True)
+        output_path = Path(str(output_nodes[output_type].base_path))
+        output_path.mkdir(parents=True, exist_ok=True)
 
         render_img_folders.append(str(output_nodes[output_type].base_path))
 
@@ -517,28 +329,49 @@ def generate_multiple_views(
 
         # Load UV image
         uv_images.append(
-            load_image(output_nodes["uv"].base_path, i, frame_number, "uv_")
+            load_image(
+                output_nodes["uv"].base_path,
+                i,
+                frame_number,
+                "uv_",
+            ),
         )
 
         # Load depth image with processing
         depth_images.append(
-            load_depth_image(output_nodes["depth"].base_path, i, frame_number)
+            load_depth_image(
+                output_nodes["depth"].base_path,
+                i,
+                frame_number,
+            ),
         )
 
         # Load position image
         position_images.append(
-            load_image(output_nodes["position"].base_path, i, frame_number, "position_")
+            load_image(
+                output_nodes["position"].base_path,
+                i,
+                frame_number,
+                "position_",
+            ),
         )
 
         # Load normal image with processing
         normal_images.append(
-            load_normal_image(output_nodes["normal"].base_path, i, frame_number, camera)
+            load_normal_image(
+                output_nodes["normal"].base_path,
+                i,
+                frame_number,
+                camera,
+            ),
         )
 
-        # Create a facing ratio image to show alignment between normals and camera direction
+        # Create a facing ratio image to show alignment
+        # between normals and camera direction
         facing_img = create_similar_angle_image(
             load_image(output_nodes["normal"].base_path, i, frame_number, "normal_")[
-                ..., :3
+                ...,
+                :3,
             ],
             position_images[-1][..., :3],
             camera,
@@ -556,17 +389,25 @@ def generate_multiple_views(
 
 
 def assemble_multiview_grid(
-    multiview_images, render_resolution=2048, sd_resolution=512, latent_resolution=None
-):
-    """
-    Assembles images from multiple views into a structured grid, applies a mask, and resizes the outputs.
+    multiview_images: dict[str, NDArray],
+    render_resolution: int = 2048,
+    sd_resolution: int = 512,
+) -> tuple[dict[str, NDArray], dict[str, NDArray]]:
+    """Assemble images from multiple views into a structured grid.
 
-    :param multiview_images: Dictionary containing lists of images for 'depth', 'normal', 'facing', and 'uv'.
-    :param render_resolution: Resolution for rendering each camera view before scaling.
-    :param target_resolution: Target resolution for the SD images.
-    :return: A dictionary containing assembled grids for 'depth', 'normal', 'uv', 'facing', and 'content mask'.
-    """
+    Args:
+        multiview_images (dict[str, list]): Dictionary containing lists of images for
+                                            'depth', 'normal', 'facing', and 'uv'.
+        render_resolution (int, optional): Resolution for rendering each camera view
+                                            before scaling. Defaults to 2048.
+        sd_resolution (int, optional): Target resolution for the SD images.
+                                        Defaults to 512.
 
+    Returns:
+        tuple[dict[str, Any], dict]: Contains assembled grids for 'depth', 'normal',
+                                    'uv', 'facing', and 'content mask'.
+
+    """
     num_cameras = len(multiview_images["depth"])
     grid_size = int(math.sqrt(num_cameras))  # Assuming a square grid
 
@@ -580,7 +421,8 @@ def assemble_multiview_grid(
             multiview_images["normal"],
             multiview_images["facing"],
             multiview_images["uv"],
-        )
+            strict=False,
+        ),
     ):
         row, col = compute_grid_position(i, grid_size, render_resolution)
         populate_grids(
@@ -594,7 +436,7 @@ def assemble_multiview_grid(
             render_resolution,
         )
 
-    # TODO: Use ambient occlusion grid as input image for SD model
+    # TODO(Frederik): Use facing img as img input
 
     # Generate content mask and input image
     grids["content_mask"] = create_content_mask(grids["uv_grid"])
@@ -602,14 +444,6 @@ def assemble_multiview_grid(
     # Resize grids to target resolution for SD model input
     resized_grids = resize_grids(grids, render_resolution, sd_resolution)
     resized_grids["content_mask"] = create_content_mask(resized_grids["uv_grid"])
-
-    if latent_resolution is not None:
-        latent_grids = resize_grids(
-            grids, render_resolution, latent_resolution, interpolation=cv2.INTER_LINEAR
-        )
-        # Add the latent resolution grids to the resized grids with "latent_" prefix
-        for key, grid in latent_grids.items():
-            resized_grids[f"latent_{key}"] = grid
 
     # Create the canny for the resized grids
     resized_grids["canny_grid"] = np.stack(
@@ -632,11 +466,14 @@ def initialize_grids(grid_size, render_resolution):
         "normal_grid": np.zeros((*grid_shape, 3), dtype=np.uint8),
         "facing_grid": np.zeros(grid_shape, dtype=np.uint8),
         "uv_grid": np.zeros((*grid_shape, 3), dtype=np.float32),
-        "ambient_occlusion": np.zeros(grid_shape, dtype=np.uint8),
     }
 
 
-def compute_grid_position(index, grid_size, render_resolution):
+def compute_grid_position(
+    index: int,
+    grid_size: int,
+    render_resolution: int,
+) -> tuple[int, int]:
     """Compute row and column position in the grid based on index."""
     row = (index // grid_size) * render_resolution
     col = (index % grid_size) * render_resolution
@@ -644,8 +481,15 @@ def compute_grid_position(index, grid_size, render_resolution):
 
 
 def populate_grids(
-    grids, depth_img, normal_img, facing_img, uv_img, row, col, render_resolution
-):
+    grids: dict[str, NDArray],
+    depth_img: NDArray,
+    normal_img: NDArray,
+    facing_img: NDArray,
+    uv_img: NDArray,
+    row: int,
+    col: int,
+    render_resolution: int,
+) -> None:
     """Populate each grid with the corresponding multiview images."""
     grids["depth_grid"][
         row : row + render_resolution, col : col + render_resolution
@@ -659,10 +503,6 @@ def populate_grids(
     grids["uv_grid"][row : row + render_resolution, col : col + render_resolution] = (
         uv_img
     )
-    grids["ambient_occlusion"] = np.copy(grids["facing_grid"])
-
-    # make the grey bg values white
-    grids["ambient_occlusion"][grids["ambient_occlusion"] == 0] = 255
 
 
 def create_content_mask(uv_img):

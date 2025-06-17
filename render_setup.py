@@ -1,11 +1,15 @@
-import bpy
 import math
+
+import bpy
 import mathutils
 
 
 def create_cameras_on_one_ring(
-    num_cameras=16, max_size=1, name_prefix="Camera", fov=22.5
-):
+    num_cameras: int = 16,
+    max_size: float = 1,
+    name_prefix: str = "Camera",
+    fov: float = 22.5,
+) -> list[bpy.types.Camera]:
     cameras = []
     fov_rad = math.radians(fov)
     radius = (max_size * 0.5) / math.tan(fov_rad * 0.5)
@@ -35,8 +39,11 @@ def create_cameras_on_one_ring(
 
 
 def create_cameras_on_two_rings(
-    num_cameras=16, max_size=1, name_prefix="Camera", fov=22.5
-):
+    num_cameras: int = 16,
+    max_size: float = 1,
+    name_prefix: str = "Camera",
+    fov: float = 22.5,
+) -> list[bpy.types.Camera]:
     cameras = []
     fov_rad = math.radians(fov)
     radius = (max_size * 0.5) / math.tan(fov_rad * 0.5)
@@ -82,8 +89,11 @@ def create_cameras_on_two_rings(
 
 
 def create_cameras_on_sphere(
-    num_cameras=16, max_size=1, name_prefix="Camera", fov=22.5
-):
+    num_cameras: int = 16,
+    max_size: float = 1,
+    name_prefix: str = "Camera",
+    fov: float = 22.5,
+) -> list[bpy.types.Camera]:
     cameras = []
     phi = math.pi * (3.0 - math.sqrt(5.0))
     fov_rad = math.radians(fov)
@@ -112,15 +122,7 @@ def create_cameras_on_sphere(
     return cameras
 
 
-def setup_render_settings(context: bpy.context, resolution=(512, 512)):
-    """
-    Configure render settings, including enabling specific passes and setting up the node tree.
-
-    :param scene: The scene to configure.
-    :param resolution: Tuple specifying the render resolution (width, height).
-    :return: A dictionary containing references to the output nodes for each pass.
-    """
-
+def setup_cycles_setting(context: bpy.types.Context) -> None:
     # Enable Cycles (Eevee does not offer UV output)
     context.scene.render.engine = "CYCLES"
 
@@ -128,14 +130,12 @@ def setup_render_settings(context: bpy.context, resolution=(512, 512)):
     preferences = bpy.context.preferences.addons["cycles"].preferences
     try:
         preferences.compute_device_type = "OPTIX"
-        print("Using OPTIX for rendering.")
-    except Exception as e_optix:
-        print(f"OPTIX failed: {e_optix}")
+    except Exception:  # noqa: BLE001
         try:
             preferences.compute_device_type = "CUDA"
-            print("Using CUDA for rendering.")
-        except:
-            raise SystemError("You need an NVidia GPU for this Addon!")
+        except Exception as e_cuda:
+            msg = "An NVIDIA GPU is required for this addon."
+            raise SystemError(msg) from e_cuda
 
     # Set rendering samples and noise threshold
     context.scene.cycles.samples = (
@@ -149,6 +149,34 @@ def setup_render_settings(context: bpy.context, resolution=(512, 512)):
     context.scene.cycles.transmission_bounces = 0
     context.scene.cycles.volume_bounces = 0
     context.scene.cycles.transparent_max_bounces = 0
+
+
+def setup_render_settings(
+    context: bpy.types.Context,
+    resolution: tuple[int, int] = (512, 512),
+) -> dict[str, bpy.types.CompositorNodeOutputFile]:
+    """Configure render settings.
+
+    Include enabling specific passes and setting up the node tree.
+
+    :param scene:
+    :param resolution:
+    :return:
+
+    Args:
+        context (bpy.types.Context): The scene to configure.
+        resolution (tuple, optional): Tuple specifying the render resolution (w, h).
+                                        Defaults to (512, 512).
+
+    Raises:
+        SystemError: _description_
+
+    Returns:
+        dict[str, bpy.types.CompositorNodeOutputFile]:  A dictionary containing
+                                                        references to the output
+                                                        nodes for each pass.
+    """
+    setup_cycles_setting(context)
 
     # Set filter size to minimum (0.01 to disable most filtering)
     context.scene.render.filter_size = 0.01
@@ -166,6 +194,21 @@ def setup_render_settings(context: bpy.context, resolution=(512, 512)):
     context.scene.render.image_settings.file_format = "OPEN_EXR"
     context.scene.render.image_settings.color_depth = "32"  # Ensure high precision
 
+    return setup_output_nodes(context)
+
+
+def setup_output_nodes(
+    context: bpy.types.Context,
+) -> dict[str, bpy.types.CompositorNodeOutputFile]:
+    """Create the Node tree.
+
+    Args:
+        context (bpy.types.Context): _description_
+
+    Returns:
+        dict[str, bpy.types.CompositorNodeOutputFile]: _description_
+
+    """
     # Ensure the scene uses nodes
     context.scene.use_nodes = True
 
@@ -185,12 +228,6 @@ def setup_render_settings(context: bpy.context, resolution=(512, 512)):
     context.scene.view_layers["ViewLayer"].use_pass_normal = True
     context.scene.view_layers["ViewLayer"].use_pass_uv = True
     context.scene.view_layers["ViewLayer"].use_pass_position = True
-
-    # scene.world.light_settings.use_ambient_occlusion = True  # turn AO on
-    # scene.world.light_settings.ao_factor = 1.0
-    context.scene.view_layers[
-        "ViewLayer"
-    ].use_pass_ambient_occlusion = True  # Enable AO pass
 
     # output path for the render
     context.scene.render.filepath = context.scene.output_path + "RenderOutput/render_"
@@ -233,14 +270,5 @@ def setup_render_settings(context: bpy.context, resolution=(512, 512)):
     position_output.file_slots[0].path = "position_"
     links.new(render_layers.outputs["Position"], position_output.inputs[0])
     output_nodes["position"] = position_output
-
-    # Ambient Occlusion pass
-    img_output = tree.nodes.new("CompositorNodeOutputFile")
-    img_output.label = "Image Output"
-    img_output.name = "ImageOutput"
-    img_output.base_path = ""
-    img_output.file_slots[0].path = "img_"
-    links.new(render_layers.outputs["Image"], img_output.inputs[0])
-    output_nodes["img"] = img_output
 
     return output_nodes

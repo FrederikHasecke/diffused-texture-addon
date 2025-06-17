@@ -111,7 +111,7 @@ def save_debug_images(
 
 
 def isolate_object(obj):
-    """Temporarily hide all other objects and move this one to origin."""
+    """Temporarily hide all other objects and move target one to origin."""
     hidden_objects = []
 
     for other in bpy.data.objects:

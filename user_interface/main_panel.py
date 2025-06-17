@@ -39,7 +39,7 @@ class OBJECT_OT_OpenNewInputImage(bpy.types.Operator):
         """
         # Load the new image using the provided filepath
         image = bpy.data.images.load(self.filepath)
-        context.scene.input_texture_path = image
+        context.scene.input_texture = image
         return {"FINISHED"}
 
     def invoke(self, context: bpy.scene.context) -> set[str]:
@@ -70,7 +70,7 @@ class OBJECT_PT_DiffusedTextureMainPanel(bpy.types.Panel):
     bl_category = "DiffusedTexture"
     bl_order = 0
 
-    def draw(self, context: bpy.context) -> None:
+    def draw(self, context: bpy.types.Context) -> None:
         """Draw Function.
 
         Args:
@@ -130,7 +130,7 @@ class OBJECT_PT_DiffusedTextureMainPanel(bpy.types.Panel):
         # Input Texture
         layout.label(text="Input Texture")
         row = layout.row()
-        row.template_ID_preview(scene, "input_texture_path", rows=2, cols=6)
+        row.template_ID_preview(scene, "input_texture", rows=2, cols=6)
         layout.operator(
             "image.open_new_input_image",
             text="Open Input Texture",

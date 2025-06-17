@@ -13,7 +13,7 @@ class OBJECT_PT_IPAdapterPanel(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "DiffusedTexture"
-    bl_options = {"DEFAULT_CLOSED"}  # noqa: RUF012
+    bl_options = {"DEFAULT_CLOSED"}
     bl_order = 2
 
     def draw(self, context: bpy.scene.context) -> None:

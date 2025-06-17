@@ -5,13 +5,19 @@ import time
 
 import bpy
 
-from .blender_operations import prepare_scene, render_views
+from .blender_operations import (
+    bake_uv_views,
+    bpy_img_to_numpy,
+    extract_process_parameters_from_context,
+    prepare_scene,
+    render_views,
+)
 from .texture_generation import run_texture_generation
 from .utils import restore_scene
 
 
 class OBJECT_OT_GenerateTexture(bpy.types.Operator):
-    """Start texture generation in a background thread"""
+    """Start texture generation in a background thread."""
 
     bl_idname = "object.generate_texture"
     bl_label = "Generate Texture"
@@ -24,22 +30,42 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
     _start_time = None
     _last_progress = 0
 
-    def execute(self, context):
+    def execute(self, context: bpy.types.Context) -> set[str]:
+        """Execute the Generation Process.
+
+        Args:
+            context (bpy.context): _description_
+
+        Returns:
+            set[str]: _description_
+
+        """
         self._done = False
         self._error = None
         self._start_time = time.time()
 
         # Start the rendering process in the main thread (blocking)
         try:
-            scene = context.scene
-            selected_obj_name = scene.my_mesh_object
+            selected_obj_name = context.scene.my_mesh_object
             selected_obj = bpy.data.objects.get(selected_obj_name)
 
             # Backup the scene and isolate the object
             scene_backup = prepare_scene(selected_obj)
 
-            # Render views and save to folders
-            render_img_folders = render_views(scene, selected_obj)
+            if context.scene.operation_mode != "UV":
+                # Render views and save to folders
+                render_img_folders = render_views(context, selected_obj)
+            else:
+                render_img_folders = bake_uv_views(context, selected_obj)
+
+            # Put the process parameters from the blender context into a dataclass
+            process_parameter = extract_process_parameters_from_context(context)
+
+            # if a input texture exists, turn it into an NDArray
+            if context.scene.input_image is not None:
+                input_texture = bpy_img_to_numpy(context.scene.input_image)
+            else:
+                input_texture = None
 
             # Restore the scene after rendering
             restore_scene(scene_backup)
@@ -47,7 +73,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
             # Start the texture generation in a background thread
             self._thread = threading.Thread(
                 target=run_texture_generation,
-                args=(scene, render_img_folders),
+                args=(process_parameter, render_img_folders, input_texture),
                 daemon=True,
             )
             self._thread.start()
@@ -57,23 +83,31 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
             self._timer = wm.event_timer_add(0.5, window=context.window)
             wm.modal_handler_add(self)
 
-            return {"RUNNING_MODAL"}
-
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.report({"ERROR"}, f"Execution error: {e}")
             return {"CANCELLED"}
 
-    def modal(self, context, event):
-        if event.type == "TIMER":
-            if self._done:
-                context.window_manager.event_timer_remove(self._timer)
-                context.window_manager.progress_end()
+        return {"RUNNING_MODAL"}
 
-                if self._error:
-                    self.report({"ERROR"}, f"Texture generation failed: {self._error}")
-                    return {"CANCELLED"}
+    def modal(self, context: bpy.types.Context, event: bpy.types.Event) -> set[str]:
+        """Update or end Timer.
 
-                self.report({"INFO"}, "Texture saved successfully.")
-                return {"FINISHED"}
+        Args:
+            context (bpy.context): _description_
+            event (bpy.types.Event): _description_
+
+        Returns:
+            set[str]: _description_
+        """
+        if event.type == "TIMER" and self._done:
+            context.window_manager.event_timer_remove(self._timer)
+            context.window_manager.progress_end()
+
+            if self._error:
+                self.report({"ERROR"}, f"Texture generation failed: {self._error}")
+                return {"CANCELLED"}
+
+            self.report({"INFO"}, "Texture saved successfully.")
+            return {"FINISHED"}
 
         return {"PASS_THROUGH"}

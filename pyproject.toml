@@ -27,7 +27,7 @@ line-length = 88
 indent-width = 4
 target-version = "py311"
 select = ["ALL"]
-ignore = ["D100", "D103", "D104", "D400", "N801", "N999", "INP001", "TID252"]
+ignore = ["D100", "D103", "D104", "D400", "N801", "N999", "INP001", "TID252", "RUF012"]
 
 [tool.ruff.format]
 quote-style = "double"
