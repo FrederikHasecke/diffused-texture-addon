@@ -6,7 +6,6 @@ import cv2
 from .pipeline.pipeline_builder import create_diffusion_pipeline
 from .pipeline.pipeline_runner import run_pipeline
 from .process_operations import (
-    generate_multiple_views,
     create_input_image,
     create_content_mask,
     delete_render_folders,
@@ -159,9 +158,9 @@ def img_sequential(scene, max_size, texture):
     num_cameras = int(scene.num_cameras)
 
     final_texture = prepare_texture(texture, texture_resolution)
-    multiview_images, render_img_folders = generate_multiple_views(
-        scene, max_size, suffix="img_sequential", render_resolution=render_resolution
-    )
+    # multiview_images, render_img_folders = generate_multiple_views(
+    #     scene, max_size, suffix="img_sequential", render_resolution=render_resolution
+    # )
 
     pixel_status = np.zeros((texture_resolution, texture_resolution))
     max_angle_status = np.zeros((texture_resolution, texture_resolution))

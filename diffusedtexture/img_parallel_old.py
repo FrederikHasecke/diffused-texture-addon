@@ -9,7 +9,6 @@ from .process_operations import (
     assemble_multiview_grid,
     create_input_image_grid,
     delete_render_folders,
-    generate_multiple_views,
     process_uv_texture,
 )
 
@@ -20,12 +19,12 @@ def img_parallel(
     texture: NDArray | None = None,
 ) -> NDArray:
     """Run the first pass for texture generation."""
-    multiview_images, render_img_folders = generate_multiple_views(
-        context=context,
-        max_size=max_size,
-        suffix="img_parallel",
-        render_resolution=int(context.scene.render_resolution),
-    )
+    # multiview_images, render_img_folders = generate_multiple_views(
+    #     context=context,
+    #     max_size=max_size,
+    #     suffix="img_parallel",
+    #     render_resolution=int(context.scene.render_resolution),
+    # )
 
     if context.scene.custom_sd_resolution:
         sd_resolution = int(
