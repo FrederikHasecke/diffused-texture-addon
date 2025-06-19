@@ -2,10 +2,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from PIL import Image
+
 import bpy
 import numpy as np
 from numpy.typing import NDArray
 
+from condition_setup import create_similar_angle_image
 from config.config_parameters import NumCameras
 
 from .render_setup import (
@@ -124,7 +127,7 @@ def bake_uv_views(context: bpy.types.Context, obj: bpy.data.object) -> dict:
         ),
         "position": bake_geometry_channel_to_array(
             obj,
-            "Posiiton",
+            "Position",
             resolution=int(context.scene.texture_resolution),
         ),
     }
@@ -168,14 +171,62 @@ def render_views(context: bpy.types.Context, obj: bpy.data.object) -> dict:
         raise ValueError(msg)
 
     # Set up render nodes
-    render_img_folders = setup_render_settings(context)
+    output_nodes = setup_render_settings(context)
+
+    render_img_folders = {
+        "depth": output_nodes["depth"].base_path,
+        "normal": output_nodes["normal"].base_path,
+        "uv": output_nodes["uv"].base_path,
+        "position": output_nodes["position"].base_path,
+        # Facing images are in the folder "facing" which is not rendered but created
+        # by the create_similar_angle_image function.
+        "facing": str(Path(output_nodes["uv"].base_path).parent / "facing"),
+    }
+
+    # Create the facing images folder if it does not exist
+    Path(render_img_folders["facing"]).mkdir(parents=True, exist_ok=True)
 
     # Render for each camera
-    for camera in cameras:
+    for cam_idx, camera in enumerate(cameras):
+        for output_node in output_nodes:
+            output_nodes[output_node].file_slots[
+                0
+            ].path = f"{output_node}_camera_{cam_idx:02d}"
         context.scene.camera = camera
         bpy.ops.render.render(write_still=True)
+        # Create the facing images
+        save_facing_images(
+            output_nodes=output_nodes,
+            camera=camera,
+            index=cam_idx,
+            context=context,
+        )
 
     return render_img_folders
+
+
+def save_facing_images(
+    output_nodes: dict[str, bpy.types.CompositorNodeOutputFile],
+    camera: bpy.types.Object,
+    index: int = 0,
+    context: bpy.types.Context = bpy.context,
+) -> None:
+    """Save facing images for the camera."""
+    facing_image_array = create_similar_angle_image(
+        normal_array=np.array(Image.open(output_nodes["normal"].file_slots[0].path)),
+        position_array=np.array(
+            Image.open(output_nodes["position"].file_slots[0].path)
+        ),
+        camera=camera,
+    )
+    # save the facing image to the output folder
+    facing_image = Image.fromarray(facing_image_array)
+
+    facing_image.save(
+        Path(output_nodes["uv"].base_path).parent
+        / "facing"
+        / f"facing_camera_{index:02d}_{context.frame_current:04d}.png"
+    )
 
 
 def bake_geometry_channel_to_array(

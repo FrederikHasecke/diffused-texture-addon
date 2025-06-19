@@ -6,6 +6,7 @@ from numpy.typing import NDArray
 from PIL import Image
 
 from blender_operations import ProcessParameters
+from condition_setup import create_similar_angle_image
 from diffusedtexture.img_parallel import img_parallel
 from diffusedtexture.img_sequential import img_sequential
 from diffusedtexture.uv_pass import uv_pass
@@ -26,6 +27,8 @@ def load_multiview_images(render_img_folders: str) -> dict[str, list[NDArray[Any
                 multiview_images["uv"].append(image)
             elif "facing" in file_name:
                 multiview_images["facing"].append(image)
+            else:
+                continue  # Skip files that do not match any category
 
     return multiview_images
 
@@ -37,16 +40,24 @@ def run_texture_generation(
 ) -> None:
     """Run the texture generation in a separate thread."""
     if process_parameter.operation_mode == "UV":
-        output_texture = uv_pass(process_parameter, render_img_folders, texture)
+        output_texture: NDArray[np.uint8] = uv_pass(
+            process_parameter,
+            render_img_folders,
+            texture,
+        )
 
     else:
         # Assemble grids from rendered images
         multiview_images = load_multiview_images(render_img_folders)
 
         if process_parameter.operation_mode == "PARALLEL_IMG":
-            output_texture = img_parallel(multiview_images, process_parameter, texture)
+            output_texture: NDArray[np.uint8] = img_parallel(
+                multiview_images,
+                process_parameter,
+                texture,
+            )
         elif process_parameter.operation_mode == "SEQUENTIAL_IMG":
-            output_texture = img_sequential(
+            output_texture: NDArray[np.uint8] = img_sequential(
                 multiview_images,
                 process_parameter,
                 texture,

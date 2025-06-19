@@ -389,7 +389,7 @@ def generate_multiple_views(
 
 
 def assemble_multiview_grid(
-    multiview_images: dict[str, NDArray],
+    multiview_images: dict[str, str],
     render_resolution: int = 2048,
     sd_resolution: int = 512,
 ) -> tuple[dict[str, NDArray], dict[str, NDArray]]:
