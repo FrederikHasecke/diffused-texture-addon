@@ -1,13 +1,12 @@
 # DiffusedTexture: AI-Powered Texture Generation for Blender
-![Stars](https://img.shields.io/github/stars/FrederikHasecke/diffused-texture-addon)
-[![Total Downloads](https://img.shields.io/github/downloads/FrederikHasecke/diffused-texture-addon/total?style=flat-square)](https://github.com/FrederikHasecke/diffused-texture-addon/releases/latest)
-
-
 [![Latest Release](https://flat.badgen.net/github/release/FrederikHasecke/diffused-texture-addon)](https://github.com/FrederikHasecke/diffused-texture-addon/releases/latest)
+[![Total Downloads](https://img.shields.io/github/downloads/FrederikHasecke/diffused-texture-addon/total?style=flat-square)](https://github.com/FrederikHasecke/diffused-texture-addon/releases/latest)
+![Blender Version](https://img.shields.io/badge/Blender-4.2%2B-blue?style=flat-square)
+![Python Version](https://img.shields.io/badge/Python-3.11-blue?style=flat-square)
+
 [![Build](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/ci.yml/badge.svg)](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/ci.yml)
 [![Tests](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/test.yml/badge.svg)](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/test.yml)
 [![Lint](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/ci.yml/badge.svg?label=ruff)](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/ci.yml)
-![License](https://img.shields.io/github/license/FrederikHasecke/diffused-texture-addon)
 
 DiffusedTexture is a Blender add-on that uses Stable Diffusion to create textures directly on 3D meshes.
 

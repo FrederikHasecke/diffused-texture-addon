@@ -7,7 +7,6 @@ from .pipeline.pipeline_builder import create_diffusion_pipeline
 from .pipeline.pipeline_runner import run_pipeline
 from .process_operations import (
     assemble_multiview_grid,
-    create_input_image_grid,
     process_uv_texture,
 )
 
@@ -41,12 +40,10 @@ def img_parallel(
     )[0]
 
     # Process UV texture
-    filled_uv_texture = process_uv_texture(
+    return process_uv_texture(
         context=context,
         uv_images=multiview_images["uv"],
         facing_images=multiview_images["facing"],
         output_grid=np.array(output_grid),
         target_resolution=int(context.scene.texture_resolution),
     )
-
-    return filled_uv_texture

@@ -1,0 +1,63 @@
+NOTICE
+
+This project includes software developed by third parties. Below is a list of third-party packages, their licenses, and attributions.
+
+---
+
+This project is licensed under the GNU General Public License v3.0 or later (GPL-3.0+)
+https://www.gnu.org/licenses/gpl-3.0.html
+
+---
+
+Included Dependencies and Licenses:
+
+1. Blender (`bpy`)
+   License: GNU General Public License v3.0 or later
+   Website: https://www.blender.org
+
+2. SciPy
+   License: BSD 3-Clause License
+   https://github.com/scipy/scipy
+
+3. OpenCV (`opencv-python-headless`)
+   License: MIT License
+   https://github.com/opencv/opencv-python
+
+4. PyTorch (`torch`)
+   License: BSD-style license
+   https://github.com/pytorch/pytorch
+
+5. Hugging Face Diffusers
+   License: Apache License 2.0
+   https://github.com/huggingface/diffusers
+
+6. Hugging Face Transformers
+   License: Apache License 2.0
+   https://github.com/huggingface/transformers
+
+7. Accelerate
+   License: Apache License 2.0
+   https://github.com/huggingface/accelerate
+
+8. PEFT (Parameter-Efficient Fine-Tuning)
+   License: Apache License 2.0
+   https://github.com/huggingface/peft
+
+9. Pytest
+   License: MIT License
+   https://github.com/pytest-dev/pytest
+
+---
+
+Models
+
+This project does not distribute any models directly. Users are required to download model weights (e.g., Stable Diffusion, SDXL) separately, either through provided download scripts or manually via download links.
+
+Some model weights, such as Stability AI's SDXL, are subject to the CreativeML Open RAIL++-M License:
+https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/LICENSE.md
+
+By downloading or using these models, users agree to comply with the terms of their respective licenses, including non-commercial use restrictions.
+
+---
+
+This NOTICE file is provided for compliance purposes. It does not grant any license rights beyond those already specified.

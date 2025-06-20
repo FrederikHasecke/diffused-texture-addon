@@ -1,17 +1,18 @@
-import numpy as np
 import bpy
+import numpy as np
+from numpy.typing import NDArray
 
 
 def blendercs_to_ccs(
-    points_bcs=np.ndarray, camera=bpy.data.camera, rotation_only=False
-):
-    """
-    Converts a point cloud from the Blender coordinate system to the camera coordinate system.
-    """
+    points_bcs: np.ndarray,
+    camera: bpy.types.Camera,
+    rotation_only: bool = False,
+) -> NDArray[np.float32]:
+    """Converts 3D points from the Blender coordinate system to camera coordinates."""
     # Extract camera rotation in world space
     camera_rotation = np.array(camera.matrix_world.to_quaternion().to_matrix()).T
 
-    # Apply the rotation to align normals with the camera’s view
+    # Apply the rotation to align normals with the cameras view
     if rotation_only:
         point_3d_cam = np.dot(camera_rotation, points_bcs.T).T
     else:

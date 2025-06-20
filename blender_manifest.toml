@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "diffused_texture_addon"
-version = "0.0.6"
+version = "0.1.0"
 name = "DiffusedTexture"
 tagline = "Generate Diffuse Textures on Meshes with Stable Diffusion"
 maintainer = "Frederik Hasecke <frederik@hasecke.eu>"

@@ -2,15 +2,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from PIL import Image
-
 import bpy
 import numpy as np
 from numpy.typing import NDArray
+from PIL import Image
 
-from condition_setup import create_similar_angle_image
-from config.config_parameters import NumCameras
-
+from .diffusedtexture.camera_parameters import NumCameras
 from .render_setup import (
     create_cameras_on_one_ring,
     create_cameras_on_sphere,
@@ -65,6 +62,63 @@ def extract_process_parameters_from_context(
     )
 
 
+def create_similar_angle_image(
+    normal_array: NDArray,
+    position_array: NDArray,
+    camera_obj: bpy.types.Camera,
+) -> NDArray:
+    """Create the similarity angle image.
+
+    Create an image where each pixel's intensity represents how aligned the normal
+    vector at that point is with the direction vector from the point to the camera.
+
+    Args:
+        normal_array (NDArray): NumPy array of shape (height, width, 3) containing
+                                normal vectors.
+        position_array (NDArray):   NumPy array of shape (height, width, 3) containing
+                                    positions in global coordinates.
+        camera_obj (bpy.types.Camera):  Blender camera object to get the camera position
+                                        in global coordinates.
+
+    Returns:
+        NDArray: A NumPy array (height, width) with values ranging from 0 to 1,
+                where 1 means perfect alignment.
+
+    """
+    # Extract camera position in global coordinates
+    camera_position = np.array(camera_obj.matrix_world.to_translation())
+
+    # Calculate direction vectors from each point to the camera
+    direction_to_camera = position_array - camera_position[None, None, :]
+
+    # Normalize the normal vectors and direction vectors
+    normal_array_normalized = normal_array / np.linalg.norm(
+        normal_array,
+        axis=2,
+        keepdims=True,
+    )
+    direction_to_camera_normalized = direction_to_camera / np.linalg.norm(
+        direction_to_camera,
+        axis=2,
+        keepdims=True,
+    )
+
+    # Compute the dot product between the normalized vectors
+    alignment = np.sum(normal_array_normalized * direction_to_camera_normalized, axis=2)
+
+    # Ensure values are in range -1 to 1;
+    # clip them just in case due to floating-point errors
+    alignment = np.clip(alignment, -1.0, 1.0)
+
+    # and invert
+    similar_angle_image = -1 * alignment
+
+    similar_angle_image[np.isnan(similar_angle_image)] = 0
+
+    # Return the final similarity image
+    return similar_angle_image
+
+
 def load_img_to_numpy(img_path: str) -> NDArray:
     """Load an image as a Blender image and converts it to a NumPy array.
 
@@ -111,14 +165,14 @@ def bpy_img_to_numpy(img_bpy: bpy.types.Image) -> NDArray:
     return np.flipud(image_array)
 
 
-def prepare_scene(obj: bpy.data.objects) -> dict[str, Any]:
+def prepare_scene(obj: bpy.types.Object) -> dict[str, Any]:
     """Backup all other objects and isolate the target object to work with."""
     backup_data = isolate_object(obj)
     bpy.context.view_layer.objects.active = obj
     return backup_data
 
 
-def bake_uv_views(context: bpy.types.Context, obj: bpy.data.object) -> dict:
+def bake_uv_views(context: bpy.types.Context, obj: bpy.types.Object) -> dict:
     return {
         "normal": bake_geometry_channel_to_array(
             obj,
@@ -133,12 +187,12 @@ def bake_uv_views(context: bpy.types.Context, obj: bpy.data.object) -> dict:
     }
 
 
-def render_views(context: bpy.types.Context, obj: bpy.data.object) -> dict:
+def render_views(context: bpy.types.Context, obj: bpy.types.Object) -> dict:
     """Render views and save to folders.
 
     Args:
         context (bpy.context): _description_
-        obj (bpy.data.object): _description_
+        obj (bpy.types.Object): _description_
 
     Raises:
         ValueError: _description_
@@ -215,7 +269,7 @@ def save_facing_images(
     facing_image_array = create_similar_angle_image(
         normal_array=np.array(Image.open(output_nodes["normal"].file_slots[0].path)),
         position_array=np.array(
-            Image.open(output_nodes["position"].file_slots[0].path)
+            Image.open(output_nodes["position"].file_slots[0].path),
         ),
         camera=camera,
     )
@@ -225,7 +279,7 @@ def save_facing_images(
     facing_image.save(
         Path(output_nodes["uv"].base_path).parent
         / "facing"
-        / f"facing_camera_{index:02d}_{context.frame_current:04d}.png"
+        / f"facing_camera_{index:02d}_{context.frame_current:04d}.png",
     )
 
 

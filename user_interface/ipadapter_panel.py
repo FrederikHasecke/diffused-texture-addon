@@ -16,11 +16,11 @@ class OBJECT_PT_IPAdapterPanel(bpy.types.Panel):
     bl_options = {"DEFAULT_CLOSED"}
     bl_order = 2
 
-    def draw(self, context: bpy.scene.context) -> None:
+    def draw(self, context: bpy.types.Context) -> None:
         """Draw function.
 
         Args:
-            context (bpy.scene.context): _description_
+            context (bpy.types.Context): _description_
         """
         layout = self.layout
         scene = context.scene
@@ -59,11 +59,11 @@ class OBJECT_OT_OpenNewIPAdapterImage(bpy.types.Operator):
 
     filepath: bpy.props.StringProperty(subtype="FILE_PATH")  # type: ignore  # noqa: PGH003
 
-    def execute(self, context: bpy.scene.context) -> set[str]:
+    def execute(self, context: bpy.types.Context) -> set[str]:
         """Execute.
 
         Args:
-            context (bpy.scene.context): _description_
+            context (bpy.types.Context): _description_
 
         Returns:
             set[str]: _description_
@@ -73,11 +73,11 @@ class OBJECT_OT_OpenNewIPAdapterImage(bpy.types.Operator):
         context.scene.ipadapter_image = image
         return {"FINISHED"}
 
-    def invoke(self, context: bpy.scene.context) -> set[str]:
+    def invoke(self, context: bpy.types.Context) -> set[str]:
         """Invoke.
 
         Args:
-            context (bpy.scene.context): _description_
+            context (bpy.types.Context): _description_
 
         Returns:
             set[str]: _description_

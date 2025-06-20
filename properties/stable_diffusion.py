@@ -1,3 +1,5 @@
+from enum import Enum
+
 import bpy
 from bpy.props import (  # type: ignore  # noqa: PGH003
     EnumProperty,
@@ -5,7 +7,16 @@ from bpy.props import (  # type: ignore  # noqa: PGH003
     StringProperty,
 )
 
-from ..config.config_parameters import stable_diffusion_paths
+
+class stable_diffusion_paths(Enum):
+    """Default Setting for SD paths."""
+
+    sd15_ckpt = "runwayml/stable-diffusion-v1-5"
+    sd15_cn_canny = "lllyasviel/sd-controlnet-canny"
+    sd15_cn_normal = "lllyasviel/sd-controlnet-normal"
+    sd15_cn_depth = "lllyasviel/sd-controlnet-depth"
+    sdxl_ckpt = "stabilityai/stable-diffusion-xl-base-1.0"
+    sdxl_cn_union = "xinsir/controlnet-union-sdxl-1.0"
 
 
 def update_sd_paths(context: bpy.types.Context) -> None:

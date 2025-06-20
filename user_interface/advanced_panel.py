@@ -53,15 +53,19 @@ class OBJECT_PT_AdvancedPanel(bpy.types.Panel):
         else:
             self.panel_sd15_controlnets(context=context, controlnet_panel=box)
 
+        """
+        # TODO AttributeError: type object 'Panel' has no attribute 'layout'
+        """
+
     def panel_sd15_controlnets(
         self,
-        context: bpy.scene.context,
+        context: bpy.types.Context,
         controlnet_panel: bpy.types.Panel.layout,
     ) -> None:
         """Draw the panel for SD 1.5 ControlNet Paths.
 
         Args:
-            context (bpy.scene.context): Blender Context
+            context (bpy.types.Context): Blender Context
             controlnet_panel (bpy.types.Panel.layout): Panel
         """
         # Add advanced settings
@@ -105,13 +109,13 @@ class OBJECT_PT_AdvancedPanel(bpy.types.Panel):
 
     def panel_sdxl_controlnets(
         self,
-        context: bpy.scene.context,
+        context: bpy.types.Context,
         controlnet_panel: bpy.types.Panel.layout,
     ) -> None:
         """Draw the panel for SD XL ControlNet Paths.
 
         Args:
-            context (bpy.scene.context): Blender Context
+            context (bpy.types.Context): Blender Context
             controlnet_panel (bpy.types.Panel.layout): Panel
         """
         controlnet_panel.label(text="ControlNet Mode:")
