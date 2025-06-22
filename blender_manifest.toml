@@ -13,10 +13,7 @@ tags = ["Material", "Paint"]
 blender_version_min = "4.2.0"
 license = ["SPDX:GPL-3.0-or-later"]
 
-# ✅ Specify the supported platforms, but do not define per-platform lists
 platforms = ["windows-x64", "linux-x64"]
-
-# ✅ Flat list of wheels - Blender will split them automatically
 wheels = [
   # Common wheels (cross-platform)
   "./wheels/certifi-2025.1.31-py3-none-any.whl",
@@ -66,4 +63,29 @@ wheels = [
   "./wheels/torch-2.5.1-cp311-cp311-manylinux1_x86_64.whl",
   "./wheels/tokenizers-0.21.0-cp311-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
   "./wheels/safetensors-0.5.2-cp311-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+]
+[permissions]
+network = "Need to download models from huggingface.co"
+files = "Load/save renderings and textures from/to disk"
+[build]
+paths_exclude_pattern = [
+  "__pycache__/",
+  ".git/",
+  "*.zip",
+  "*.tar.gz",
+  ".github/",
+  ".vscode/",
+  "documentation/",
+  "tests/",
+  "images/",
+  "scratchbook/",
+  "*.md",
+  "LICENSE",
+  "NOTICE",
+  "pytest.ini",
+  ".pytest_cache/",
+  "Dockerfile",
+  "pyproject.toml",
+  "requirements.txt",
+  "requirements-dev.txt",
 ]

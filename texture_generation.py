@@ -39,7 +39,7 @@ def run_texture_generation(
     texture: NDArray[Any] | None = None,
 ) -> None:
     """Run the texture generation in a separate thread."""
-    if process_parameter.operation_mode == "UV":
+    if process_parameter.operation_mode == "UV_PASS":
         output_texture: NDArray[np.uint8] = uv_pass(
             process_parameter,
             render_img_folders,

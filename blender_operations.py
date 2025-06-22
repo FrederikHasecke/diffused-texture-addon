@@ -208,13 +208,13 @@ def render_views(context: bpy.types.Context, obj: bpy.types.Object) -> dict:
     num_cameras = int(context.scene.num_cameras)
 
     # Create cameras based on the number specified in the scene
-    if num_cameras == NumCameras.four:
+    if num_cameras == NumCameras.four.value:
         cameras = create_cameras_on_one_ring(
             num_cameras=num_cameras,
             max_size=max_size,
             name_prefix="RenderCam",
         )
-    elif num_cameras in [NumCameras.nine, NumCameras.sixteen]:
+    elif num_cameras in [NumCameras.nine.value, NumCameras.sixteen.value]:
         cameras = create_cameras_on_sphere(
             num_cameras=num_cameras,
             max_size=max_size,
@@ -233,8 +233,7 @@ def render_views(context: bpy.types.Context, obj: bpy.types.Object) -> dict:
         "uv": output_nodes["uv"].base_path,
         "position": output_nodes["position"].base_path,
         # Facing images are in the folder "facing" which is not rendered but created
-        # by the create_similar_angle_image function.
-        "facing": str(Path(output_nodes["uv"].base_path).parent / "facing"),
+        "facing": Path(output_nodes["uv"].base_path).parent / "render_facing",
     }
 
     # Create the facing images folder if it does not exist
@@ -243,16 +242,23 @@ def render_views(context: bpy.types.Context, obj: bpy.types.Object) -> dict:
     # Render for each camera
     for cam_idx, camera in enumerate(cameras):
         for output_node in output_nodes:
-            output_nodes[output_node].file_slots[
-                0
-            ].path = f"{output_node}_camera_{cam_idx:02d}"
+            new_path = (
+                Path(output_nodes[output_node].base_path) / f"camera_{cam_idx:02d}"
+            )
+
+            # Create the new path if it does not exist
+            new_path.mkdir(parents=True, exist_ok=True)
+
+            # Set the output path for the output node
+            output_nodes[output_node].base_path = str(new_path)
+
         context.scene.camera = camera
         bpy.ops.render.render(write_still=True)
         # Create the facing images
         save_facing_images(
             output_nodes=output_nodes,
             camera=camera,
-            index=cam_idx,
+            cam_idx=cam_idx,
             context=context,
         )
 
@@ -262,25 +268,39 @@ def render_views(context: bpy.types.Context, obj: bpy.types.Object) -> dict:
 def save_facing_images(
     output_nodes: dict[str, bpy.types.CompositorNodeOutputFile],
     camera: bpy.types.Object,
-    index: int = 0,
+    cam_idx: int = 0,
     context: bpy.types.Context = bpy.context,
 ) -> None:
     """Save facing images for the camera."""
+
+    frame_index = context.scene.frame_current
+
+    # TODO: Replace Image.open with openexr_numpy or something that supports EXR
+
+    normal_path = Path(output_nodes["normal"].base_path) / (
+        str(output_nodes["normal"].file_slots[0].path) + f"{frame_index:04d}.exr"
+    )
+    normal_array = np.array(Image.open(normal_path))
+
+    position_path = Path(output_nodes["position"].base_path) / (
+        str(output_nodes["position"].file_slots[0].path) + f"{frame_index:04d}.png"
+    )
+    position_array = np.array(Image.open(position_path))
+
     facing_image_array = create_similar_angle_image(
-        normal_array=np.array(Image.open(output_nodes["normal"].file_slots[0].path)),
-        position_array=np.array(
-            Image.open(output_nodes["position"].file_slots[0].path),
-        ),
+        normal_array=normal_array,
+        position_array=position_array,
         camera=camera,
     )
     # save the facing image to the output folder
     facing_image = Image.fromarray(facing_image_array)
 
-    facing_image.save(
-        Path(output_nodes["uv"].base_path).parent
-        / "facing"
-        / f"facing_camera_{index:02d}_{context.frame_current:04d}.png",
-    )
+    new_folder_path = Path(output_nodes["Facing"].base_path) / f"camera_{cam_idx:02d}"
+    new_file_path = new_folder_path / f"facing_{frame_index:04d}.exr"
+
+    # save the image
+    new_folder_path.mkdir(parents=True, exist_ok=True)
+    facing_image.save(new_file_path)
 
 
 def bake_geometry_channel_to_array(

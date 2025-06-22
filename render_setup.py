@@ -1,4 +1,5 @@
 import math
+from pathlib import Path
 
 import bpy
 import mathutils
@@ -216,12 +217,8 @@ def setup_output_nodes(
     if context.scene.node_tree:
         context.scene.node_tree.nodes.clear()
 
-    # Create a new node tree
-    tree = context.scene.node_tree
-    links = tree.links
-
     # Create render layers node
-    render_layers = tree.nodes.new("CompositorNodeRLayers")
+    render_layers = context.scene.node_tree.nodes.new("CompositorNodeRLayers")
 
     # Enable necessary passes
     context.scene.view_layers["ViewLayer"].use_pass_z = True
@@ -235,40 +232,63 @@ def setup_output_nodes(
     # Create output nodes for each pass
     output_nodes = {}
 
-    # Depth pass
-    depth_output = tree.nodes.new("CompositorNodeOutputFile")
-    depth_output.label = "Depth Output"
-    depth_output.name = "DepthOutput"
-    depth_output.base_path = ""  # Set the base path in the calling function if needed
-    depth_output.file_slots[0].path = "depth_"
-    links.new(render_layers.outputs["Depth"], depth_output.inputs[0])
-    output_nodes["depth"] = depth_output
+    # # Depth pass
+    # depth_output = tree.nodes.new("CompositorNodeOutputFile")
+    # depth_output.label = "Depth Output"
+    # depth_output.name = "DepthOutput"
+    # depth_output.base_path = ""  # Set the base path in the calling function if needed
+    # depth_output.file_slots[0].path = "depth_"
+    # links.new(render_layers.outputs["Depth"], depth_output.inputs[0])
+    # output_nodes["depth"] = depth_output
 
-    # Normal pass
-    normal_output = tree.nodes.new("CompositorNodeOutputFile")
-    normal_output.label = "Normal Output"
-    normal_output.name = "NormalOutput"
-    normal_output.base_path = ""
-    normal_output.file_slots[0].path = "normal_"
-    links.new(render_layers.outputs["Normal"], normal_output.inputs[0])
-    output_nodes["normal"] = normal_output
+    # # Normal pass
+    # normal_output = tree.nodes.new("CompositorNodeOutputFile")
+    # normal_output.label = "Normal Output"
+    # normal_output.name = "NormalOutput"
+    # normal_output.base_path = ""
+    # normal_output.file_slots[0].path = "normal_"
+    # links.new(render_layers.outputs["Normal"], normal_output.inputs[0])
+    # output_nodes["normal"] = normal_output
 
-    # UV pass
-    uv_output = tree.nodes.new("CompositorNodeOutputFile")
-    uv_output.label = "UV Output"
-    uv_output.name = "UVOutput"
-    uv_output.base_path = ""
-    uv_output.file_slots[0].path = "uv_"
-    links.new(render_layers.outputs["UV"], uv_output.inputs[0])
-    output_nodes["uv"] = uv_output
+    # # UV pass
+    # uv_output = tree.nodes.new("CompositorNodeOutputFile")
+    # uv_output.label = "UV Output"
+    # uv_output.name = "UVOutput"
+    # uv_output.base_path = ""
+    # uv_output.file_slots[0].path = "uv_"
+    # links.new(render_layers.outputs["UV"], uv_output.inputs[0])
+    # output_nodes["uv"] = uv_output
 
-    # Position pass
-    position_output = tree.nodes.new("CompositorNodeOutputFile")
-    position_output.label = "Position Output"
-    position_output.name = "PositionOutput"
-    position_output.base_path = ""
-    position_output.file_slots[0].path = "position_"
-    links.new(render_layers.outputs["Position"], position_output.inputs[0])
-    output_nodes["position"] = position_output
+    # # Position pass
+    # position_output = tree.nodes.new("CompositorNodeOutputFile")
+    # position_output.label = "Position Output"
+    # position_output.name = "PositionOutput"
+    # position_output.base_path = ""
+    # position_output.file_slots[0].path = "position_"
+    # links.new(render_layers.outputs["Position"], position_output.inputs[0])
+    # output_nodes["position"] = position_output
+
+    for name in ["Depth", "Normal", "UV", "Position"]:
+        output_nodes[name.lower()] = set_node_path(name, context, render_layers)
+        output_nodes[name.lower()].base_path = str(
+            Path(context.scene.output_path) / f"render_{name.lower()}"
+        )
+        Path(output_nodes[name.lower()].base_path).mkdir(parents=True, exist_ok=True)
 
     return output_nodes
+
+
+def set_node_path(
+    name: str,
+    context: bpy.types.Context,
+    render_layers: bpy.types.CompositorNodeRLayers,
+) -> bpy.types.CompositorNodeOutputFile:
+    output_node = context.scene.node_tree.nodes.new("CompositorNodeOutputFile")
+    output_node.label = f"{name} Output"
+    output_node.name = f"{name}Output"
+    output_node.base_path = ""  # Set the base path in the calling function if needed
+    output_node.file_slots[0].path = f"{name.lower()}_"
+    context.scene.node_tree.links.new(
+        render_layers.outputs[name], output_node.inputs[0]
+    )
+    return output_node

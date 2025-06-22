@@ -30,7 +30,10 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
     _start_time = None
     _last_progress = 0
 
-    def execute(self, context: bpy.types.Context) -> set[str]:
+    def execute(
+        self: "OBJECT_OT_GenerateTexture",
+        context: bpy.types.Context,
+    ) -> set[str]:
         """Execute the Generation Process.
 
         Args:

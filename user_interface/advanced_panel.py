@@ -11,7 +11,7 @@ class OBJECT_PT_AdvancedPanel(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "DiffusedTexture"
-    bl_options = {"DEFAULT_CLOSED"}  # noqa: RUF012
+    bl_options = {"DEFAULT_CLOSED"}
     bl_order = 1
 
     def draw(self, context: bpy.types.Context) -> None:
@@ -53,20 +53,16 @@ class OBJECT_PT_AdvancedPanel(bpy.types.Panel):
         else:
             self.panel_sd15_controlnets(context=context, controlnet_panel=box)
 
-        """
-        # TODO AttributeError: type object 'Panel' has no attribute 'layout'
-        """
-
     def panel_sd15_controlnets(
         self,
         context: bpy.types.Context,
-        controlnet_panel: bpy.types.Panel.layout,
+        controlnet_panel: bpy.types.Panel,
     ) -> None:
         """Draw the panel for SD 1.5 ControlNet Paths.
 
         Args:
             context (bpy.types.Context): Blender Context
-            controlnet_panel (bpy.types.Panel.layout): Panel
+            controlnet_panel (bpy.types.Panel): Panel
         """
         # Add advanced settings
         controlnet_panel.label(text="ControlNet Checkpoints:")
@@ -110,13 +106,13 @@ class OBJECT_PT_AdvancedPanel(bpy.types.Panel):
     def panel_sdxl_controlnets(
         self,
         context: bpy.types.Context,
-        controlnet_panel: bpy.types.Panel.layout,
+        controlnet_panel: bpy.types.Panel,
     ) -> None:
         """Draw the panel for SD XL ControlNet Paths.
 
         Args:
             context (bpy.types.Context): Blender Context
-            controlnet_panel (bpy.types.Panel.layout): Panel
+            controlnet_panel (bpy.types.Panel): Panel
         """
         controlnet_panel.label(text="ControlNet Mode:")
 

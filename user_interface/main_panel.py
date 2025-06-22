@@ -7,7 +7,10 @@ class OBJECT_OT_SelectPipette(bpy.types.Operator):
     bl_idname = "object.select_pipette"
     bl_label = "Select Object with Pipette"
 
-    def execute(self, context: bpy.types.Context) -> set[str]:
+    def execute(
+        self: "OBJECT_OT_SelectPipette",
+        context: bpy.types.Context,
+    ) -> set[str]:
         """.
 
         Args:
@@ -28,21 +31,17 @@ class OBJECT_OT_OpenNewInputImage(bpy.types.Operator):
 
     filepath: bpy.props.StringProperty(subtype="FILE_PATH")  # type: ignore  # noqa: PGH003
 
-    def execute(self, context: bpy.types.Context) -> set[str]:
-        """Execute image load.
-
-        Args:
-            context (bpy.types.Context): _description_
-
-        Returns:
-            set[str]: _description_
-        """
+    def execute(
+        self: "OBJECT_OT_OpenNewInputImage",
+        context: bpy.types.Context,
+    ) -> set[str]:
+        """Execute the operator to load a new input image."""
         # Load the new image using the provided filepath
         image = bpy.data.images.load(self.filepath)
         context.scene.input_texture = image
         return {"FINISHED"}
 
-    def invoke(self, context: bpy.types.Context) -> set[str]:
+    def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> set[str]:
         """Select the file.
 
         Args:

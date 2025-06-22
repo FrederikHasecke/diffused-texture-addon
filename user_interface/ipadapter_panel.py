@@ -59,7 +59,10 @@ class OBJECT_OT_OpenNewIPAdapterImage(bpy.types.Operator):
 
     filepath: bpy.props.StringProperty(subtype="FILE_PATH")  # type: ignore  # noqa: PGH003
 
-    def execute(self, context: bpy.types.Context) -> set[str]:
+    def execute(
+        self: "OBJECT_OT_OpenNewIPAdapterImage",
+        context: bpy.types.Context,
+    ) -> set[str]:
         """Execute.
 
         Args:
@@ -73,14 +76,7 @@ class OBJECT_OT_OpenNewIPAdapterImage(bpy.types.Operator):
         context.scene.ipadapter_image = image
         return {"FINISHED"}
 
-    def invoke(self, context: bpy.types.Context) -> set[str]:
-        """Invoke.
-
-        Args:
-            context (bpy.types.Context): _description_
-
-        Returns:
-            set[str]: _description_
-        """
+    def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> set[str]:
+        """Invoke the file selection dialog."""
         context.window_manager.fileselect_add(self)
         return {"RUNNING_MODAL"}

@@ -10,12 +10,12 @@ from .stable_diffusion import (
 
 
 def register_properties() -> None:
-    register_prompt_properties()
     register_mesh_properties()
-    register_ipadapter_properties()
-    register_lora_properties()
+    register_prompt_properties()
     register_stable_diffusion_properties()
     register_controlnet_properties()
+    register_ipadapter_properties()
+    register_lora_properties()
 
 
 def unregister_properties() -> None:

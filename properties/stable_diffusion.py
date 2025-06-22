@@ -19,15 +19,23 @@ class stable_diffusion_paths(Enum):
     sdxl_cn_union = "xinsir/controlnet-union-sdxl-1.0"
 
 
-def update_sd_paths(context: bpy.types.Context) -> None:
+def update_sd_paths(self: bpy.types.Scene, context: bpy.types.Context) -> None:
     if context.scene.sd_version == "sd15":
-        context.scene.checkpoint_path = stable_diffusion_paths.sd15_ckpt
-        context.scene.canny_controlnet_path = stable_diffusion_paths.sd15_cn_canny
-        context.scene.normal_controlnet_path = stable_diffusion_paths.sd15_cn_normal
-        context.scene.depth_controlnet_path = stable_diffusion_paths.sd15_cn_depth
+        context.scene.checkpoint_path = stable_diffusion_paths.sd15_ckpt.value
+        context.scene.canny_controlnet_path = stable_diffusion_paths.sd15_cn_canny.value
+        context.scene.normal_controlnet_path = (
+            stable_diffusion_paths.sd15_cn_normal.value
+        )
+        context.scene.depth_controlnet_path = stable_diffusion_paths.sd15_cn_depth.value
     elif context.scene.sd_version == "sdxl":
-        context.scene.checkpoint_path = stable_diffusion_paths.sdxl_ckpt
-        context.scene.controlnet_union_path = stable_diffusion_paths.sdxl_cn_union
+        context.scene.checkpoint_path = stable_diffusion_paths.sdxl_ckpt.value
+        context.scene.controlnet_union_path = stable_diffusion_paths.sdxl_cn_union.value
+    else:
+        msg = (
+            "Invalid Stable Diffusion version selected. Please choose 'sd15' or 'sdxl'."
+        )
+        context.scene.checkpoint_path = ""
+        raise ValueError(msg)
 
 
 def register_stable_diffusion_properties() -> None:

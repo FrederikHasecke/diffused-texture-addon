@@ -9,7 +9,7 @@ from bpy.props import (  # type: ignore  # noqa: PGH003
 from ..utils import get_mesh_objects, update_uv_maps
 
 
-def update_input_image(context: bpy.types.Context) -> None:
+def update_input_image(self: bpy.types.Scene, context: bpy.types.Context) -> None:
     """Ensure the selected image from the preview window is set in scene.input_image."""
     image = context.scene.input_texture
     if image:
@@ -20,7 +20,7 @@ def update_input_image(context: bpy.types.Context) -> None:
             context.scene.input_texture = image_data
 
 
-def update_output_path(context: bpy.types.Context) -> None:
+def update_output_path(self: bpy.types.Scene, context: bpy.types.Context) -> None:
     if context.scene.output_path.startswith("//"):
         context.scene.output_path = bpy.path.abspath(context.scene.output_path)
 
@@ -100,6 +100,7 @@ def register_mesh_properties() -> None:
             ("PARALLEL_IMG", "Parallel", "Run views in parallel"),
             ("SEQUENTIAL_IMG", "Sequential", "Run views one by one"),
             ("PARA_SEQUENTIAL_IMG", "Para-Sequential", "Run subsets parallel"),
+            ("UV_PASS", "Texture Pass", "Run on a flat texture"),
         ],
         default="PARALLEL_IMG",
     )

@@ -2,7 +2,7 @@ import bpy  # noqa: I001
 from bpy.props import BoolProperty, PointerProperty, FloatProperty  # type: ignore  # noqa: PGH003
 
 
-def update_ipadapter_image(context: bpy.types.Context) -> None:
+def update_ipadapter_image(self: bpy.types.Scene, context: bpy.types.Context) -> None:
     image = context.scene.ipadapter_image
     if image:
         image_data = bpy.data.images.get(image.name)
