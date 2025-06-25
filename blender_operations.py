@@ -5,7 +5,6 @@ from typing import Any
 import bpy
 import numpy as np
 from numpy.typing import NDArray
-from PIL import Image
 
 from .diffusedtexture.camera_parameters import NumCameras
 from .render_setup import (
@@ -88,8 +87,13 @@ def create_similar_angle_image(
     # Extract camera position in global coordinates
     camera_position = np.array(camera_obj.matrix_world.to_translation())
 
+    # Ensure the normal and position arrays are 3D
+    if normal_array.ndim != 3 or position_array.ndim != 3:  # noqa: PLR2004
+        msg = "Both normal_array and position_array must be 3D arrays."
+        raise ValueError(msg)
+
     # Calculate direction vectors from each point to the camera
-    direction_to_camera = position_array - camera_position[None, None, :]
+    direction_to_camera = position_array[..., :3] - camera_position[None, None, :]
 
     # Normalize the normal vectors and direction vectors
     normal_array_normalized = normal_array / np.linalg.norm(
@@ -109,60 +113,132 @@ def create_similar_angle_image(
     # Ensure values are in range -1 to 1;
     # clip them just in case due to floating-point errors
     alignment = np.clip(alignment, -1.0, 1.0)
+    alignment[np.isnan(alignment)] = 0
 
     # and invert
     similar_angle_image = -1 * alignment
 
     similar_angle_image[np.isnan(similar_angle_image)] = 0
 
-    # Return the final similarity image
-    return similar_angle_image
+    return similar_angle_image.astype(np.float32)
 
 
 def load_img_to_numpy(img_path: str) -> NDArray:
-    """Load an image as a Blender image and converts it to a NumPy array.
+    """Load an image as a Blender image and converts it to a float32 NumPy array.
 
     Args:
         img_path (str): The path to the image.
 
     Returns:
-        np.ndarray:A NumPy array representation of the image.
-
+        np.ndarray: A NumPy array representation of the image.
     """
-    # Load image using Blender's bpy
+    img_file_name = Path(img_path).name
+    if img_file_name in bpy.data.images:
+        bpy.data.images.remove(bpy.data.images[img_file_name])
     bpy.data.images.load(img_path)
 
-    # Get the file name from the path
-    img_file_name = Path(img_path).name
-
-    # Access the image by name after loading
     img_bpy = bpy.data.images.get(img_file_name)
+
+    if img_bpy is None:
+        msg = f"Image '{img_file_name}' could not be loaded into Blender."
+        raise FileNotFoundError(msg)
 
     return bpy_img_to_numpy(img_bpy)
 
 
-def bpy_img_to_numpy(img_bpy: bpy.types.Image) -> NDArray:
+def bpy_img_to_numpy(img_bpy: bpy.types.Image) -> NDArray[np.float32]:
     """Turn a bpy image to a numpy array.
 
     Args:
-        img_bpy (bpy.types.Image): _description_
+        img_bpy (bpy.types.Image): Blender image.
 
     Returns:
-        NDArray: _description_
+        NDArray: NumPy array with shape (H, W, C), float32.
     """
-    # Get image dimensions
     width, height = img_bpy.size
+    num_channels = img_bpy.channels
 
-    # Determine the number of channels
-    num_channels = len(img_bpy.pixels) // (width * height)
-
-    # Convert the flat pixel array to a NumPy array
     pixels = np.array(img_bpy.pixels[:], dtype=np.float32)
-
-    # Reshape the array to match the image's dimensions and channels
     image_array = pixels.reshape((height, width, num_channels))
 
     return np.flipud(image_array)
+
+
+def numpy_to_bpy_img(img_np: np.ndarray, name: str = "TempImage") -> bpy.types.Image:
+    """Converts a NumPy array to a Blender image.
+
+    Args:
+        img_np (np.ndarray): A NumPy array with shape (H, W, C) and dtype float32.
+        name (str): Name of the image in Blender's data.
+
+    Returns:
+        bpy.types.Image: The Blender image object.
+    """
+    if img_np.dtype != np.float32:
+        msg = "Input image must be a float32 NumPy array."
+        raise ValueError(msg)
+
+    if img_np.ndim != 3:  # noqa: PLR2004
+        msg = "Input image must have 3 dimensions (H, W, C)."
+        raise ValueError(msg)
+
+    if img_np.shape[2] not in [1, 3, 4]:
+        msg = "Input image must have 1, 3, or 4 channels (C)."
+        raise ValueError(msg)
+
+    height, width, channels = img_np.shape
+
+    # Convert to RGBA if necessary
+    if channels == 1:
+        img_rgba = np.concatenate(
+            [img_np] * 3 + [np.ones((height, width, 1), dtype=np.float32)],
+            axis=2,
+        )
+    elif channels == 3:  # noqa: PLR2004
+        img_rgba = np.concatenate(
+            [img_np, np.ones((height, width, 1), dtype=np.float32)],
+            axis=2,
+        )
+    else:
+        img_rgba = img_np
+
+    # Flatten pixels in Blenders top-down order
+    pixels = np.flipud(img_rgba).reshape(-1).tolist()
+
+    # Remove existing image if needed
+    if name in bpy.data.images:
+        bpy.data.images.remove(bpy.data.images[name])
+
+    # Create image
+    image = bpy.data.images.new(
+        name=name,
+        width=width,
+        height=height,
+        alpha=True,
+        float_buffer=True,
+    )
+    image.pixels = pixels
+
+    return image
+
+
+def save_numpy_to_exr(
+    img_np: np.ndarray,
+    filepath: str,
+    name: str = "TempImage",
+) -> None:
+    """Saves a NumPy image array as an EXR file via Blender.
+
+    Args:
+        img_np (np.ndarray): A float32 NumPy array of shape (H, W, C).
+        filepath (str): Output path ending in `.exr`.
+        name (str): Internal name for the temporary Blender image.
+    """
+    img_bpy = numpy_to_bpy_img(img_np, name=name)
+    img_bpy.filepath_raw = filepath
+    img_bpy.file_format = "OPEN_EXR"
+    img_bpy.save()
+    bpy.data.images.remove(img_bpy)
 
 
 def prepare_scene(obj: bpy.types.Object) -> dict[str, Any]:
@@ -272,35 +348,39 @@ def save_facing_images(
     context: bpy.types.Context = bpy.context,
 ) -> None:
     """Save facing images for the camera."""
-
     frame_index = context.scene.frame_current
-
-    # TODO: Replace Image.open with openexr_numpy or something that supports EXR
 
     normal_path = Path(output_nodes["normal"].base_path) / (
         str(output_nodes["normal"].file_slots[0].path) + f"{frame_index:04d}.exr"
     )
-    normal_array = np.array(Image.open(normal_path))
+
+    normal_array = load_img_to_numpy(str(normal_path))
 
     position_path = Path(output_nodes["position"].base_path) / (
-        str(output_nodes["position"].file_slots[0].path) + f"{frame_index:04d}.png"
+        str(output_nodes["position"].file_slots[0].path) + f"{frame_index:04d}.exr"
     )
-    position_array = np.array(Image.open(position_path))
+    position_array = load_img_to_numpy(str(position_path))
 
     facing_image_array = create_similar_angle_image(
-        normal_array=normal_array,
-        position_array=position_array,
-        camera=camera,
+        normal_array=normal_array[..., :3],  # Use only XYZ channels
+        position_array=position_array[..., :3],  # Use only XYZ channels
+        camera_obj=camera,
     )
     # save the facing image to the output folder
-    facing_image = Image.fromarray(facing_image_array)
-
-    new_folder_path = Path(output_nodes["Facing"].base_path) / f"camera_{cam_idx:02d}"
+    new_folder_path = (
+        Path(output_nodes["uv"].base_path.replace("render_uv", "render_facing"))
+        / f"camera_{cam_idx:02d}"
+    )
     new_file_path = new_folder_path / f"facing_{frame_index:04d}.exr"
 
     # save the image
     new_folder_path.mkdir(parents=True, exist_ok=True)
-    facing_image.save(new_file_path)
+
+    save_numpy_to_exr(
+        img_np=facing_image_array,
+        filepath=str(new_file_path),
+        name=f"facing_{cam_idx:02d}_{frame_index:04d}",
+    )
 
 
 def bake_geometry_channel_to_array(

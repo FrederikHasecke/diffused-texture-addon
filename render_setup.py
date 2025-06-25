@@ -13,7 +13,7 @@ def create_cameras_on_one_ring(
 ) -> list[bpy.types.Camera]:
     cameras = []
     fov_rad = math.radians(fov)
-    radius = (max_size * 0.5) / math.tan(fov_rad * 0.5)
+    radius = 1.1 * (max_size * math.sqrt(2)) / math.tan(fov_rad)
     angle_offset = math.pi / num_cameras
     elevation = radius * 0.25
 
