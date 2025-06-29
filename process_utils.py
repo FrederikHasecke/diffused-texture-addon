@@ -6,7 +6,7 @@ from numpy.typing import NDArray
 def blendercs_to_ccs(
     points_bcs: np.ndarray,
     camera: bpy.types.Camera,
-    rotation_only: bool = False,
+    rotation_only: bool = False,  # noqa: FBT001, FBT002
 ) -> NDArray[np.float32]:
     """Converts 3D points from the Blender coordinate system to camera coordinates."""
     # Extract camera rotation in world space
@@ -22,7 +22,5 @@ def blendercs_to_ccs(
         point_3d_cam = np.dot(camera_rotation, points_bcs.T).T
 
     # Convert to camera coordinate system by inverting the Z-axis
-    R_blender_to_cv = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])
-    point_3d_cam = np.dot(R_blender_to_cv, point_3d_cam.T).T
-
-    return point_3d_cam
+    R_blender_to_cv = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])  # noqa: N806
+    return np.dot(R_blender_to_cv, point_3d_cam.T).T

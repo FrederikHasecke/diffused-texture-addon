@@ -1,18 +1,12 @@
 import math
 import shutil
 from pathlib import Path
-from typing import Any
 
-import bpy
 import cv2
 import numpy as np
 from numpy.typing import NDArray
 
-from ..blender_operations import load_img_to_numpy
-from .condition_setup import (
-    create_depth_condition,
-    create_normal_condition,
-)
+from ..blender_operations import ProcessParameters
 
 
 def delete_render_folders(render_img_folders: list) -> None:
@@ -24,7 +18,7 @@ def delete_render_folders(render_img_folders: list) -> None:
 
 
 def process_uv_texture(  # noqa: PLR0913
-    context: bpy.types.Context,
+    process_parameters: ProcessParameters,
     uv_images: list[NDArray],
     facing_images: list[NDArray],
     output_grid: NDArray,
@@ -34,13 +28,13 @@ def process_uv_texture(  # noqa: PLR0913
 ) -> NDArray[np.uint8]:
     num_cameras = len(uv_images)
 
-    if context.scene.custom_sd_resolution:
+    if process_parameters.custom_sd_resolution:
         sd_resolution = int(
-            int(context.scene.custom_sd_resolution)
-            // np.sqrt(int(context.scene.num_cameras)),
+            int(process_parameters.custom_sd_resolution)
+            // np.sqrt(int(process_parameters.num_cameras)),
         )
     else:
-        sd_resolution = 512 if context.scene.sd_version == "sd15" else 1024
+        sd_resolution = 512 if process_parameters.sd_version == "sd15" else 1024
 
     # Resize output_grid to render resolution
     output_grid = cv2.resize(
@@ -183,38 +177,6 @@ def inpaint_missing(
     )
 
 
-def load_image(
-    base_path: str,
-    index: int,
-    frame_number: int,
-    prefix: str = "",
-) -> NDArray[Any]:
-    """Helper function to load an image file as a numpy array."""
-    file_path = Path(base_path) / f"{prefix}camera_{index:02d}_{frame_number:04d}.exr"
-    return load_img_to_numpy(str(file_path))[..., :3]
-
-
-def load_depth_image(
-    base_path: str,
-    index: int,
-    frame_number: int,
-) -> NDArray[Any]:
-    """Helper function to load and process a depth image."""
-    file_path = Path(base_path) / f"depth_camera_{index:02d}_{frame_number:04d}.exr"
-    return create_depth_condition(str(file_path))[..., :3]
-
-
-def load_normal_image(
-    base_path: str,
-    index: int,
-    frame_number: int,
-    camera: bpy.types.Camera,
-) -> NDArray[Any]:
-    """Helper function to load and process a normal image."""
-    file_path = Path(base_path) / f"normal_camera_{index:02d}_{frame_number:04d}.exr"
-    return create_normal_condition(str(file_path), camera)[..., :3]
-
-
 def assemble_multiview_grid(
     texture: NDArray[np.uint8] | None,
     multiview_images: dict[str, str],
@@ -334,24 +296,28 @@ def populate_grids(  # noqa: PLR0913
     grids["depth_grid"][
         row : row + render_resolution,
         col : col + render_resolution,
-    ] = depth_img
+    ] = (255 * np.clip(depth_img, 0, 1)).astype(np.uint8)[
+        ..., :3
+    ]  # Ensure depth image is RGB
     grids["normal_grid"][
         row : row + render_resolution,
         col : col + render_resolution,
-    ] = normal_img
+    ] = (255 * np.clip(normal_img, 0, 1)).astype(np.uint8)[
+        ..., :3
+    ]  # Ensure depth image is RGB# normal_img[..., :3]  # Ensure normal image is RGB
     grids["facing_grid"][
         row : row + render_resolution,
         col : col + render_resolution,
-    ] = (255 * facing_img).astype(np.uint8)
+    ] = (255 * facing_img[..., 0]).astype(np.uint8)
     grids["uv_grid"][row : row + render_resolution, col : col + render_resolution] = (
-        uv_img
-    )
+        uv_img[..., :3]
+    )  # Keep only u and v (ignore alpha if present)
 
 
 def create_content_mask(uv_img: NDArray[np.float32]) -> NDArray[np.uint8]:
     """Generate a content mask from the UV image."""
     content_mask = np.zeros(uv_img.shape[:2], dtype=np.uint8)
-    content_mask[np.sum(uv_img, axis=-1) > 0] = 255
+    content_mask[np.sum(uv_img[..., :2], axis=-1) > 0] = 255
     return cv2.dilate(content_mask, np.ones((10, 10), np.uint8), iterations=3)
 
 

@@ -1,21 +1,21 @@
-import bpy
 import torch
-import numpy as np
-from PIL import Image
-from ...utils import image_to_numpy
-from .controlnet_config import build_controlnet_config
 from diffusers.pipelines.controlnet.pipeline_controlnet_inpaint import (
     StableDiffusionControlNetInpaintPipeline,
 )
 from diffusers.pipelines.controlnet.pipeline_controlnet_union_inpaint_sd_xl import (
     StableDiffusionXLControlNetUnionInpaintPipeline,
 )
+from PIL import Image
+
+from ...blender_operations import ProcessParameters
+from ...utils import image_to_numpy
+from .controlnet_config import build_controlnet_config
 
 
-def run_pipeline(
+def run_pipeline(  # noqa: PLR0913
     pipe: StableDiffusionControlNetInpaintPipeline
     | StableDiffusionXLControlNetUnionInpaintPipeline,
-    context: bpy.types.Context,
+    process_parameters: ProcessParameters,
     input_image: Image,
     uv_mask: Image,
     canny_img: Image,
@@ -25,8 +25,8 @@ def run_pipeline(
     guidance_scale: float = 7.5,
     num_inference_steps: int | None = None,
 ) -> Image:
-    config = build_controlnet_config(context)
-    complexity = context.scene.mesh_complexity
+    config = build_controlnet_config(process_parameters)
+    complexity = process_parameters.mesh_complexity
 
     control_images = []
     for entry in config[complexity]["inputs"]:
@@ -34,19 +34,19 @@ def run_pipeline(
         control_images.append(image_map[entry])
 
     if num_inference_steps is None:
-        num_inference_steps = context.scene.num_inference_steps
+        num_inference_steps = process_parameters.num_inference_steps
 
     try:
         kwargs = {
-            "prompt": context.scene.my_prompt,
-            "negative_prompt": context.scene.my_negative_prompt,
+            "prompt": process_parameters.my_prompt,
+            "negative_prompt": process_parameters.my_negative_prompt,
             "image": input_image,
             "mask_image": uv_mask,
             "control_image": control_images,
             "ip_adapter_image": Image.fromarray(
-                image_to_numpy(context.scene.ipadapter_image)
+                image_to_numpy(process_parameters.ipadapter_image),
             )
-            if context.scene.use_ipadapter
+            if process_parameters.use_ipadapter
             else None,
             "num_images_per_prompt": 1,
             "controlnet_conditioning_scale": config[complexity]["conditioning_scale"],

@@ -19,7 +19,7 @@ class stable_diffusion_paths(Enum):
     sdxl_cn_union = "xinsir/controlnet-union-sdxl-1.0"
 
 
-def update_sd_paths(self: bpy.types.Scene, context: bpy.types.Context) -> None:
+def update_sd_paths(self: bpy.types.Scene, context: bpy.types.Context) -> None:  # noqa: ARG001
     if context.scene.sd_version == "sd15":
         context.scene.checkpoint_path = stable_diffusion_paths.sd15_ckpt.value
         context.scene.canny_controlnet_path = stable_diffusion_paths.sd15_cn_canny.value

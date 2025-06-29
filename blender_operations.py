@@ -1,12 +1,13 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import bpy
 import numpy as np
 from numpy.typing import NDArray
 
 from .diffusedtexture.camera_parameters import NumCameras
+from .process_utils import blendercs_to_ccs
 from .render_setup import (
     create_cameras_on_one_ring,
     create_cameras_on_sphere,
@@ -19,37 +20,174 @@ from .utils import isolate_object
 class ProcessParameters:
     """Dataclass of the Process Parameters."""
 
+    # Blender specific parameters
+    my_mesh_object: str
+    my_uv_map: str
+
+    # Stable Diffusion Settings
+    my_prompt: str
+    my_negative_prompt: str | None
+    denoise_strength: float
+    num_inference_steps: int
+    guidance_scale: float | None
+
+    # Texture Generation Settings
+    operation_mode: Literal[
+        "PARALLEL_IMG",
+        "SEQUENTIAL_IMG",
+        "PARA_SEQUENTIAL_IMG",
+        "UV_PASS",
+    ]
+    mesh_complexity: Literal[
+        "LOW",
+        "MEDIUM",
+        "HIGH",
+    ]
+    num_cameras: Literal[
+        NumCameras.four,
+        NumCameras.nine,
+        NumCameras.sixteen,
+    ]
+    texture_resolution: Literal[
+        "512",
+        "1024",
+        "2048",
+        "4096",
+    ]
+    render_resolution: Literal[
+        "1024",
+        "2048",
+        "4096",
+        "8192",
+    ]
     output_path: str
-    sd_version: str
-    mesh_complexity: str
+    texture_seed: int
+    input_texture: bpy.types.Image | NDArray | None
+
+    # Advanced Settings
+    sd_version: Literal["sd15", "sdxl"] | None
     checkpoint_path: str
-    num_loras: int
-    lora_models: list[Any]
+    custom_sd_resolution: int
+    controlnet_union_path: str | None
+    union_controlnet_strength: float | None
+    depth_controlnet_path: str | None
+    depth_controlnet_strength: float | None
+    canny_controlnet_path: str | None
+    canny_controlnet_strength: float | None
+    normal_controlnet_path: str | None
+    normal_controlnet_strength: float | None
+
+    # IPAdapter Settings
     use_ipadapter: bool
     ipadapter_strength: float
-    controlnet_union_path: str | None = None
-    union_controlnet_strength: float | None = None
-    depth_controlnet_path: str | None = None
-    depth_controlnet_strength: float | None = None
-    canny_controlnet_path: str | None = None
-    canny_controlnet_strength: float | None = None
-    normal_controlnet_path: str | None = None
-    normal_controlnet_strength: float | None = None
+    ipadapter_image: bpy.types.Image | NDArray | None
+
+    # LoRA Settings
+    num_loras: int
+    lora_models: list[dict[str, str | float]]
+
+
+def create_depth_condition(
+    depth_image_path: str, invalid_depth: int = 1e10
+) -> NDArray[np.float32]:
+    depth_array = load_img_to_numpy(depth_image_path)[..., 0]
+
+    # Replace large invalid values with NaN
+    depth_array[depth_array >= invalid_depth] = np.nan
+
+    # Invert the depth values so that closer objects have higher values
+    depth_array = np.nanmax(depth_array) - depth_array
+
+    # Normalize the depth array to range [0, 1]
+    depth_array -= np.nanmin(depth_array)
+    depth_array /= np.nanmax(depth_array)
+
+    # Add a small margin to the background
+    depth_array += 10 / 255.0  # Approximately 0.039
+
+    # normalize
+    depth_array[np.isnan(depth_array)] = 0
+    depth_array /= np.nanmax(depth_array)
+    depth_array = np.clip(depth_array, 0, 1)
+    # depth_array = (depth_array * 255).astype(np.uint8)
+
+    # return np.stack((depth_array, depth_array, depth_array), axis=-1)
+
+    return depth_array.astype(np.float32)[..., np.newaxis]  # Add channel dimension
+
+
+def create_normal_condition(
+    normal_img_path: str,
+    camera_obj: bpy.types.Object,
+) -> NDArray[np.float32]:
+    normal_array = load_img_to_numpy(normal_img_path)
+
+    normal_array = normal_array[..., :3]
+
+    # Get image dimensions
+    image_size = normal_array.shape[:2]
+
+    # Flatten the normal array for transformation
+    normal_pc = normal_array.reshape((-1, 3))
+
+    # Rotate the normal vectors to the camera space without translating
+    normal_pc = blendercs_to_ccs(
+        points_bcs=normal_pc,
+        camera=camera_obj,
+        rotation_only=True,
+    )
+
+    # Map normalized values to the [0, 1] range for RGB display
+    red_channel = ((normal_pc[:, 0] + 1) / 2).reshape(image_size)  # Normal X
+    green_channel = ((normal_pc[:, 1] + 1) / 2).reshape(image_size)  # Normal Y
+    blue_channel = ((normal_pc[:, 2] + 1) / 2).reshape(image_size)  # Normal Z
+
+    # Adjust to shapenet colors
+    blue_channel = 1 - blue_channel
+    green_channel = 1 - green_channel
+
+    # Stack channels into a single image
+    normal_image = np.stack((red_channel, green_channel, blue_channel), axis=-1)
+    normal_image = np.clip(normal_image, 0, 1)
+    return normal_image.astype(np.float32)
 
 
 def extract_process_parameters_from_context(
     context: bpy.types.Context,
 ) -> ProcessParameters:
     scene = context.scene
+
+    # extract LoRA models from the scene
+    lora_models = []
+    for i in range(scene.num_loras):
+        lora_model = scene.lora_models[i]
+        if lora_model:
+            lora_models.append(
+                {
+                    "path": lora_model.path,
+                    "strength": lora_model.strength,
+                },
+            )
+
     return ProcessParameters(
-        output_path=getattr(scene, "output_path", None),
+        my_mesh_object=getattr(scene, "my_mesh_object", ""),
+        my_uv_map=getattr(scene, "my_uv_map", ""),
+        my_prompt=getattr(scene, "my_prompt", ""),
+        my_negative_prompt=getattr(scene, "my_negative_prompt", None),
+        denoise_strength=getattr(scene, "denoise_strength", 0.0),
+        num_inference_steps=getattr(scene, "num_inference_steps", 50),
+        guidance_scale=getattr(scene, "guidance_scale", None),
+        operation_mode=getattr(scene, "operation_mode", "PARALLEL_IMG"),
+        mesh_complexity=getattr(scene, "mesh_complexity", "MEDIUM"),
+        num_cameras=getattr(scene, "num_cameras", NumCameras.four.value),
+        texture_resolution=getattr(scene, "texture_resolution", "1024"),
+        render_resolution=getattr(scene, "render_resolution", "2048"),
+        output_path=getattr(scene, "output_path", ""),
+        texture_seed=getattr(scene, "texture_seed", 0),
+        input_texture=getattr(scene, "input_image", None),
         sd_version=getattr(scene, "sd_version", None),
-        mesh_complexity=getattr(scene, "mesh_complexity", None),
-        checkpoint_path=getattr(scene, "checkpoint_path", None),
-        num_loras=getattr(scene, "num_loras", 0),
-        lora_models=getattr(scene, "lora_models", []),
-        use_ipadapter=getattr(scene, "use_ipadapter", False),
-        ipadapter_strength=getattr(scene, "ipadapter_strength", 0.0),
+        checkpoint_path=getattr(scene, "checkpoint_path", ""),
+        custom_sd_resolution=getattr(scene, "custom_sd_resolution", 0),
         controlnet_union_path=getattr(scene, "controlnet_union_path", None),
         union_controlnet_strength=getattr(scene, "union_controlnet_strength", None),
         depth_controlnet_path=getattr(scene, "depth_controlnet_path", None),
@@ -58,6 +196,11 @@ def extract_process_parameters_from_context(
         canny_controlnet_strength=getattr(scene, "canny_controlnet_strength", None),
         normal_controlnet_path=getattr(scene, "normal_controlnet_path", None),
         normal_controlnet_strength=getattr(scene, "normal_controlnet_strength", None),
+        use_ipadapter=getattr(scene, "use_ipadapter", False),
+        ipadapter_strength=getattr(scene, "ipadapter_strength", 0.0),
+        ipadapter_image=getattr(scene, "ipadapter_image", None),
+        num_loras=getattr(scene, "num_loras", 0),
+        lora_models=getattr(scene, "lora_models", []),
     )
 
 
@@ -123,11 +266,11 @@ def create_similar_angle_image(
     return similar_angle_image.astype(np.float32)
 
 
-def load_img_to_numpy(img_path: str) -> NDArray:
+def load_img_to_numpy(img_path: str | Path) -> NDArray:
     """Load an image as a Blender image and converts it to a float32 NumPy array.
 
     Args:
-        img_path (str): The path to the image.
+        img_path (str | Path): The path to the image.
 
     Returns:
         np.ndarray: A NumPy array representation of the image.
@@ -135,7 +278,7 @@ def load_img_to_numpy(img_path: str) -> NDArray:
     img_file_name = Path(img_path).name
     if img_file_name in bpy.data.images:
         bpy.data.images.remove(bpy.data.images[img_file_name])
-    bpy.data.images.load(img_path)
+    bpy.data.images.load(str(img_path))
 
     img_bpy = bpy.data.images.get(img_file_name)
 
@@ -179,8 +322,13 @@ def numpy_to_bpy_img(img_np: np.ndarray, name: str = "TempImage") -> bpy.types.I
         raise ValueError(msg)
 
     if img_np.ndim != 3:  # noqa: PLR2004
-        msg = "Input image must have 3 dimensions (H, W, C)."
-        raise ValueError(msg)
+        # Check if the input is a 2D array and convert it to 3D
+        if img_np.ndim == 2:  # noqa: PLR2004
+            img_np = img_np[:, :, np.newaxis]
+        # If it is still not 3D, raise an error
+        elif img_np.ndim > 3:  # noqa: PLR2004
+            msg = "Input image must have 2 or 3 dimensions (H, W) or (H, W, C)."
+            raise ValueError(msg)
 
     if img_np.shape[2] not in [1, 3, 4]:
         msg = "Input image must have 1, 3, or 4 channels (C)."
@@ -301,7 +449,7 @@ def render_views(context: bpy.types.Context, obj: bpy.types.Object) -> dict:
         raise ValueError(msg)
 
     # Set up render nodes
-    output_nodes = setup_render_settings(context)
+    output_nodes = setup_render_settings(context, context.scene.render_resolution)
 
     render_img_folders = {
         "depth": output_nodes["depth"].base_path,
@@ -309,7 +457,7 @@ def render_views(context: bpy.types.Context, obj: bpy.types.Object) -> dict:
         "uv": output_nodes["uv"].base_path,
         "position": output_nodes["position"].base_path,
         # Facing images are in the folder "facing" which is not rendered but created
-        "facing": Path(output_nodes["uv"].base_path).parent / "render_facing",
+        "facing": str(Path(output_nodes["uv"].base_path).parent / "render_facing"),
     }
 
     # Create the facing images folder if it does not exist
@@ -318,9 +466,15 @@ def render_views(context: bpy.types.Context, obj: bpy.types.Object) -> dict:
     # Render for each camera
     for cam_idx, camera in enumerate(cameras):
         for output_node in output_nodes:
-            new_path = (
-                Path(output_nodes[output_node].base_path) / f"camera_{cam_idx:02d}"
-            )
+            if cam_idx == 0:
+                new_path = (
+                    Path(output_nodes[output_node].base_path) / f"camera_{cam_idx:02d}"
+                )
+            else:
+                new_path = (
+                    Path(output_nodes[output_node].base_path).parent
+                    / f"camera_{cam_idx:02d}"
+                )
 
             # Create the new path if it does not exist
             new_path.mkdir(parents=True, exist_ok=True)
@@ -330,6 +484,11 @@ def render_views(context: bpy.types.Context, obj: bpy.types.Object) -> dict:
 
         context.scene.camera = camera
         bpy.ops.render.render(write_still=True)
+
+        save_normals_in_camera_coordinates(output_nodes=output_nodes, camera=camera)
+
+        save_depth_condition(output_nodes=output_nodes)
+
         # Create the facing images
         save_facing_images(
             output_nodes=output_nodes,
@@ -339,6 +498,59 @@ def render_views(context: bpy.types.Context, obj: bpy.types.Object) -> dict:
         )
 
     return render_img_folders
+
+
+def save_normals_in_camera_coordinates(
+    output_nodes: dict[str, bpy.types.CompositorNodeOutputFile],
+    camera: bpy.types.Object,
+) -> None:
+    image_path = Path(output_nodes["normal"].base_path) / (
+        str(output_nodes["normal"].file_slots[0].path)
+        + f"{bpy.context.scene.frame_current:04d}.exr"
+    )
+
+    normal_ccs = create_normal_condition(
+        normal_img_path=str(image_path),
+        camera_obj=camera,
+    )
+
+    # overwrite the normal image with the camera coordinates
+    normal_path = Path(output_nodes["normal"].base_path) / (
+        str(output_nodes["normal"].file_slots[0].path)
+        + f"{bpy.context.scene.frame_current:04d}.exr"
+    )
+
+    save_numpy_to_exr(
+        img_np=normal_ccs,
+        filepath=str(normal_path),
+        name="normal_camera_coordinates",
+    )
+
+
+def save_depth_condition(
+    output_nodes: dict[str, bpy.types.CompositorNodeOutputFile],
+) -> None:
+    """Save the depth condition as an image as stable diffusion uses in Controlnet."""
+    image_path = Path(output_nodes["depth"].base_path) / (
+        str(output_nodes["depth"].file_slots[0].path)
+        + f"{bpy.context.scene.frame_current:04d}.exr"
+    )
+
+    depth_sd = create_depth_condition(
+        depth_image_path=str(image_path),
+    )
+
+    # overwrite the normal image with the camera coordinates
+    depth_path = Path(output_nodes["depth"].base_path) / (
+        str(output_nodes["depth"].file_slots[0].path)
+        + f"{bpy.context.scene.frame_current:04d}.exr"
+    )
+
+    save_numpy_to_exr(
+        img_np=depth_sd,
+        filepath=str(depth_path),
+        name="depth_sd_like",
+    )
 
 
 def save_facing_images(
@@ -367,9 +579,8 @@ def save_facing_images(
         camera_obj=camera,
     )
     # save the facing image to the output folder
-    new_folder_path = (
-        Path(output_nodes["uv"].base_path.replace("render_uv", "render_facing"))
-        / f"camera_{cam_idx:02d}"
+    new_folder_path = Path(
+        output_nodes["uv"].base_path.replace("render_uv", "render_facing"),
     )
     new_file_path = new_folder_path / f"facing_{frame_index:04d}.exr"
 

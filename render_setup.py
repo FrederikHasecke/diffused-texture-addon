@@ -154,7 +154,7 @@ def setup_cycles_setting(context: bpy.types.Context) -> None:
 
 def setup_render_settings(
     context: bpy.types.Context,
-    resolution: tuple[int, int] = (512, 512),
+    resolution: int,
 ) -> dict[str, bpy.types.CompositorNodeOutputFile]:
     """Configure render settings.
 
@@ -186,7 +186,8 @@ def setup_render_settings(
     context.scene.render.film_transparent = True
 
     # Set the render resolution
-    context.scene.render.resolution_x, context.scene.render.resolution_y = resolution
+    context.scene.render.resolution_x = int(resolution)
+    context.scene.render.resolution_y = int(resolution)
 
     # put render resolution scale to 100%
     context.scene.render.resolution_percentage = 100

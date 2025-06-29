@@ -9,7 +9,7 @@ from bpy.props import (  # type: ignore  # noqa: PGH003
 from ..utils import get_mesh_objects, update_uv_maps
 
 
-def update_input_image(self: bpy.types.Scene, context: bpy.types.Context) -> None:
+def update_input_image(self: bpy.types.Scene, context: bpy.types.Context) -> None:  # noqa: ARG001
     """Ensure the selected image from the preview window is set in scene.input_image."""
     image = context.scene.input_texture
     if image:
@@ -20,7 +20,7 @@ def update_input_image(self: bpy.types.Scene, context: bpy.types.Context) -> Non
             context.scene.input_texture = image_data
 
 
-def update_output_path(self: bpy.types.Scene, context: bpy.types.Context) -> None:
+def update_output_path(self: bpy.types.Scene, context: bpy.types.Context) -> None:  # noqa: ARG001
     if context.scene.output_path.startswith("//"):
         context.scene.output_path = bpy.path.abspath(context.scene.output_path)
 

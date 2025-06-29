@@ -1,18 +1,21 @@
 from typing import Any
 
-import bpy
 import torch
 from diffusers import ControlNetModel, ControlNetUnionModel
 
+from ...blender_operations import ProcessParameters
 
-def build_controlnet_config(context: bpy.types.Context) -> dict[str, dict[str, Any]]:
+
+def build_controlnet_config(
+    process_parameters: ProcessParameters,
+) -> dict[str, dict[str, Any]]:
     """Return a controlnet configuration dictionary for a given scene."""
-    if context.scene.sd_version == "sdxl":
+    if process_parameters.sd_version == "sdxl":
         controlnet_model = ControlNetUnionModel.from_pretrained(
-            context.scene.controlnet_union_path,
+            process_parameters.controlnet_union_path,
             torch_dtype=torch.float16,
         )
-        scale = context.scene.union_controlnet_strength
+        scale = process_parameters.union_controlnet_strength
         return {
             "LOW": {
                 "union_control": True,
@@ -43,31 +46,31 @@ def build_controlnet_config(context: bpy.types.Context) -> dict[str, dict[str, A
 
     return {
         "LOW": {
-            "conditioning_scale": [context.scene.depth_controlnet_strength],
-            "controlnets": [load_model(context.scene.depth_controlnet_path)],
+            "conditioning_scale": [process_parameters.depth_controlnet_strength],
+            "controlnets": [load_model(process_parameters.depth_controlnet_path)],
             "inputs": ["depth"],
         },
         "MEDIUM": {
             "conditioning_scale": [
-                context.scene.depth_controlnet_strength,
-                context.scene.canny_controlnet_strength,
+                process_parameters.depth_controlnet_strength,
+                process_parameters.canny_controlnet_strength,
             ],
             "controlnets": [
-                load_model(context.scene.depth_controlnet_path),
-                load_model(context.scene.canny_controlnet_path),
+                load_model(process_parameters.depth_controlnet_path),
+                load_model(process_parameters.canny_controlnet_path),
             ],
             "inputs": ["depth", "canny"],
         },
         "HIGH": {
             "conditioning_scale": [
-                context.scene.depth_controlnet_strength,
-                context.scene.canny_controlnet_strength,
-                context.scene.normal_controlnet_strength,
+                process_parameters.depth_controlnet_strength,
+                process_parameters.canny_controlnet_strength,
+                process_parameters.normal_controlnet_strength,
             ],
             "controlnets": [
-                load_model(context.scene.depth_controlnet_path),
-                load_model(context.scene.canny_controlnet_path),
-                load_model(context.scene.normal_controlnet_path),
+                load_model(process_parameters.depth_controlnet_path),
+                load_model(process_parameters.canny_controlnet_path),
+                load_model(process_parameters.normal_controlnet_path),
             ],
             "inputs": ["depth", "canny", "normal"],
         },

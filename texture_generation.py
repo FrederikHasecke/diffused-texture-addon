@@ -1,34 +1,37 @@
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import numpy as np
 from numpy.typing import NDArray
 from PIL import Image
 
-from .blender_operations import ProcessParameters
+from .blender_operations import ProcessParameters, load_img_to_numpy
 from .diffusedtexture.img_parallel import img_parallel
 
 # from .diffusedtexture.img_sequential import img_sequential  # noqa: ERA001
 from .diffusedtexture.uv_pass import uv_pass
 
+if TYPE_CHECKING:
+    import numpy as np
+
 
 def load_multiview_images(render_img_folders: str) -> dict[str, list[NDArray[Any]]]:
     multiview_images = {"depth": [], "normal": [], "uv": [], "facing": []}
 
-    for folder in render_img_folders:
-        for file_name in Path(folder).iterdir:
-            file_path = Path(folder) / file_name
-            image = np.array(Image.open(file_path))
-            if "depth" in file_name:
-                multiview_images["depth"].append(image)
-            elif "normal" in file_name:
-                multiview_images["normal"].append(image)
-            elif "uv" in file_name:
-                multiview_images["uv"].append(image)
-            elif "facing" in file_name:
-                multiview_images["facing"].append(image)
-            else:
-                continue  # Skip files that do not match any category
+    for output_key in render_img_folders:
+        for camera_folder_name in Path(render_img_folders[output_key]).iterdir():
+            for file_path in camera_folder_name.iterdir():
+                image = load_img_to_numpy(file_path)
+
+                if "depth" in file_path.name:
+                    multiview_images["depth"].append(image)
+                elif "normal" in file_path.name:
+                    multiview_images["normal"].append(image)
+                elif "uv" in file_path.name:
+                    multiview_images["uv"].append(image)
+                elif "facing" in file_path.name:
+                    multiview_images["facing"].append(image)
+                else:
+                    continue  # Skip files that do not match any category
 
     return multiview_images
 

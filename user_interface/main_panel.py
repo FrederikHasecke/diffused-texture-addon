@@ -41,7 +41,7 @@ class OBJECT_OT_OpenNewInputImage(bpy.types.Operator):
         context.scene.input_texture = image
         return {"FINISHED"}
 
-    def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> set[str]:
+    def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> set[str]:  # noqa: ARG002
         """Select the file.
 
         Args:
