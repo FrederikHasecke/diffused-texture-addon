@@ -88,7 +88,8 @@ class ProcessParameters:
 
 
 def create_depth_condition(
-    depth_image_path: str, invalid_depth: int = 1e10
+    depth_image_path: str,
+    invalid_depth: int = 1e10,
 ) -> NDArray[np.float32]:
     depth_array = load_img_to_numpy(depth_image_path)[..., 0]
 
@@ -109,9 +110,6 @@ def create_depth_condition(
     depth_array[np.isnan(depth_array)] = 0
     depth_array /= np.nanmax(depth_array)
     depth_array = np.clip(depth_array, 0, 1)
-    # depth_array = (depth_array * 255).astype(np.uint8)
-
-    # return np.stack((depth_array, depth_array, depth_array), axis=-1)
 
     return depth_array.astype(np.float32)[..., np.newaxis]  # Add channel dimension
 
@@ -396,7 +394,27 @@ def prepare_scene(obj: bpy.types.Object) -> dict[str, Any]:
     return backup_data
 
 
-def bake_uv_views(context: bpy.types.Context, obj: bpy.types.Object) -> dict:
+def restore_scene(backup_data: dict, cameras: list[bpy.types.Object]) -> None:
+    """Restore object position, unhide other objects, delete process cameras."""
+    obj = backup_data["target_object"]
+    obj.location = backup_data["original_location"]
+
+    for o in backup_data["hidden_objects"]:
+        o.hide_set(state=False)
+        o.hide_render = False
+
+    for cam in cameras:
+        # delete the cameras created for rendering and their data
+        bpy.data.objects.remove(cam, do_unlink=True)
+
+    # update the scene to reflect the changes
+    bpy.context.view_layer.update()
+
+
+def bake_uv_views(
+    context: bpy.types.Context,
+    obj: bpy.types.Object,
+) -> tuple[dict, None]:
     return {
         "normal": bake_geometry_channel_to_array(
             obj,
@@ -408,10 +426,13 @@ def bake_uv_views(context: bpy.types.Context, obj: bpy.types.Object) -> dict:
             "Position",
             resolution=int(context.scene.texture_resolution),
         ),
-    }
+    }, None
 
 
-def render_views(context: bpy.types.Context, obj: bpy.types.Object) -> dict:
+def render_views(
+    context: bpy.types.Context,
+    obj: bpy.types.Object,
+) -> tuple[dict, list[bpy.types.Object]]:
     """Render views and save to folders.
 
     Args:
@@ -483,6 +504,10 @@ def render_views(context: bpy.types.Context, obj: bpy.types.Object) -> dict:
             output_nodes[output_node].base_path = str(new_path)
 
         context.scene.camera = camera
+
+        # update the scene to reflect the camera change
+        bpy.context.view_layer.update()
+
         bpy.ops.render.render(write_still=True)
 
         save_normals_in_camera_coordinates(output_nodes=output_nodes, camera=camera)
@@ -492,12 +517,11 @@ def render_views(context: bpy.types.Context, obj: bpy.types.Object) -> dict:
         # Create the facing images
         save_facing_images(
             output_nodes=output_nodes,
-            camera=camera,
             cam_idx=cam_idx,
             context=context,
         )
 
-    return render_img_folders
+    return render_img_folders, cameras
 
 
 def save_normals_in_camera_coordinates(
@@ -555,36 +579,36 @@ def save_depth_condition(
 
 def save_facing_images(
     output_nodes: dict[str, bpy.types.CompositorNodeOutputFile],
-    camera: bpy.types.Object,
-    cam_idx: int = 0,
+    cam_idx: int,
     context: bpy.types.Context = bpy.context,
 ) -> None:
     """Save facing images for the camera."""
     frame_index = context.scene.frame_current
 
-    normal_path = Path(output_nodes["normal"].base_path) / (
-        str(output_nodes["normal"].file_slots[0].path) + f"{frame_index:04d}.exr"
+    normal_path = (
+        Path(output_nodes["normal"].base_path).parent
+        / f"camera_{cam_idx:02d}"
+        / (str(output_nodes["normal"].file_slots[0].path) + f"{frame_index:04d}.exr")
     )
 
     normal_array = load_img_to_numpy(str(normal_path))
 
-    position_path = Path(output_nodes["position"].base_path) / (
-        str(output_nodes["position"].file_slots[0].path) + f"{frame_index:04d}.exr"
-    )
-    position_array = load_img_to_numpy(str(position_path))
+    facing_image_array = normal_array[..., 2]
+    facing_image_array = 2 * facing_image_array
+    facing_image_array -= 1  # Normalize to [-1, 1]
+    facing_image_array = np.clip(facing_image_array, 0, 1)  # remove negative values
 
-    facing_image_array = create_similar_angle_image(
-        normal_array=normal_array[..., :3],  # Use only XYZ channels
-        position_array=position_array[..., :3],  # Use only XYZ channels
-        camera_obj=camera,
-    )
-    # save the facing image to the output folder
-    new_folder_path = Path(
-        output_nodes["uv"].base_path.replace("render_uv", "render_facing"),
+    new_folder_path = (
+        Path(
+            str(Path(output_nodes["normal"].base_path).parent).replace(
+                "render_normal",
+                "render_facing",
+            ),
+        )
+        / f"camera_{cam_idx:02d}"
     )
     new_file_path = new_folder_path / f"facing_{frame_index:04d}.exr"
 
-    # save the image
     new_folder_path.mkdir(parents=True, exist_ok=True)
 
     save_numpy_to_exr(

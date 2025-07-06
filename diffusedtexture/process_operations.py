@@ -110,7 +110,7 @@ def process_uv_texture(  # noqa: PLR0913
         ] = resized_tiles[cam_index].reshape(-1, 3)
 
         # adjust the facing weight to the chosen percentile
-        cur_facing_image = facing_images[cam_index]
+        cur_facing_image = facing_images[cam_index][..., 0]
 
         # goes from 0 to 1
         # we cut of the bottom 1.0-facing_percentile and stretch the rest 0 to 1

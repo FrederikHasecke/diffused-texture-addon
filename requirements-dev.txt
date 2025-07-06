@@ -8,3 +8,4 @@ diffusers
 transformers
 peft
 pytest
+matplotlib

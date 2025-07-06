@@ -105,13 +105,3 @@ def isolate_object(obj: bpy.types.Object) -> dict:
         "target_object": obj,
         "original_location": original_location,
     }
-
-
-def restore_scene(backup_data: dict) -> None:
-    """Restore object position and re-show hidden objects."""
-    obj = backup_data["target_object"]
-    obj.location = backup_data["original_location"]
-
-    for o in backup_data["hidden_objects"]:
-        o.hide_set(state=False)
-        o.hide_render = False

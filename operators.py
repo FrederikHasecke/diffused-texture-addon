@@ -11,9 +11,9 @@ from .blender_operations import (
     extract_process_parameters_from_context,
     prepare_scene,
     render_views,
+    restore_scene,
 )
 from .texture_generation import run_texture_generation
-from .utils import restore_scene
 
 
 class OBJECT_OT_GenerateTexture(bpy.types.Operator):
@@ -57,9 +57,9 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
 
             if context.scene.operation_mode != "UV":
                 # Render views and save to folders
-                render_img_folders = render_views(context, selected_obj)
+                render_img_folders, cameras = render_views(context, selected_obj)
             else:
-                render_img_folders = bake_uv_views(context, selected_obj)
+                render_img_folders, cameras = bake_uv_views(context, selected_obj)
 
             # Put the process parameters from the blender context into a dataclass
             process_parameter = extract_process_parameters_from_context(context)
@@ -71,7 +71,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                 input_texture = None
 
             # Restore the scene after rendering
-            restore_scene(scene_backup)
+            restore_scene(scene_backup, cameras)
 
             # Start the texture generation in a background thread
             self._thread = threading.Thread(

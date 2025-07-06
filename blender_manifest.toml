@@ -52,6 +52,15 @@ wheels = [
   "./wheels/tokenizers-0.21.1-cp311-abi3-win_amd64.whl",
   "./wheels/safetensors-0.5.3-cp311-abi3-win_amd64.whl",
 
+  # Windows Debug wheels
+  "./wheels/contourpy-1.3.2-cp311-cp311-win_amd64.whl",
+  "./wheels/cycler-0.12.1-py3-none-any.whl",
+  "./wheels/fonttools-4.58.5-cp311-cp311-win_amd64.whl",
+  "./wheels/kiwisolver-1.4.8-cp311-cp311-win_amd64.whl",
+  "./wheels/pyparsing-3.2.3-py3-none-any.whl",
+  "./wheels/matplotlib-3.10.3-cp311-cp311-win_amd64.whl",
+
+
   # Linux-specific wheels
   "./wheels/scipy-1.15.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
   "./wheels/charset_normalizer-3.4.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
