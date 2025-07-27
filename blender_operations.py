@@ -182,7 +182,7 @@ def extract_process_parameters_from_context(
         render_resolution=getattr(scene, "render_resolution", "2048"),
         output_path=getattr(scene, "output_path", ""),
         texture_seed=getattr(scene, "texture_seed", 0),
-        input_texture=getattr(scene, "input_image", None),
+        input_texture=getattr(scene, "input_texture", None),
         sd_version=getattr(scene, "sd_version", None),
         checkpoint_path=getattr(scene, "checkpoint_path", ""),
         custom_sd_resolution=getattr(scene, "custom_sd_resolution", 0),

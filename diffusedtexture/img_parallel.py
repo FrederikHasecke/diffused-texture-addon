@@ -1,10 +1,8 @@
-import bpy
 import numpy as np
 from numpy.typing import NDArray
 from PIL import Image
 
 from ..blender_operations import ProcessParameters
-
 from .pipeline.pipeline_builder import create_diffusion_pipeline
 from .pipeline.pipeline_runner import run_pipeline
 from .process_operations import (

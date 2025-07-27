@@ -65,8 +65,8 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
             process_parameter = extract_process_parameters_from_context(context)
 
             # if a input texture exists, turn it into an NDArray
-            if hasattr(context.scene, "input_image"):
-                input_texture = bpy_img_to_numpy(context.scene.input_image)
+            if hasattr(context.scene, "input_texture"):
+                input_texture = bpy_img_to_numpy(context.scene.input_texture)
             else:
                 input_texture = None
 

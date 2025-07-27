@@ -8,20 +8,6 @@ from bpy.props import (  # type: ignore  # noqa: PGH003
 
 def register_controlnet_properties() -> None:
     """Register ControlNet Properties."""
-    bpy.types.Scene.controlnet_type = EnumProperty(
-        name="ControlNet Type",
-        description="Choose between traditional or union-style ControlNet",
-        items=[
-            (
-                "MULTIPLE",
-                "Multiple ControlNets",
-                "Use multiple separate ControlNet models",
-            ),
-            ("UNION", "ControlNet Union", "Use a single ControlNet Union model"),
-        ],
-        default="MULTIPLE",
-    )
-
     bpy.types.Scene.controlnet_union_path = StringProperty(
         name="ControlNet Union Path",
         description="Path to ControlNet Union model (for SDXL)",
@@ -41,7 +27,7 @@ def register_controlnet_properties() -> None:
         name="Depth ControlNet Path",
         description="Path to depth ControlNet",
         subtype="FILE_PATH",
-        default="lllyasviel/sd-controlnet-depth",
+        default="lllyasviel/control_v11f1p_sd15_depth",
     )
     bpy.types.Scene.canny_controlnet_path = StringProperty(
         name="Canny ControlNet Path",
@@ -80,7 +66,6 @@ def register_controlnet_properties() -> None:
 
 
 def unregister_controlnet_properties() -> None:
-    del bpy.types.Scene.controlnet_type
     del bpy.types.Scene.controlnet_union_path
     del bpy.types.Scene.union_controlnet_strength
     del bpy.types.Scene.depth_controlnet_path

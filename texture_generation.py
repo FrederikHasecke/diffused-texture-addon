@@ -1,6 +1,7 @@
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+import numpy as np
 from numpy.typing import NDArray
 from PIL import Image
 
@@ -9,9 +10,6 @@ from .diffusedtexture.img_parallel import img_parallel
 
 # from .diffusedtexture.img_sequential import img_sequential  # noqa: ERA001
 from .diffusedtexture.uv_pass import uv_pass
-
-if TYPE_CHECKING:
-    import numpy as np
 
 
 def load_multiview_images(render_img_folders: str) -> dict[str, list[NDArray[Any]]]:
@@ -39,7 +37,7 @@ def load_multiview_images(render_img_folders: str) -> dict[str, list[NDArray[Any
 def run_texture_generation(
     process_parameter: ProcessParameters,
     render_img_folders: dict[str, NDArray | str],
-    texture: NDArray[Any] | None = None,
+    texture: NDArray[np.float32] | None = None,
 ) -> None:
     """Run the texture generation in a separate thread."""
     if process_parameter.operation_mode == "UV_PASS":

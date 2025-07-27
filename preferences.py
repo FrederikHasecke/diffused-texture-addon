@@ -21,7 +21,7 @@ class InstallModelsOperator(bpy.types.Operator):
     bl_description = "Install the necessary models for DiffusedTexture"
     bl_options = {"REGISTER", "INTERNAL"}
 
-    def execute(self: "InstallModelsOperator", context: bpy.types.Context) -> set[str]:
+    def execute(self: "InstallModelsOperator", context: bpy.types.Context) -> set[str]:  # noqa: ARG002
         """Execute the default model download.
 
         Returns:
@@ -69,7 +69,7 @@ class DiffuseTexPreferences(bpy.types.AddonPreferences):
         default="",
     )  # type: ignore  # noqa: PGH003
 
-    def draw(self, context: bpy.types.Context) -> None:
+    def draw(self, context: bpy.types.Context) -> None:  # noqa: ARG002
         """Draw the preferences menu."""
         layout = self.layout
 

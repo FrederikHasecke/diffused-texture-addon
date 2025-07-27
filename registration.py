@@ -36,19 +36,18 @@ classes = [
 
 
 def register_addon() -> None:
-    """Register all  and properties in the correct order."""
+    """Register all classes and properties in the correct order."""
     for cls in classes:
-        # TODO: Remove this try-except block once all classes are stable
+        # TODO(FREDERIK): Remove this try-except block once all classes are stable  # noqa: E501, FIX002, TD003
         try:
             bpy.utils.register_class(cls)
-        except:  # noqa: E722
-            print(f"Error registering class {cls.__name__}.")
+        except:  # noqa: E722, S112
             continue
     register_properties()
 
 
 def unregister_addon() -> None:
     """Unegister all  and properties in the correct order."""
-    # unregister_properties()
+    unregister_properties()
     for cls in classes:
         bpy.utils.unregister_class(cls)

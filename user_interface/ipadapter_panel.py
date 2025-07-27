@@ -76,7 +76,7 @@ class OBJECT_OT_OpenNewIPAdapterImage(bpy.types.Operator):
         context.scene.ipadapter_image = image
         return {"FINISHED"}
 
-    def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> set[str]:
+    def invoke(self, context: bpy.types.Context, event: bpy.types.Event) -> set[str]:  # noqa: ARG002
         """Invoke the file selection dialog."""
         context.window_manager.fileselect_add(self)
         return {"RUNNING_MODAL"}

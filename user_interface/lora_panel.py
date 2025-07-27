@@ -2,6 +2,8 @@ import bpy
 
 
 class OBJECT_PT_LoRAPanel(bpy.types.Panel):
+    """Panel for managing LoRA models in the DiffusedTexture addon."""
+
     bl_label = "LoRA Models"
     bl_idname = "OBJECT_PT_lora_panel"
     bl_space_type = "VIEW_3D"
@@ -10,7 +12,8 @@ class OBJECT_PT_LoRAPanel(bpy.types.Panel):
     bl_options = {"DEFAULT_CLOSED"}
     bl_order = 4
 
-    def draw(self, context):
+    def draw(self, context: bpy.types.Context) -> None:
+        """Draw the LoRA panel in the UI."""
         layout = self.layout
         scene = context.scene
 
@@ -25,7 +28,8 @@ class OBJECT_PT_LoRAPanel(bpy.types.Panel):
             if lora.path.startswith("//"):
                 absolute_path = bpy.path.abspath(lora.path)
                 lora_box.label(
-                    text=f"Absolute Path: {absolute_path}", icon="FILE_FOLDER"
+                    text=f"Absolute Path: {absolute_path}",
+                    icon="FILE_FOLDER",
                 )
 
             lora_box.prop(lora, "strength", text="Strength LoRA")

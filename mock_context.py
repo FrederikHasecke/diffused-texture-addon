@@ -14,7 +14,7 @@ class MockScene:
         self.checkpoint_path = "runwayml/stable-diffusion-v1-5"
         self.canny_controlnet_path = "lllyasviel/sd-controlnet-canny"
         self.normal_controlnet_path = "lllyasviel/sd-controlnet-normal"
-        self.depth_controlnet_path = "lllyasviel/sd-controlnet-depth"
+        self.depth_controlnet_path = "lllyasviel/control_v11f1p_sd15_depth"
 
 
 class MockUpContext:

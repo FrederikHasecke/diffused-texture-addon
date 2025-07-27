@@ -297,13 +297,15 @@ def populate_grids(  # noqa: PLR0913
         row : row + render_resolution,
         col : col + render_resolution,
     ] = (255 * np.clip(depth_img, 0, 1)).astype(np.uint8)[
-        ..., :3
+        ...,
+        :3,
     ]  # Ensure depth image is RGB
     grids["normal_grid"][
         row : row + render_resolution,
         col : col + render_resolution,
     ] = (255 * np.clip(normal_img, 0, 1)).astype(np.uint8)[
-        ..., :3
+        ...,
+        :3,
     ]  # Ensure depth image is RGB# normal_img[..., :3]  # Ensure normal image is RGB
     grids["facing_grid"][
         row : row + render_resolution,
@@ -343,13 +345,16 @@ def resize_grids(
 
 
 def create_input_image_grid(
-    texture: NDArray[np.uint8] | None,
+    texture: NDArray[np.float32] | None,
     uv_grid: NDArray[np.float32],
     content_mask: NDArray[np.uint8] | None = None,
 ) -> NDArray[np.uint8]:
     """Project a texture onto renderings using UV coordinates."""
     if texture is None:
-        return np.ones_like(uv_grid) * 255
+        return np.ones_like(uv_grid, dtype=np.uint8) * 255
+
+    texture = 255 * np.clip(texture, 0, 1)  # Ensure texture is in 0-255 range
+    texture = texture.astype(np.uint8)
 
     input_texture_res = texture.shape[0]
 
