@@ -53,6 +53,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
             selected_obj = bpy.data.objects.get(selected_obj_name)
 
             # Backup the scene and isolate the object
+            # TODO: Add scene/camera/render settings to restore later on
             scene_backup = prepare_scene(selected_obj)
 
             if context.scene.operation_mode != "UV":
@@ -61,17 +62,18 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
             else:
                 render_img_folders, cameras = bake_uv_views(context, selected_obj)
 
-            # Put the process parameters from the blender context into a dataclass
+            # Restore the scene after rendering
+            # TODO: Add scene/camera/render settings to restore later on
+            restore_scene(scene_backup, cameras)
+
+            # Put the process parameters from context to a dataclass for thread safety
             process_parameter = extract_process_parameters_from_context(context)
 
-            # if a input texture exists, turn it into an NDArray
+            # if an input texture exists, turn it into an NDArray
             if hasattr(context.scene, "input_texture"):
                 input_texture = bpy_img_to_numpy(context.scene.input_texture)
             else:
                 input_texture = None
-
-            # Restore the scene after rendering
-            restore_scene(scene_backup, cameras)
 
             # Start the texture generation in a background thread
             self._thread = threading.Thread(

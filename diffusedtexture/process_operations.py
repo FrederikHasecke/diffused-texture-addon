@@ -376,31 +376,24 @@ def create_input_image_grid(
     # Ensure texture has three channels (remove alpha if present)
     texture = texture[..., :3]
 
-    projected_area = np.ones((uv_grid.shape[0], uv_grid.shape[1]), dtype=np.uint8)
-    projected_area[uv_coordinates[:, 1], uv_coordinates[:, 0]] = 0
-
+    # projected_area = np.ones((uv_grid.shape[0], uv_grid.shape[1]), dtype=np.uint8)
+    # projected_area[uv_coordinates[:, 1], uv_coordinates[:, 0]] = 0
     projected_texture_grid = np.zeros(
         (uv_grid.shape[0], uv_grid.shape[1], 3),
         dtype=np.uint8,
     )
 
     # Project texture using the UV coordinates
-    projected_texture_grid[uv_coordinates[:, 1], uv_coordinates[:, 0], :3] = texture[
+    projected_texture_grid = texture[
         uv_coordinates[:, 1],
         uv_coordinates[:, 0],
         :3,
-    ]
-
-    # interpolate missing pixels (projected_area == 1)
-    inpainted_texture = cv2.inpaint(
-        projected_texture_grid,
-        projected_area,
-        inpaintRadius=3,
-        flags=cv2.INPAINT_TELEA,
+    ].reshape(
+        uv_grid.shape[0],
+        uv_grid.shape[1],
+        3,
     )
 
-    if content_mask is not None:
-        # Apply content mask to the inpainted texture
-        inpainted_texture[content_mask == 0] = 255
+    projected_texture_grid[content_mask == 0] = 255
 
-    return inpainted_texture.astype(np.uint8)
+    return projected_texture_grid.astype(np.uint8)

@@ -19,9 +19,9 @@ def register_properties() -> None:
 
 
 def unregister_properties() -> None:
-    unregister_controlnet_properties()
-    unregister_stable_diffusion_properties()
     unregister_lora_properties()
     unregister_ipadapter_properties()
-    unregister_mesh_properties()
+    unregister_controlnet_properties()
+    unregister_stable_diffusion_properties()
     unregister_prompt_properties()
+    unregister_mesh_properties()

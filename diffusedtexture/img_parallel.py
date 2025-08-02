@@ -17,7 +17,7 @@ def img_parallel(
     texture: NDArray[np.float32] | None = None,
 ) -> NDArray[np.float32]:
     # Assemble grids
-    grids, resized_grids = assemble_multiview_grid(
+    _, resized_grids = assemble_multiview_grid(
         texture=texture,
         multiview_images=multiview_images,
         render_resolution=int(process_parameters.render_resolution),
