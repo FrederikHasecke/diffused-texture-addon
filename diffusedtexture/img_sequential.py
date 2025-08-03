@@ -1,3 +1,4 @@
+import cv2
 import numpy as np
 from numpy.typing import NDArray
 from PIL import Image
@@ -7,6 +8,7 @@ from .pipeline.pipeline_builder import create_diffusion_pipeline
 from .pipeline.pipeline_runner import run_pipeline
 from .process_operations import (
     assemble_multiview_list,
+    inpaint_missing,
     process_uv_texture,
 )
 
@@ -28,46 +30,68 @@ def img_sequential(
     Returns:
         Processed full-resolution texture.
     """
+
+    if process_parameter.custom_sd_resolution:
+        sd_resolution = int(process_parameter.custom_sd_resolution)
+    else:
+        sd_resolution = 512 if process_parameter.sd_version == "sd15" else 1024
+
+
     # Assemble per-view processed/resized maps
     _, resized_list = assemble_multiview_list(
         texture=texture,
         multiview_images=multiview_images,
-        sd_resolution=int(process_parameter.sd_resolution),
+        sd_resolution=sd_resolution,
     )
 
     n_views = len(resized_list["input"])
-    results = []
+
+    # Debug: check shapes and types
+    assert n_views > 0, "No views found in resized_list['input']"
+    for key in ["input", "content", "uv", "canny", "normal", "depth", "facing"]:
+        assert key in resized_list, f"Missing key {key} in resized_list"
+        for arr in resized_list[key]:
+            assert arr is not None, f"Array for {key} is None"
+            assert hasattr(arr, 'shape'), f"Array for {key} has no shape attribute"
 
     # Create the diffusion pipeline once
     pipeline = create_diffusion_pipeline(process_parameter)
 
     # create a sub callback to report progress
-    def sub_progress_callback(view_index: int, total_views: int, step_index: int, total_steps: int) -> None:
-        progress = int((view_index + step_index / total_steps) / total_views * 100)
-        progress_callback(progress)
+    def sub_progress_callback(sub_percent: int) -> None:
+        percent = int((sub_percent + i * 100) / n_views)
+        progress_callback(percent)
+
 
     keep_mask = None
+    texres = int(process_parameter.texture_resolution)
+    unpainted_mask = 255*np.ones((texres, texres), dtype=np.uint8)
     for i in range(n_views):
+        arr_in = resized_list["input"][i]
+        arr_content = resized_list["content"][i]
+        arr_uv = resized_list["uv"][i]
+        # Debug: check array shapes
+        assert arr_in.ndim == 3, f"input[{i}] shape: {arr_in.shape}"
+        assert arr_content.ndim >= 2, f"content[{i}] shape: {arr_content.shape}"
+        assert arr_uv.ndim >= 2, f"uv[{i}] shape: {arr_uv.shape}"
         if i == 0:
-            input_img = Image.fromarray(resized_list["input"][i].astype(np.uint8))
-            mask_img = Image.fromarray(resized_list["content"][i])
-            previous_texture = texture if texture is not None else 255*np.ones_like(resized_list["input"][i], dtype=np.uint8)
+            input_img = Image.fromarray(arr_in.astype(np.uint8))
+            mask_img = Image.fromarray(arr_content)
+            previous_texture = texture if texture is not None else 255*np.ones_like(arr_in, dtype=np.uint8)
         else:
-            # TODO: if i>0 project the texture to the current view
-            # TODO: To build parts of the view point input.
-            # TODO: if we have an input texture, we overwrite the input_img with the projected texture
-            # TODO: In the projected areas and remove the projected view from the input image inpainting area
             input_img, keep_mask = create_new_view_input(
                 previous_texture,
-                resized_list["input"][i],   
-                resized_list["uv"][i],
-                resized_list["facing"][i],
-                resized_list["content"][i],
+                unpainted_mask,
+                arr_in,   
+                arr_uv,
             )
-            mask_img = resized_list["content"][i] * keep_mask[..., None]
+            assert keep_mask is not None, f"keep_mask is None at view {i}"
+            mask_img = arr_content * keep_mask[..., None]
             mask_img = Image.fromarray(mask_img)
 
+        print("DEBUG MSG: Before running pipeline")
 
+        # Run the pipeline for the current view
         result = run_pipeline(
             pipe=pipeline,
             process_parameter=process_parameter,
@@ -82,25 +106,52 @@ def img_sequential(
             num_inference_steps=process_parameter.num_inference_steps,
         )
 
-        # TODO: Project the current result back to the texture
-        previous_texture = project_view_to_texture(
+        print("DEBUG MSG: Before projecting view to texture")
+
+        # Project the current result back to the texture
+        previous_texture, unpainted_mask = project_view_to_texture(
             sd_result=result,
             uv_view=resized_list["uv"][i],
             facing_view=resized_list["facing"][i],
-            texture_resolution=int(process_parameter.texture_resolution),
+            texture_resolution=texres,
             texture=previous_texture,
+            unpainted_mask=unpainted_mask,
         )
 
-        results.append(np.array(result))
+        print("DEBUG MSG: Before saving images")
 
-    # Stitch back to texture using UVs and facing info
-    return process_uv_texture(
-        process_parameter=process_parameter,
-        uv_images=multiview_images["uv"],
-        facing_images=multiview_images["facing"],
-        output_grid=np.stack(results),
-        target_resolution=int(process_parameter.texture_resolution),
-    )
+        # save all images with the index in the filename for debugging
+        input_img.save(f"{ProcessParameter.output_path}/input_view_{i}.png")
+        mask_img.save(f"{ProcessParameter.output_path}/mask_view_{i}.png")
+        if hasattr(previous_texture, 'save'):
+            previous_texture.save(f"{ProcessParameter.output_path}/previous_texture_{i}.png")
+        else:
+            # If previous_texture is ndarray, convert to Image
+            Image.fromarray(previous_texture.astype(np.uint8)).save(f"{ProcessParameter.output_path}/previous_texture_{i}.png")
+        cv2.imwrite(f"{ProcessParameter.output_path}/unpainted_mask_{i}.png", unpainted_mask)
+        if isinstance(mask_img, Image.Image):
+            cv2.imwrite(f"{ProcessParameter.output_path}/mask_img_{i}.png", np.array(mask_img))
+        else:
+            cv2.imwrite(f"{ProcessParameter.output_path}/mask_img_{i}.png", mask_img)
+
+    print("DEBUG MSG: Inpainting missing areas if necessary")
+
+    if texture is None:
+        # inpaint the texture for all areas that are not covered by the views
+        # if no texture is provided, we assume the texture is white
+        assert previous_texture is not None, "previous_texture is None before inpainting"
+        assert unpainted_mask is not None, "unpainted_mask is None before inpainting"
+        assert previous_texture.shape[:2] == unpainted_mask.shape, f"Shape mismatch: {previous_texture.shape} vs {unpainted_mask.shape}"
+        assert previous_texture.dtype == np.uint8, f"previous_texture dtype: {previous_texture.dtype}"
+        assert unpainted_mask.dtype == np.uint8, f"unpainted_mask dtype: {unpainted_mask.dtype}"
+        previous_texture = cv2.inpaint(
+            previous_texture.astype(np.uint8),
+            unpainted_mask.astype(np.uint8),
+            inpaintRadius=3,
+            flags=cv2.INPAINT_TELEA,
+        )
+
+    return previous_texture
 
 def project_view_to_texture(
             sd_result: Image,
@@ -108,6 +159,7 @@ def project_view_to_texture(
             facing_view: NDArray[np.uint8],
             texture_resolution: int,
             texture: NDArray[np.uint8],
+            unpainted_mask: NDArray[np.uint8] = None,
         ) -> NDArray[np.uint8]:
     """Project the output of the diffusion model back onto the texture."""
     
@@ -117,6 +169,10 @@ def project_view_to_texture(
     uv_view = uv_view[..., :2]  # Ensure UVs are 2D
     facing_view = facing_view[..., 0]  # Use the first channel for facing
 
+    # Clamp UVs to valid range
+    uv_y = np.clip(uv_view[..., 1].astype(int), 0, texture_resolution - 1)
+    uv_x = np.clip(uv_view[..., 0].astype(int), 0, texture_resolution - 1)
+
     # Create a new texture to hold the projected result
     new_texture = np.zeros(
         (texture_resolution, texture_resolution, 3), dtype=np.uint8
@@ -125,36 +181,67 @@ def project_view_to_texture(
         (texture_resolution, texture_resolution), dtype=np.uint8
     )
 
-    uv_view = uv_view * (texture_resolution - 1)  # Scale UVs to texture size
+    # Debug: check sd_array shape
+    assert sd_array.shape[-1] == 3, f"sd_array shape: {sd_array.shape}"
+    assert new_texture.shape == (texture_resolution, texture_resolution, 3), f"new_texture shape: {new_texture.shape}"
 
-    new_texture[uv_view[..., 1].astype(int), uv_view[..., 0].astype(int)] = sd_array
-    facing_texture[uv_view[..., 1].astype(int), uv_view[..., 0].astype(int)] = facing_view
+    # Prevent out-of-bounds
+    assert np.all((uv_x >= 0) & (uv_x < texture_resolution)), f"uv_x out of bounds: min {uv_x.min()}, max {uv_x.max()}"
+    assert np.all((uv_y >= 0) & (uv_y < texture_resolution)), f"uv_y out of bounds: min {uv_y.min()}, max {uv_y.max()}"
 
-    # remove areas where facing is less than 0.5
-    mask = facing_texture < 0.5
+    new_texture[uv_y, uv_x] = sd_array
+    facing_texture[uv_y, uv_x] = facing_view
 
-    new_texture[mask] = 0
-    facing_texture[mask] = 0
+    # keep areas where facing is more than 0.5
+    mask = facing_texture > 0.5
+
+    new_texture[~mask] = 0
+    if unpainted_mask is not None:
+        unpainted_mask[mask] = 0
 
     if texture is not None:
-        # Blend the new texture with the existing texture
-        new_texture = np.where(
-            new_texture == 0, texture, new_texture
-        )
+        # Ensure texture is in the correct format, else resize it
+        if texture.ndim == 3:
+            if texture.shape[2] == 4:
+                texture = texture[..., :3]
+            texture = cv2.resize(texture, (texture_resolution, texture_resolution))
 
-    return new_texture
+        # Blend the new texture with the existing texture
+        new_texture[mask] = texture[..., :3][mask]
+
+    return new_texture, unpainted_mask
 
 def create_new_view_input(
     output_texture: NDArray[np.float32],
+    unpainted_mask: NDArray[np.uint8],
     input_view: NDArray[np.uint8],
     uv_view: NDArray[np.uint8],
-    facing_view: NDArray[np.uint8],
-    content_view: NDArray[np.uint8],
 ) -> Image:
     """Create a new input image for the current view by projecting the output texture."""
 
-    # TODO: Implement the projection logic
+    # get the uv coordinates from the uv_view
+    uv_view = uv_view[..., :2]  # Ensure UVs are 2D
+    h, w = input_view.shape[0], input_view.shape[1]
+    uv_view = uv_view * (w - 1)  # Scale UVs to input size
 
-    # TODO: keep_mask should be a binary mask where only the area that we want to keep is 0
+    # Clamp UVs to valid range
+    uv_y = np.clip(uv_view[..., 1].flatten().astype(int), 0, h - 1)
+    uv_x = np.clip(uv_view[..., 0].flatten().astype(int), 0, w - 1)
 
-    return Image.fromarray(new_view_input), keep_mask
+    # Debug: check output_texture and unpainted_mask shapes
+    assert output_texture.shape[0] >= h and output_texture.shape[1] >= w, f"output_texture shape: {output_texture.shape}, input_view shape: {input_view.shape}"
+    assert unpainted_mask.shape[0] >= h and unpainted_mask.shape[1] >= w, f"unpainted_mask shape: {unpainted_mask.shape}, input_view shape: {input_view.shape}"
+
+    # Project the output texture to the input view using UV coordinates
+    view_from_texture = output_texture[uv_y, uv_x]
+    view_from_texture = view_from_texture.reshape(h, w, 3)
+    mask_from_texture = unpainted_mask[uv_y, uv_x]
+    mask_from_texture = mask_from_texture.reshape(h, w)
+    mask_from_texture = np.stack([mask_from_texture] * 3, axis=-1)  # Make it 3-channel
+
+    view_from_texture[mask_from_texture == 0] = input_view[mask_from_texture == 0]
+
+    # mask_from_texture is either 0 or 255, where 255 indicates the area that is unpainted
+    mask_from_texture[mask_from_texture == 255] = 1
+
+    return Image.fromarray(view_from_texture), mask_from_texture
