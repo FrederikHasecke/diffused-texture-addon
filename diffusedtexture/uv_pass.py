@@ -7,7 +7,7 @@ from numpy.typing import NDArray
 from pathlib import Path
 
 from ..blender_operations import (
-    ProcessParameters,
+    ProcessParameter,
     load_img_to_numpy,
 )
 
@@ -66,7 +66,7 @@ def export_uv_layout(obj_name, export_path, uv_map_name=None, size=(1024, 1024))
 
 
 def uv_pass(
-    process_parameter: ProcessParameters,
+    process_parameter: ProcessParameter,
     baked_texture_dict: dict[str, NDArray[np.float32]],
     texture_input: NDArray[np.float32] | None = None,
 ) -> NDArray[np.float32]:

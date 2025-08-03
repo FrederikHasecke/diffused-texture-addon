@@ -62,7 +62,7 @@ This mode processes each viewpoint individually, refining the texture step-by-st
 
 ---
 
-## Parameters and Considerations
+## parameter and Considerations
 
 ### Cameras
 - **Impact**: The number of cameras affects texture quality and detail and runtime.

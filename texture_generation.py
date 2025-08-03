@@ -3,10 +3,10 @@ from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
-from PIL import Image
 
-from .blender_operations import ProcessParameters, load_img_to_numpy
+from .blender_operations import ProcessParameter, load_img_to_numpy
 from .diffusedtexture.img_parallel import img_parallel
+from .diffusedtexture.img_sequential import img_sequential
 
 # from .diffusedtexture.img_sequential import img_sequential  # noqa: ERA001
 from .diffusedtexture.uv_pass import uv_pass
@@ -34,12 +34,24 @@ def load_multiview_images(render_img_folders: str) -> dict[str, list[NDArray[Any
     return multiview_images
 
 
-def run_texture_generation(
-    process_parameter: ProcessParameters,
+def run_texture_generation(  # noqa: PLR0913
+    process_parameter: ProcessParameter,
     render_img_folders: dict[str, NDArray | str],
+    progress_callback: callable,
+    mark_done: callable,
+    return_texture_bucket=list,  # noqa: ANN001
     texture: NDArray[np.float32] | None = None,
 ) -> None:
-    """Run the texture generation in a separate thread."""
+    """Run the texture generation in a separate thread.
+
+    Args:
+        process_parameter: parameter for the process.
+        render_img_folders: Rendered image folders.
+        progress_callback: Function accepting an int (0-100) to report progress.
+        mark_done: Function to call when the process is done.
+        return_texture_bucket: Optional bucket to store the resulting texture.
+        texture: Optional input texture.
+    """
     if process_parameter.operation_mode == "UV_PASS":
         output_texture: NDArray[np.uint8] = uv_pass(
             process_parameter,
@@ -53,22 +65,27 @@ def run_texture_generation(
 
         if process_parameter.operation_mode == "PARALLEL_IMG":
             output_texture: NDArray[np.uint8] = img_parallel(
-                multiview_images,
-                process_parameter,
-                texture,
+                multiview_images=multiview_images,
+                process_parameter=process_parameter,
+                progress_callback=progress_callback,
+                texture=texture,
             )
         elif process_parameter.operation_mode == "SEQUENTIAL_IMG":
-            msg = "SEQUENTIAL_IMG mode not yet available"
-            raise NotImplementedError(msg)
-            # output_texture: NDArray[np.uint8] = img_sequential(
-            #     multiview_images,
-            #     process_parameter,
-            #     texture,
-            # )  # noqa: ERA001, RUF100
+            output_texture: NDArray[np.uint8] = img_sequential(
+                multiview_images=multiview_images,
+                process_parameter=process_parameter,
+                progress_callback=progress_callback,
+                texture=texture,
+            )
         elif process_parameter.operation_mode == "PARA_SEQUENTIAL_IMG":
             msg = "PARA_SEQUENTIAL_IMG mode not yet available"
-            raise NotImplementedError(msg)
+            if mark_done:
+                # If mark_done is provided, call it with error information
+                mark_done(
+                    success=False,
+                    error=msg,
+                )
 
-    # Save the resulting texture
-    output_path = Path(process_parameter.output_path) / "final_texture.png"
-    Image.fromarray(output_texture).save(output_path)
+    return_texture_bucket.append(output_texture)
+
+    mark_done(success=True) if mark_done else None

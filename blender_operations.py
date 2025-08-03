@@ -6,7 +6,7 @@ import bpy
 import numpy as np
 from numpy.typing import NDArray
 
-from .diffusedtexture.camera_parameters import NumCameras
+from .diffusedtexture.camera_parameter import NumCameras
 from .process_utils import blendercs_to_ccs
 from .render_setup import (
     create_cameras_on_one_ring,
@@ -17,10 +17,10 @@ from .utils import isolate_object
 
 
 @dataclass
-class ProcessParameters:
-    """Dataclass of the Process Parameters."""
+class ProcessParameter:
+    """Dataclass of the Process parameter."""
 
-    # Blender specific parameters
+    # Blender specific parameter
     my_mesh_object: str
     my_uv_map: str
 
@@ -87,6 +87,56 @@ class ProcessParameters:
     lora_models: list[dict[str, str | float]]
 
 
+def apply_texture(
+    context: bpy.types.Context,
+    output_path: str,
+) -> None:
+    """Apply the generated texture to the selected object.
+
+    Args:
+        context (bpy.types.Context): The Blender context.
+        texture (NDArray[np.float32]): The texture to apply.
+        output_path (str): The output path for the texture.
+    """
+    # Get the selected object
+    selected_obj = bpy.data.objects.get(context.scene.my_mesh_object)
+
+    # Apply the texture to the object
+    apply_texture_to_object(selected_obj, output_path)
+
+
+def apply_texture_to_object(obj: bpy.types.Object, output_path: Path) -> None:
+    """Apply the texture to the given object.
+
+    Args:
+        obj (bpy.types.Object): The Blender object to apply the texture to.
+        output_path (Path): The path to the texture file.
+    """
+    # Load the texture image
+    img = bpy.data.images.load(str(output_path))
+
+    # Create a new material if the object does not have one
+    if not obj.data.materials:
+        mat = bpy.data.materials.new(name="GeneratedTextureMaterial")
+        obj.data.materials.append(mat)
+    else:
+        mat = obj.data.materials[0]
+
+    # Enable 'Use Nodes' for the material
+    mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+
+    # Create an image texture node
+    tex_image_node = nodes.new(type="ShaderNodeTexImage")
+    tex_image_node.image = img
+
+    # Link the image texture node to the material output node
+    mat.node_tree.links.new(
+        tex_image_node.outputs["Color"],
+        mat.node_tree.nodes.get("Material Output").inputs["Surface"],
+    )
+
+
 def create_depth_condition(
     depth_image_path: str,
     invalid_depth: int = 1e10,
@@ -150,9 +200,9 @@ def create_normal_condition(
     return normal_image.astype(np.float32)
 
 
-def extract_process_parameters_from_context(
+def extract_process_parameter_from_context(
     context: bpy.types.Context,
-) -> ProcessParameters:
+) -> ProcessParameter:
     scene = context.scene
 
     # extract LoRA models from the scene
@@ -167,7 +217,7 @@ def extract_process_parameters_from_context(
                 },
             )
 
-    return ProcessParameters(
+    return ProcessParameter(
         my_mesh_object=getattr(scene, "my_mesh_object", ""),
         my_uv_map=getattr(scene, "my_uv_map", ""),
         my_prompt=getattr(scene, "my_prompt", ""),
@@ -449,7 +499,7 @@ def render_views(
     num_cameras = int(context.scene.num_cameras)
     max_size = max(obj.dimensions)
 
-    # Set parameters
+    # Set parameter
     num_cameras = int(context.scene.num_cameras)
 
     # Create cameras based on the number specified in the scene

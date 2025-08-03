@@ -7,7 +7,7 @@ from diffusers.pipelines.controlnet.pipeline_controlnet_union_inpaint_sd_xl impo
 )
 from PIL import Image
 
-from ...blender_operations import ProcessParameters
+from ...blender_operations import ProcessParameter
 from ...utils import image_to_numpy
 from .controlnet_config import build_controlnet_config
 
@@ -15,38 +15,36 @@ from .controlnet_config import build_controlnet_config
 def run_pipeline(  # noqa: PLR0913
     pipe: StableDiffusionControlNetInpaintPipeline
     | StableDiffusionXLControlNetUnionInpaintPipeline,
-    process_parameters: ProcessParameters,
-    input_image: Image,
+    process_parameter: ProcessParameter,
+    input_img: Image,
     uv_mask: Image,
     canny_img: Image,
     normal_img: Image,
     depth_img: Image,
+    progress_callback: callable,
     strength: float = 1.0,
     guidance_scale: float = 7.5,
-    num_inference_steps: int | None = None,
+    num_inference_steps: int = 50,
 ) -> Image:
-    config = build_controlnet_config(process_parameters)
-    complexity = process_parameters.mesh_complexity
+    config = build_controlnet_config(process_parameter)
+    complexity = process_parameter.mesh_complexity
 
     control_images = []
     for entry in config[complexity]["inputs"]:
         image_map = {"depth": depth_img, "canny": canny_img, "normal": normal_img}
         control_images.append(image_map[entry])
 
-    if num_inference_steps is None:
-        num_inference_steps = process_parameters.num_inference_steps
-
     try:
         kwargs = {
-            "prompt": process_parameters.my_prompt,
-            "negative_prompt": process_parameters.my_negative_prompt,
-            "image": input_image,
+            "prompt": process_parameter.my_prompt,
+            "negative_prompt": process_parameter.my_negative_prompt,
+            "image": input_img,
             "mask_image": uv_mask,
             "control_image": control_images,
             "ip_adapter_image": Image.fromarray(
-                image_to_numpy(process_parameters.ipadapter_image),
+                image_to_numpy(process_parameter.ipadapter_image),
             )
-            if process_parameters.use_ipadapter
+            if process_parameter.use_ipadapter
             else None,
             "num_images_per_prompt": 1,
             "controlnet_conditioning_scale": config[complexity]["conditioning_scale"],
@@ -54,6 +52,20 @@ def run_pipeline(  # noqa: PLR0913
             "strength": strength,
             "guidance_scale": guidance_scale,
         }
+
+        def pipe_progress_callback(
+            pipe: StableDiffusionControlNetInpaintPipeline
+            | StableDiffusionXLControlNetUnionInpaintPipeline,
+            step_index: int,
+            timestep: int,  # noqa: ARG001
+            callback_kwargs: dict,
+        ) -> dict:
+            progress = step_index / pipe.num_timesteps
+            percent = int(100 * progress)
+            progress_callback(percent)
+            return callback_kwargs if callback_kwargs is not None else {}
+
+        kwargs["callback_on_step_end"] = pipe_progress_callback
 
         return pipe(**kwargs).images[0]
 

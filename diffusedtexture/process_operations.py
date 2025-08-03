@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 from numpy.typing import NDArray
 
-from ..blender_operations import ProcessParameters
+from ..blender_operations import ProcessParameter
 
 
 def delete_render_folders(render_img_folders: list) -> None:
@@ -18,7 +18,7 @@ def delete_render_folders(render_img_folders: list) -> None:
 
 
 def process_uv_texture(  # noqa: PLR0913
-    process_parameters: ProcessParameters,
+    process_parameter: ProcessParameter,
     uv_images: list[NDArray],
     facing_images: list[NDArray],
     output_grid: NDArray,
@@ -28,13 +28,13 @@ def process_uv_texture(  # noqa: PLR0913
 ) -> NDArray[np.uint8]:
     num_cameras = len(uv_images)
 
-    if process_parameters.custom_sd_resolution:
+    if process_parameter.custom_sd_resolution:
         sd_resolution = int(
-            int(process_parameters.custom_sd_resolution)
-            // np.sqrt(int(process_parameters.num_cameras)),
+            int(process_parameter.custom_sd_resolution)
+            // np.sqrt(int(process_parameter.num_cameras)),
         )
     else:
-        sd_resolution = 512 if process_parameters.sd_version == "sd15" else 1024
+        sd_resolution = 512 if process_parameter.sd_version == "sd15" else 1024
 
     # Resize output_grid to render resolution
     output_grid = cv2.resize(
@@ -260,6 +260,196 @@ def assemble_multiview_grid(
     return grids, resized_grids
 
 
+def assemble_multiview_subgrid(  # noqa: PLR0913
+    texture: NDArray[np.uint8] | None,
+    multiview_images: dict[str, list[NDArray]],
+    render_resolution: int,
+    sd_resolution: int,
+    n_subgrids: int,
+    n_rows_subgrid: int,
+    n_cols_subgrid: int,
+) -> tuple[list[dict[str, NDArray]], list[dict[str, NDArray]]]:
+    """Assemble multiple subgrids of multiview images with optional reuse.
+
+    Args:
+        texture: Optional texture for input grid.
+        multiview_images: Dictionary of loaded multiview images (NDArray format).
+        render_resolution: High-res grid resolution.
+        sd_resolution: Resized resolution for SD input.
+        n_subgrids: How many subgrids to create.
+        n_rows_subgrid: Rows in each subgrid (e.g., 1, 2, 3).
+        n_cols_subgrid: Columns in each subgrid (e.g., 2, 2, 3).
+
+    Returns:
+        Tuple of ([high-res subgrids], [resized subgrids]).
+    """
+    total_views = len(multiview_images["depth"])
+    views_per_subgrid = n_rows_subgrid * n_cols_subgrid
+
+    def get_view(index: int) -> tuple[NDArray, NDArray, NDArray, NDArray]:
+        idx = index % total_views  # Reuse views cyclically if needed
+        return (
+            multiview_images["depth"][idx],
+            multiview_images["normal"][idx],
+            multiview_images["facing"][idx],
+            multiview_images["uv"][idx],
+        )
+
+    subgrid_results = []
+    subgrid_results_resized = []
+
+    for s in range(n_subgrids):
+        grids = initialize_grids(
+            grid_size=max(n_rows_subgrid, n_cols_subgrid),  # actual layout
+            render_resolution=render_resolution,
+        )
+
+        for i in range(views_per_subgrid):
+            view_global_idx = s * views_per_subgrid + i
+            row_offset = (i // n_cols_subgrid) * render_resolution
+            col_offset = (i % n_cols_subgrid) * render_resolution
+
+            depth_img, normal_img, facing_img, uv_img = get_view(view_global_idx)
+
+            populate_grids(
+                grids,
+                depth_img,
+                normal_img,
+                facing_img,
+                uv_img,
+                row=row_offset,
+                col=col_offset,
+                render_resolution=render_resolution,
+            )
+
+        # Content & Input
+        grids["content_grid"] = create_content_mask(grids["uv_grid"])
+        grids["input_grid"] = create_input_image_grid(
+            texture,
+            grids["uv_grid"],
+            grids["content_grid"],
+        )
+
+        # Resize
+        resized_grids = resize_grids(grids, render_resolution, sd_resolution)
+        resized_grids["content_grid"] = create_content_mask(resized_grids["uv_grid"])
+        resized_grids["canny_grid"] = np.stack(
+            [
+                cv2.Canny(resized_grids["normal_grid"].astype(np.uint8), 100, 200)
+                for _ in range(3)
+            ],
+            axis=-1,
+        )
+        resized_grids["input_grid"] = create_input_image_grid(
+            texture,
+            resized_grids["uv_grid"],
+            resized_grids["content_grid"],
+        )
+
+        subgrid_results.append(grids)
+        subgrid_results_resized.append(resized_grids)
+
+    return subgrid_results, subgrid_results_resized
+
+
+def assemble_multiview_list(
+    texture: NDArray[np.uint8] | None,
+    multiview_images: dict[str, list[NDArray]],
+    sd_resolution: int = 512,
+) -> tuple[dict[str, list[NDArray]], dict[str, list[NDArray]]]:
+    """Process and return lists of individual images per view.
+
+    Args:
+        texture: Optional texture to project.
+        multiview_images: Dict of lists of multiview NDArray images.
+        sd_resolution: Resolution of resized images for SD model.
+
+    Returns:
+        Tuple containing:
+            - dict[str, list[NDArray]]: Processed original-resolution images.
+            - dict[str, list[NDArray]]: Corresponding resized images.
+    """
+    n_views = len(multiview_images["depth"])
+
+    # Lists to accumulate per-view outputs
+    outputs = {
+        "depth": [],
+        "normal": [],
+        "facing": [],
+        "uv": [],
+        "content": [],
+        "input": [],
+    }
+    outputs_resized = {
+        "depth": [],
+        "normal": [],
+        "facing": [],
+        "uv": [],
+        "content": [],
+        "input": [],
+        "canny": [],
+    }
+
+    for i in range(n_views):
+        depth_img = (255 * np.clip(multiview_images["depth"][i], 0, 1)).astype(
+            np.uint8,
+        )[..., :3]
+        normal_img = (255 * np.clip(multiview_images["normal"][i], 0, 1)).astype(
+            np.uint8,
+        )[..., :3]
+        facing_img = (255 * multiview_images["facing"][i][..., 0]).astype(np.uint8)
+        uv_img = multiview_images["uv"][i][..., :3]
+
+        content_mask = create_content_mask(uv_img)
+        input_img = create_input_image_grid(texture, uv_img, content_mask)
+
+        # Store original-resolution images
+        outputs["depth"].append(depth_img)
+        outputs["normal"].append(normal_img)
+        outputs["facing"].append(facing_img)
+        outputs["uv"].append(uv_img)
+        outputs["content"].append(content_mask)
+        outputs["input"].append(input_img)
+
+        # Resize all for SD input
+        resize_shape = (sd_resolution, sd_resolution)
+
+        depth_small = cv2.resize(
+            depth_img,
+            resize_shape,
+            interpolation=cv2.INTER_LINEAR,
+        )
+        normal_small = cv2.resize(
+            normal_img,
+            resize_shape,
+            interpolation=cv2.INTER_LINEAR,
+        )
+        facing_small = cv2.resize(
+            facing_img,
+            resize_shape,
+            interpolation=cv2.INTER_NEAREST,
+        )
+        uv_small = cv2.resize(uv_img, resize_shape, interpolation=cv2.INTER_LINEAR)
+
+        content_small = create_content_mask(uv_small)
+        input_small = create_input_image_grid(texture, uv_small, content_small)
+
+        canny_small = np.stack(
+            [cv2.Canny(normal_small.astype(np.uint8), 100, 200) for _ in range(3)],
+            axis=-1,
+        )
+
+        outputs_resized["depth"].append(depth_small)
+        outputs_resized["normal"].append(normal_small)
+        outputs_resized["facing"].append(facing_small)
+        outputs_resized["uv"].append(uv_small)
+        outputs_resized["content"].append(content_small)
+        outputs_resized["input"].append(input_small)
+        outputs_resized["canny"].append(canny_small)
+
+    return outputs, outputs_resized
+
+
 def initialize_grids(grid_size: int, render_resolution: int) -> dict[str, NDArray]:
     """Initialize blank grids for each map type."""
     grid_shape = (grid_size * render_resolution, grid_size * render_resolution)
@@ -376,8 +566,6 @@ def create_input_image_grid(
     # Ensure texture has three channels (remove alpha if present)
     texture = texture[..., :3]
 
-    # projected_area = np.ones((uv_grid.shape[0], uv_grid.shape[1]), dtype=np.uint8)
-    # projected_area[uv_coordinates[:, 1], uv_coordinates[:, 0]] = 0
     projected_texture_grid = np.zeros(
         (uv_grid.shape[0], uv_grid.shape[1], 3),
         dtype=np.uint8,
@@ -395,5 +583,10 @@ def create_input_image_grid(
     )
 
     projected_texture_grid[content_mask == 0] = 255
+    projected_texture_grid = np.clip(
+        projected_texture_grid,
+        0,
+        255,
+    )
 
     return projected_texture_grid.astype(np.uint8)
