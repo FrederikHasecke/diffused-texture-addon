@@ -6,7 +6,6 @@ import bpy
 import numpy as np
 from numpy.typing import NDArray
 
-from .diffusedtexture.camera_parameter import NumCameras
 from .process_utils import blendercs_to_ccs
 from .render_setup import (
     create_cameras_on_one_ring,
@@ -38,16 +37,14 @@ class ProcessParameter:
         "PARA_SEQUENTIAL_IMG",
         "UV_PASS",
     ]
+    subgrid_rows: int
+    subgrid_cols: int
     mesh_complexity: Literal[
         "LOW",
         "MEDIUM",
         "HIGH",
     ]
-    num_cameras: Literal[
-        NumCameras.four,
-        NumCameras.nine,
-        NumCameras.sixteen,
-    ]
+    num_cameras: Literal[4, 9, 16]
     texture_resolution: Literal[
         "512",
         "1024",
@@ -226,8 +223,10 @@ def extract_process_parameter_from_context(
         num_inference_steps=getattr(scene, "num_inference_steps", 50),
         guidance_scale=getattr(scene, "guidance_scale", None),
         operation_mode=getattr(scene, "operation_mode", "PARALLEL_IMG"),
+        subgrid_rows=getattr(scene, "subgrid_rows", 2),
+        subgrid_cols=getattr(scene, "subgrid_cols", 2),
         mesh_complexity=getattr(scene, "mesh_complexity", "MEDIUM"),
-        num_cameras=getattr(scene, "num_cameras", NumCameras.four.value),
+        num_cameras=getattr(scene, "num_cameras", 4),
         texture_resolution=getattr(scene, "texture_resolution", "1024"),
         render_resolution=getattr(scene, "render_resolution", "2048"),
         output_path=getattr(scene, "output_path", ""),
@@ -503,13 +502,13 @@ def render_views(
     num_cameras = int(context.scene.num_cameras)
 
     # Create cameras based on the number specified in the scene
-    if num_cameras == NumCameras.four.value:
+    if num_cameras == 4:  # noqa: PLR2004
         cameras = create_cameras_on_one_ring(
             num_cameras=num_cameras,
             max_size=max_size,
             name_prefix="RenderCam",
         )
-    elif num_cameras in [NumCameras.nine.value, NumCameras.sixteen.value]:
+    elif num_cameras in [9, 16]:
         cameras = create_cameras_on_sphere(
             num_cameras=num_cameras,
             max_size=max_size,

@@ -105,6 +105,19 @@ def register_mesh_properties() -> None:
         default="PARALLEL_IMG",
     )
 
+    bpy.types.Scene.subgrid_rows = IntProperty(
+        name="Subgrid Rows",
+        description="Number of rows for para-sequential mode",
+        default=2,
+        min=1,
+    )
+    bpy.types.Scene.subgrid_cols = IntProperty(
+        name="Subgrid Columns",
+        description="Number of columns for para-sequential mode",
+        default=2,
+        min=1,
+    )
+
     bpy.types.Scene.num_inference_steps = IntProperty(
         name="Steps",
         default=50,
@@ -133,6 +146,9 @@ def unregister_mesh_properties() -> None:
         "operation_mode",
         "num_inference_steps",
         "denoise_strength",
+        "subgrid_rows",
+        "subgrid_cols",
+        "input_texture",
     ]
     for p in props:
         delattr(bpy.types.Scene, p)

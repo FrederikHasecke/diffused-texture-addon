@@ -97,6 +97,11 @@ class OBJECT_PT_DiffusedTextureMainPanel(bpy.types.Panel):
         box_dt = layout.box()
         box_dt.label(text="Texture Generation Settings")
         box_dt.prop(scene, "operation_mode", text="Operation Mode")
+
+        if scene.operation_mode == "PARA_SEQUENTIAL_IMG":
+            box_dt.prop(scene, "subgrid_rows", text="Subgrid Rows")
+            box_dt.prop(scene, "subgrid_cols", text="Subgrid Columns")
+
         box_dt.prop(scene, "mesh_complexity", text="Mesh Complexity")
         box_dt.prop(scene, "num_cameras", text="Camera Views")
 

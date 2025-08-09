@@ -24,8 +24,7 @@ def export_uv_layout(obj_name, export_path, uv_map_name=None, size=(1024, 1024))
     # Get the object
     obj = bpy.data.objects.get(obj_name)
     if obj is None or obj.type != "MESH":
-        print(f"Object {obj_name} not found or is not a mesh.")
-        return
+        raise ValueError(f"Object '{obj_name}' not found or is not a mesh.")
 
     # Set the object as active
     bpy.context.view_layer.objects.active = obj
@@ -36,14 +35,13 @@ def export_uv_layout(obj_name, export_path, uv_map_name=None, size=(1024, 1024))
     # Get the UV map layers
     uv_layers = obj.data.uv_layers
     if not uv_layers:
-        print(f"No UV maps found for object {obj_name}.")
-        return
+        raise ValueError(f"No UV maps found for object {obj_name}.")
 
     # Find or set the active UV map
     if uv_map_name:
         uv_layer = uv_layers.get(uv_map_name)
         if uv_layer is None:
-            print(
+            raise ValueError(
                 f"UV map {uv_map_name} not found on object {obj_name}. Using active UV map."
             )
             uv_layer = obj.data.uv_layers.active
@@ -53,8 +51,7 @@ def export_uv_layout(obj_name, export_path, uv_map_name=None, size=(1024, 1024))
         uv_layer = uv_layers.active  # Use active UV map if none is provided
 
     if uv_layer is None:
-        print(f"No active UV map found for object {obj_name}.")
-        return
+        raise ValueError(f"No active UV map found for object {obj_name}.")
 
     # Set UV export settings
     bpy.ops.uv.export_layout(

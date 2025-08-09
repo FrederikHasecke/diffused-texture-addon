@@ -16,6 +16,7 @@ def img_parallel(
     process_parameter: ProcessParameter,
     progress_callback: callable,
     texture: NDArray[np.float32] | None = None,
+    facing_percentile: float = 0.5,
 ) -> NDArray[np.float32]:
     """Process multiview images in parallel.
 
@@ -60,4 +61,5 @@ def img_parallel(
         facing_images=multiview_images["facing"],
         output_grid=np.array(output_grid),
         target_resolution=int(process_parameter.texture_resolution),
+        facing_percentile=facing_percentile,
     )
