@@ -69,7 +69,7 @@ class OBJECT_PT_DiffusedTextureMainPanel(bpy.types.Panel):
     bl_category = "DiffusedTexture"
     bl_order = 0
 
-    def draw(self, context: bpy.types.Context) -> None:
+    def draw(self, context: bpy.types.Context) -> None:  # noqa: PLR0915
         """Draw Function.
 
         Args:

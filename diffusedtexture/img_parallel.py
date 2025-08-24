@@ -25,6 +25,7 @@ def img_parallel(
         process_parameter (ProcessParameter): parameter for the processing.
         progress_callback (callable): Callback to report progress.
         texture (NDArray[np.float32] | None, optional): Input texture. Defaults to None.
+        facing_percentile (float, optional): Facing percentile. Defaults to 0.5.
 
     Returns:
         NDArray[np.float32]: Processed texture.
@@ -55,11 +56,14 @@ def img_parallel(
     )
 
     # Process UV texture
-    return process_uv_texture(
+    output_texture, _ = process_uv_texture(
         process_parameter=process_parameter,
         uv_images=multiview_images["uv"],
         facing_images=multiview_images["facing"],
         output_grid=np.array(output_grid),
+        render_resolution=int(process_parameter.render_resolution),
         target_resolution=int(process_parameter.texture_resolution),
         facing_percentile=facing_percentile,
     )
+
+    return output_texture

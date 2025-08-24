@@ -62,14 +62,14 @@ This mode processes each viewpoint individually, refining the texture step-by-st
 
 ---
 
-## parameter and Considerations
+## Parameter and Considerations
 
 ### Cameras
-- **Impact**: The number of cameras affects texture quality and detail and runtime.
+- **Impact**: The number of cameras affects texture quality but also the runtime.
 - **Recommendation**: Use more cameras for complex models, but balance against VRAM limitations.
 
 ### Resolutions
-- **Render Resolution**: Should be at least 2x the Texture Resolution to prevent artifacts.
+- **Render Resolution**: Should be at least 2x the Texture Resolution to reduce artifacts.
 - **Texture Resolution**: Determines the final quality of the generated texture.
 
 ### ControlNets

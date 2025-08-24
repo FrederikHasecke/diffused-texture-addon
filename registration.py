@@ -38,7 +38,7 @@ classes = [
 def register_addon() -> None:
     """Register all classes and properties in the correct order."""
     for cls in classes:
-        # TODO(FREDERIK): Remove this try-except block once all classes are stable  # noqa: E501, FIX002, TD003
+        # TODO(FREDERIK): Remove this try-except block once all classes are stable  # noqa: E501, FIX002
         try:
             bpy.utils.register_class(cls)
         except:  # noqa: E722, S112

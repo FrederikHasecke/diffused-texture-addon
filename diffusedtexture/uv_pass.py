@@ -1,20 +1,25 @@
-# ruff: noqa
-import os
+from pathlib import Path
+
 import bpy
 import cv2
 import numpy as np
 from numpy.typing import NDArray
-from pathlib import Path
 
 from ..blender_operations import (
     ProcessParameter,
     load_img_to_numpy,
 )
+from .pipeline.pipeline_builder import create_diffusion_pipeline
+from .pipeline.pipeline_runner import run_pipeline
 
 
-def export_uv_layout(obj_name, export_path, uv_map_name=None, size=(1024, 1024)):
-    """
-    Export the UV layout of a given mesh object and specified UV map to an image file.
+def export_uv_layout(
+    obj_name: str,
+    export_path: str,
+    uv_map_name: str | None = None,
+    size: tuple[int, int] = (1024, 1024),
+) -> None:
+    """Export the UV layout of the mesh object and specified UV map to an image file.
 
     :param obj_name: Name of the object in Blender.
     :param export_path: File path where the UV layout should be saved.
@@ -24,7 +29,8 @@ def export_uv_layout(obj_name, export_path, uv_map_name=None, size=(1024, 1024))
     # Get the object
     obj = bpy.data.objects.get(obj_name)
     if obj is None or obj.type != "MESH":
-        raise ValueError(f"Object '{obj_name}' not found or is not a mesh.")
+        msg = f"Object '{obj_name}' not found or is not a mesh."
+        raise ValueError(msg)
 
     # Set the object as active
     bpy.context.view_layer.objects.active = obj
@@ -35,23 +41,22 @@ def export_uv_layout(obj_name, export_path, uv_map_name=None, size=(1024, 1024))
     # Get the UV map layers
     uv_layers = obj.data.uv_layers
     if not uv_layers:
-        raise ValueError(f"No UV maps found for object {obj_name}.")
+        msg = f"No UV maps found for object {obj_name}."
+        raise ValueError(msg)
 
     # Find or set the active UV map
     if uv_map_name:
         uv_layer = uv_layers.get(uv_map_name)
         if uv_layer is None:
-            raise ValueError(
-                f"UV map {uv_map_name} not found on object {obj_name}. Using active UV map."
-            )
-            uv_layer = obj.data.uv_layers.active
-        else:
-            uv_layers.active = uv_layer  # Set the selected UV map as active
+            msg = f"UV map {uv_map_name} not found on object {obj_name}."
+            raise ValueError(msg)
+        uv_layers.active = uv_layer  # Set the selected UV map as active
     else:
         uv_layer = uv_layers.active  # Use active UV map if none is provided
 
     if uv_layer is None:
-        raise ValueError(f"No active UV map found for object {obj_name}.")
+        msg = f"No active UV map found for object {obj_name}."
+        raise ValueError(msg)
 
     # Set UV export settings
     bpy.ops.uv.export_layout(
@@ -63,18 +68,18 @@ def export_uv_layout(obj_name, export_path, uv_map_name=None, size=(1024, 1024))
 
 
 def uv_pass(
-    process_parameter: ProcessParameter,
     baked_texture_dict: dict[str, NDArray[np.float32]],
+    process_parameter: ProcessParameter,
+    progress_callback: callable,
     texture_input: NDArray[np.float32] | None = None,
 ) -> NDArray[np.float32]:
     """Run the UV space refinement pass."""
-
     obj_name = process_parameter.my_mesh_object
     uv_map_name = process_parameter.my_uv_map
 
     # uv output path
     uv_map_path = Path(
-        process_parameter.output_path
+        process_parameter.output_path,
     )  # Use Path for OS-independent path handling
     uv_map_path = str(uv_map_path / "uv_map_layout.png")
 
@@ -107,7 +112,10 @@ def uv_pass(
 
     # Create the Canny edge detection mask
     canny = 255 * np.ones(
-        (int(scene.texture_resolution), int(scene.texture_resolution))
+        (
+            int(process_parameter.texture_resolution),
+            int(process_parameter.texture_resolution),
+        ),
     )
 
     # Only process areas where the alpha channel is 255
@@ -115,8 +123,8 @@ def uv_pass(
         uv_layout_image[..., 3] >= 1
     ]
 
-    canny[canny < 64] = 0
-    canny[canny >= 192] = 255
+    canny[canny < 64] = 0  # noqa: PLR2004
+    canny[canny >= 192] = 255  # noqa: PLR2004
     canny = 255 - canny
 
     # Stack the canny result into 3 channels (RGB)
@@ -124,43 +132,53 @@ def uv_pass(
     canny = canny.astype(np.uint8)
 
     # create the pipe
-    pipe = create_uv_pass_pipeline(scene)
 
     texture_input = texture_input[..., :3]
 
     # create the base of the final texture
     texture_input = cv2.resize(
         texture_input,
-        (int(scene.texture_resolution), int(scene.texture_resolution)),
+        (
+            int(process_parameter.texture_resolution),
+            int(process_parameter.texture_resolution),
+        ),
         interpolation=cv2.INTER_LANCZOS4,
     )
 
-    output_image = infer_uv_pass_pipeline(
-        pipe,
-        scene,
-        texture_input,
-        mask,
-        canny,
-        strength=scene.denoise_strength,
+    pipe = create_diffusion_pipeline(process_parameter)
+
+    output_image = run_pipeline(
+        pipe=pipe,
+        process_parameter=process_parameter,
+        input_img=texture_input,
+        uv_mask=mask,
+        canny_img=canny,
+        normal_img=baked_texture_dict["normal"],
+        progress_callback=progress_callback,
+        strength=process_parameter.denoise_strength,
+        guidance_scale=process_parameter.guidance_scale,
+        num_inference_steps=process_parameter.num_inference_steps,
     )
+
+    # TODO: Use the position bake information to mean over xyz distance  # noqa: FIX002
 
     # remove alpha
     output_image = np.array(output_image)[..., :3]
 
     cv2.imwrite(
-        os.path.join(scene.output_path, f"texture_input_uv_pass.png"),
+        str(process_parameter.output_path / "texture_input_uv_pass.png"),
         cv2.cvtColor(texture_input, cv2.COLOR_RGB2BGR),
     )
     cv2.imwrite(
-        os.path.join(scene.output_path, f"mask_uv_pass.png"),
+        str(process_parameter.output_path / "mask_uv_pass.png"),
         cv2.cvtColor(mask, cv2.COLOR_RGB2BGR),
     )
     cv2.imwrite(
-        os.path.join(scene.output_path, f"canny_uv_pass.png"),
+        str(process_parameter.output_path / "canny_uv_pass.png"),
         cv2.cvtColor(canny, cv2.COLOR_RGB2BGR),
     )
     cv2.imwrite(
-        os.path.join(scene.output_path, f"output_image_uv_pass.png"),
+        str(process_parameter.output_path / "output_image_uv_pass.png"),
         cv2.cvtColor(output_image, cv2.COLOR_RGB2BGR),
     )
 

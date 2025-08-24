@@ -1,6 +1,5 @@
 import bpy
-from bpy.props import (  # type: ignore  # noqa: PGH003
-    EnumProperty,
+from bpy.props import (
     FloatProperty,
     StringProperty,
 )

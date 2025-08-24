@@ -1,5 +1,6 @@
 """Handles the operators of the addon."""
 
+import shutil
 import threading
 import time
 from pathlib import Path
@@ -125,6 +126,13 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
             self.report({"ERROR"}, f"Execution error: {e}")
             return {"CANCELLED"}
 
+        finally:
+            # delete the temporary render folders
+            for render_type in render_img_folders:
+                render_type_folder = render_img_folders[render_type]
+                if Path(render_type_folder).is_dir():
+                    shutil.rmtree(render_type_folder, ignore_errors=True)
+
         return {"RUNNING_MODAL"}
 
     def modal(self, context: bpy.types.Context, event: bpy.types.Event) -> set[str]:
@@ -163,8 +171,6 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                     context,
                     output_path,
                 )
-
-                # TODO: Delete output render folders
 
                 self.report({"INFO"}, "Texture saved successfully.")
                 return {"FINISHED"}

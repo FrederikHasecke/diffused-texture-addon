@@ -85,7 +85,7 @@ wheels = [
   "./wheels/safetensors-0.5.2-cp311-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
 ]
 [permissions]
-network = "Need to download models from huggingface.co"
+network = "Download models from huggingface.co"
 files = "Load/save renderings and textures from/to disk"
 [build]
 paths_exclude_pattern = [
@@ -95,6 +95,7 @@ paths_exclude_pattern = [
   "*.tar.gz",
   ".github/",
   ".vscode/",
+  ".ruff_cache/",
   "documentation/",
   "tests/",
   "images/",
@@ -102,6 +103,7 @@ paths_exclude_pattern = [
   "*.md",
   "LICENSE",
   "NOTICE",
+  "tests/",
   "pytest.ini",
   ".pytest_cache/",
   "Dockerfile",
@@ -109,4 +111,5 @@ paths_exclude_pattern = [
   "requirements.txt",
   "requirements-dev.txt",
   "wheels_dev/",
+  "wheels-dev/"
 ]

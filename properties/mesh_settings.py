@@ -100,7 +100,7 @@ def register_mesh_properties() -> None:
             ("PARALLEL_IMG", "Parallel", "Run views in parallel"),
             ("SEQUENTIAL_IMG", "Sequential", "Run views one by one"),
             ("PARA_SEQUENTIAL_IMG", "Para-Sequential", "Run subsets parallel"),
-            ("UV_PASS", "Texture Pass", "Run on a flat texture"),
+            # ("UV_PASS", "Texture Pass", "Run on a flat texture"),  # noqa: ERA001
         ],
         default="PARALLEL_IMG",
     )

@@ -25,7 +25,7 @@ def process_uv_texture(  # noqa: PLR0913
     target_resolution: int = 512,
     render_resolution: int = 2048,
     facing_percentile: float = 1.0,
-) -> NDArray[np.uint8]:
+) -> tuple[NDArray[np.uint8], NDArray[np.uint8]]:
     num_cameras = len(uv_images)
 
     if process_parameter.custom_sd_resolution:
@@ -129,11 +129,15 @@ def process_uv_texture(  # noqa: PLR0913
             -1,
         )
 
+    textured_area = np.sum(uv_texture_first_pass_weight, axis=0)
+    textured_area = np.clip(textured_area, 0, 1)
+    textured_area = (textured_area * 255).astype(np.uint8)
+
     return inpaint_missing(
         target_resolution,
         uv_texture_first_pass,
         uv_texture_first_pass_weight,
-    ).astype(np.uint8)
+    ).astype(np.uint8), textured_area
 
 
 def inpaint_missing(
@@ -262,6 +266,7 @@ def assemble_multiview_grid(
 
 def assemble_multiview_subgrid(  # noqa: PLR0913
     texture: NDArray[np.uint8] | None,
+    painted_area_texture: NDArray[np.uint8] | None,
     multiview_images: dict[str, list[NDArray]],
     render_resolution: int,
     sd_resolution: int,
@@ -273,6 +278,7 @@ def assemble_multiview_subgrid(  # noqa: PLR0913
 
     Args:
         texture: Optional texture for input grid.
+        painted_area_texture: Area that has already been painted (if any).
         multiview_images: Dictionary of loaded multiview images (NDArray format).
         render_resolution: High-res grid resolution.
         sd_resolution: Resized resolution for SD input.
@@ -330,6 +336,28 @@ def assemble_multiview_subgrid(  # noqa: PLR0913
             grids["content_grid"],
         )
 
+        # Painted Area
+        grids["already_painted_grid"] = create_input_image_grid(
+            painted_area_texture,
+            grids["uv_grid"],
+            grids["content_grid"],
+        )[:, :, 0]
+
+        # feather out already painted areas
+        grids["already_painted_grid"] = cv2.erode(
+            grids["already_painted_grid"],
+            np.ones((5, 5), np.uint8),
+            iterations=1,
+        )
+        grids["already_painted_grid"] = cv2.GaussianBlur(
+            grids["already_painted_grid"],
+            (5, 5),
+            0,
+        )
+
+        # Adjust the content grid with the painted area to exclude already painted areas
+        grids["content_grid"][grids["already_painted_grid"] == 255] = 0  # noqa: PLR2004
+
         # Resize
         resized_grids = resize_grids(grids, render_resolution, sd_resolution)
         resized_grids["content_grid"] = create_content_mask(resized_grids["uv_grid"])
@@ -345,6 +373,28 @@ def assemble_multiview_subgrid(  # noqa: PLR0913
             resized_grids["uv_grid"],
             resized_grids["content_grid"],
         )
+
+        # Painted Area
+        resized_grids["already_painted_grid"] = create_input_image_grid(
+            painted_area_texture,
+            resized_grids["uv_grid"],
+            resized_grids["content_grid"],
+        )[:, :, 0]
+
+        # feather out already painted areas
+        resized_grids["already_painted_grid"] = cv2.erode(
+            resized_grids["already_painted_grid"],
+            np.ones((5, 5), np.uint8),
+            iterations=1,
+        )
+        resized_grids["already_painted_grid"] = cv2.GaussianBlur(
+            resized_grids["already_painted_grid"],
+            (5, 5),
+            0,
+        )
+
+        # Adjust the content grid with the painted area to exclude already painted areas
+        resized_grids["content_grid"][resized_grids["already_painted_grid"] == 255] = 0  # noqa: PLR2004
 
         subgrid_results.append(grids)
         subgrid_results_resized.append(resized_grids)

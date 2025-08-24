@@ -5,34 +5,70 @@ import bpy
 import mathutils
 
 
+def farthest_point_ordering(positions: list[mathutils.Vector]) -> list[int]:
+    """Sample the order of farthest points.
+
+    Given a list of positions (Vectors), return an index ordering such that
+    consecutive items are far apart. Uses greedy farthest-point traversal.
+    """
+    if not positions:
+        return []
+
+    ordered = []
+    remaining = set(range(len(positions)))
+    current = 0
+    ordered.append(current)
+    remaining.remove(current)
+
+    while remaining:
+        best_idx, best_dist = None, -1
+        for idx in remaining:
+            d = min((positions[idx] - positions[j]).length for j in ordered)
+            if d > best_dist:
+                best_idx, best_dist = idx, d
+        ordered.append(best_idx)
+        remaining.remove(best_idx)
+
+    return ordered
+
+
 def create_cameras_on_one_ring(
     num_cameras: int,
     max_size: float,
     name_prefix: str = "Camera",
     fov: float = 22.5,
-) -> list[bpy.types.Camera]:
-    cameras = []
+    elevation_ratio: float = 0.25,
+) -> list[bpy.types.Object]:
+    """Create single ring of cameras.
+
+    Evenly distribute cameras on one horizontal ring, then reorder them
+    with farthest-point ordering so consecutive cameras are far apart.
+    """
     fov_rad = math.radians(fov)
     radius = 1.1 * (max_size * math.sqrt(2)) / math.tan(fov_rad)
-    angle_offset = math.pi / num_cameras
-    elevation = radius * 0.25
+    elevation = radius * elevation_ratio
 
+    # Generate evenly spaced ring positions
+    positions = []
     for i in range(num_cameras):
-        theta = (2 * math.pi / num_cameras) * i + angle_offset
+        theta = (2 * math.pi / num_cameras) * i
         x = radius * math.cos(theta)
         y = radius * math.sin(theta)
-        location = mathutils.Vector((x, y, elevation))
+        positions.append(mathutils.Vector((x, y, elevation)))
 
-        cam_data = bpy.data.cameras.new(f"{name_prefix}_{i + 1}")
+    # Reorder
+    order = farthest_point_ordering(positions)
+
+    cameras = []
+    for k, idx in enumerate(order):
+        loc = positions[idx]
+        cam_data = bpy.data.cameras.new(f"{name_prefix}_{k + 1}")
         cam_data.lens_unit = "FOV"
         cam_data.angle = fov_rad
 
-        cam_obj = bpy.data.objects.new(f"{name_prefix}_{i + 1}", cam_data)
-        cam_obj.location = location
-
-        direction = location - mathutils.Vector((0, 0, 0))
-        cam_obj.rotation_euler = direction.to_track_quat("Z", "Y").to_euler()
-
+        cam_obj = bpy.data.objects.new(f"{name_prefix}_{k + 1}", cam_data)
+        cam_obj.location = loc
+        cam_obj.rotation_euler = loc.to_track_quat("Z", "Y").to_euler()
         bpy.context.collection.objects.link(cam_obj)
         cameras.append(cam_obj)
 
@@ -44,45 +80,49 @@ def create_cameras_on_two_rings(
     max_size: float = 1,
     name_prefix: str = "Camera",
     fov: float = 22.5,
-) -> list[bpy.types.Camera]:
-    cameras = []
+    elevation_ratio: float = 0.5,
+) -> list[bpy.types.Object]:
+    """Create cameras on two rings (upper/lower).
+
+    Create cameras on two rings (upper/lower), then reorder them so that
+    consecutive cameras are maximally separated.
+    """
     fov_rad = math.radians(fov)
     radius = (max_size * 0.5) / math.tan(fov_rad * 0.5)
 
     num_cameras_per_ring = num_cameras // 2
-    angle_offset = math.pi / num_cameras_per_ring
-    elevation_upper = radius * 0.5
-    elevation_lower = -radius * 0.5
+    elevation_upper = radius * elevation_ratio
+    elevation_lower = -radius * elevation_ratio
 
+    positions = []
+
+    # Lower ring
     for i in range(num_cameras_per_ring):
         theta = (2 * math.pi / num_cameras_per_ring) * i
         x, y = radius * math.cos(theta), radius * math.sin(theta)
-        loc = mathutils.Vector((x, y, elevation_lower))
+        positions.append(mathutils.Vector((x, y, elevation_lower)))
 
-        cam_data = bpy.data.cameras.new(f"{name_prefix}_LowerRing_{i + 1}")
-        cam_data.lens_unit = "FOV"
-        cam_data.angle = fov_rad
-
-        cam_obj = bpy.data.objects.new(f"{name_prefix}_LowerRing_{i + 1}", cam_data)
-        cam_obj.location = loc
-        cam_obj.rotation_euler = loc.to_track_quat("Z", "Y").to_euler()
-
-        bpy.context.collection.objects.link(cam_obj)
-        cameras.append(cam_obj)
-
+    # Upper ring
     for i in range(num_cameras_per_ring):
-        theta = (2 * math.pi / num_cameras_per_ring) * i + angle_offset
+        theta = (
+            2 * math.pi / num_cameras_per_ring
+        ) * i + math.pi / num_cameras_per_ring
         x, y = radius * math.cos(theta), radius * math.sin(theta)
-        loc = mathutils.Vector((x, y, elevation_upper))
+        positions.append(mathutils.Vector((x, y, elevation_upper)))
 
-        cam_data = bpy.data.cameras.new(f"{name_prefix}_UpperRing_{i + 1}")
+    # Reorder
+    order = farthest_point_ordering(positions)
+
+    cameras = []
+    for k, idx in enumerate(order):
+        loc = positions[idx]
+        cam_data = bpy.data.cameras.new(f"{name_prefix}_{k + 1}")
         cam_data.lens_unit = "FOV"
         cam_data.angle = fov_rad
 
-        cam_obj = bpy.data.objects.new(f"{name_prefix}_UpperRing_{i + 1}", cam_data)
+        cam_obj = bpy.data.objects.new(f"{name_prefix}_{k + 1}", cam_data)
         cam_obj.location = loc
         cam_obj.rotation_euler = loc.to_track_quat("Z", "Y").to_euler()
-
         bpy.context.collection.objects.link(cam_obj)
         cameras.append(cam_obj)
 
@@ -95,25 +135,35 @@ def create_cameras_on_sphere(
     name_prefix: str = "Camera",
     fov: float = 22.5,
 ) -> list[bpy.types.Camera]:
-    cameras = []
+    """Create cameras on a Fibonacci sphere.
+
+    Places cameras on a Fibonacci sphere, then reorders them so that
+    consecutive cameras are maximally separated (farthest-point ordering).
+    """
     phi = math.pi * (3.0 - math.sqrt(5.0))
     fov_rad = math.radians(fov)
     radius = (max_size * 0.5) / math.tan(fov_rad * 0.5)
 
+    positions = []
     for i in range(num_cameras):
         y = 1 - (i / float(num_cameras - 1)) * 2
         radius_at_y = math.sqrt(1 - y * y)
         theta = phi * i
-
         x = math.cos(theta) * radius_at_y
         z = math.sin(theta) * radius_at_y
         loc = mathutils.Vector((x, y, z)) * radius
+        positions.append(loc)
 
-        cam_data = bpy.data.cameras.new(f"{name_prefix}_{i + 1}")
+    ordered = farthest_point_ordering(positions)
+
+    cameras = []
+    for k, idx in enumerate(ordered):
+        loc = positions[idx]
+        cam_data = bpy.data.cameras.new(f"{name_prefix}_{k + 1}")
         cam_data.lens_unit = "FOV"
         cam_data.angle = fov_rad
 
-        cam_obj = bpy.data.objects.new(f"{name_prefix}_{i + 1}", cam_data)
+        cam_obj = bpy.data.objects.new(f"{name_prefix}_{k + 1}", cam_data)
         cam_obj.location = loc
         cam_obj.rotation_euler = loc.to_track_quat("Z", "Y").to_euler()
 

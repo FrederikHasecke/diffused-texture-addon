@@ -6,10 +6,9 @@ import bpy
 import numpy as np
 from numpy.typing import NDArray
 
-from .process_utils import blendercs_to_ccs
 from .render_setup import (
-    create_cameras_on_one_ring,
     create_cameras_on_sphere,
+    create_cameras_on_two_rings,
     setup_render_settings,
 )
 from .utils import isolate_object
@@ -35,7 +34,7 @@ class ProcessParameter:
         "PARALLEL_IMG",
         "SEQUENTIAL_IMG",
         "PARA_SEQUENTIAL_IMG",
-        "UV_PASS",
+        # "UV_PASS",
     ]
     subgrid_rows: int
     subgrid_cols: int
@@ -132,6 +131,29 @@ def apply_texture_to_object(obj: bpy.types.Object, output_path: Path) -> None:
         tex_image_node.outputs["Color"],
         mat.node_tree.nodes.get("Material Output").inputs["Surface"],
     )
+
+
+def blendercs_to_ccs(
+    points_bcs: np.ndarray,
+    camera: bpy.types.Camera,
+    rotation_only: bool = False,  # noqa: FBT001, FBT002
+) -> NDArray[np.float32]:
+    """Converts 3D points from the Blender coordinate system to camera coordinates."""
+    # Extract camera rotation in world space
+    camera_rotation = np.array(camera.matrix_world.to_quaternion().to_matrix()).T
+
+    # Apply the rotation to align normals with the cameras view
+    if rotation_only:
+        point_3d_cam = np.dot(camera_rotation, points_bcs.T).T
+    else:
+        # Translate points to the camera's coordinate system
+        camera_position = np.array(camera.matrix_world.to_translation()).reshape((3,))
+        points_bcs = points_bcs - camera_position
+        point_3d_cam = np.dot(camera_rotation, points_bcs.T).T
+
+    # Convert to camera coordinate system by inverting the Z-axis
+    R_blender_to_cv = np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]])  # noqa: N806
+    return np.dot(R_blender_to_cv, point_3d_cam.T).T
 
 
 def create_depth_condition(
@@ -485,14 +507,14 @@ def render_views(
     """Render views and save to folders.
 
     Args:
-        context (bpy.context): _description_
-        obj (bpy.types.Object): _description_
+        context (bpy.context): Blender Context
+        obj (bpy.types.Object): Blender Object to be rendered
 
     Raises:
-        ValueError: _description_
+        ValueError: If the number of cameras is not supported.
 
     Returns:
-        dict: _description_
+        dict: A dictionary containing the rendered image paths.
     """
     # Set up cameras
     num_cameras = int(context.scene.num_cameras)
@@ -503,7 +525,7 @@ def render_views(
 
     # Create cameras based on the number specified in the scene
     if num_cameras == 4:  # noqa: PLR2004
-        cameras = create_cameras_on_one_ring(
+        cameras = create_cameras_on_two_rings(
             num_cameras=num_cameras,
             max_size=max_size,
             name_prefix="RenderCam",

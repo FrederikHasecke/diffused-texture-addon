@@ -8,7 +8,8 @@ from .blender_operations import ProcessParameter, load_img_to_numpy
 from .diffusedtexture.img_parallel import img_parallel
 from .diffusedtexture.img_parasequential import img_parasequential
 from .diffusedtexture.img_sequential import img_sequential
-from .diffusedtexture.uv_pass import uv_pass
+
+# from .diffusedtexture.uv_pass import uv_pass # TODO(Frederik): Revisit this  # noqa: E501, ERA001, FIX002
 
 
 def load_multiview_images(render_img_folders: str) -> dict[str, list[NDArray[Any]]]:
@@ -52,13 +53,15 @@ def run_texture_generation(  # noqa: PLR0913
         texture: Optional input texture.
     """
     if process_parameter.operation_mode == "UV_PASS":
-        output_texture: NDArray[np.uint8] = uv_pass(
-            process_parameter,
-            render_img_folders,
-            texture,
-        )
-
-    else:
+        msg = "UV Pass mode is currently not implemented."
+        raise NotImplementedError(msg)
+        # output_texture: NDArray[np.uint8] = uv_pass(
+        #     baked_texture_dict=render_img_folders,  # noqa: ERA001
+        #     process_parameter=process_parameter,  # noqa: ERA001
+        #     progress_callback=progress_callback,  # noqa: ERA001
+        #     texture=texture,  # noqa: ERA001
+        # )  # noqa: ERA001, RUF100
+    else:  # noqa: RET506
         # Assemble grids from rendered images
         multiview_images = load_multiview_images(render_img_folders)
 
@@ -85,6 +88,9 @@ def run_texture_generation(  # noqa: PLR0913
                 subgrid_rows=process_parameter.subgrid_rows,
                 subgrid_cols=process_parameter.subgrid_cols,
             )
+        else:
+            msg = f"Unknown operation mode: {process_parameter.operation_mode}"
+            raise ValueError(msg)
 
     return_texture_bucket.append(output_texture)
 
