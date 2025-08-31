@@ -2,7 +2,7 @@ name: Blender Addon CUDA Releases
 
 on:
   push:
-    branches: [master]
+    branches: [master, v0-redesign]
 
 jobs:
   build-cuda118:
