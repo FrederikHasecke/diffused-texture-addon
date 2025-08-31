@@ -1,60 +1,138 @@
-name: Blender Addon CUDA Releases
+name: Diffused Texture Addon Release
 
 on:
   push:
-    branches: [master, v0-redesign]
+    branches: [ master, v0-redesign ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (optional; falls back to blender_manifest.toml)'
+        required: false
+        default: ""
+
+permissions:
+  contents: write
 
 jobs:
-  build-cuda118:
+  wheels:
+    name: Collect wheels (Linux + Windows, CUDA 11.8)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Build wheels CUDA 118
-        run: |
-          pip install wheel
-          pip wheel -r requirements-cuda118.txt -w wheels_cuda118/
-      - name: Update manifest for CUDA 118
-        run: python scripts/update_manifest.py blender_manifest.toml wheels_cuda118/
-      - name: Blender Addon Release CUDA 118
-        uses: blenderkit/blender-addon-build@main
-        with:
-          name: Diffused Texture Addon
-          name-suffix: 'commit-hash'
-          build-command: 'make build'
-          build-location: './build'
-          do-checkout: 'true'
-          exclude-files: '.git;.github;.gitignore;__pycache__/;.git/;*.zip;*.tar.gz;.github/;.vscode/;.ruff_cache/;documentation/;tests/;images/;scratchbook/;*.md;LICENSE;NOTICE;tests/;pytest.ini;.pytest_cache/;Dockerfile;pyproject.toml;requirements.txt;requirements-dev.txt;wheels_dev/;wheels-dev/'
-      - name: Upload CUDA 118 Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist_cuda118/*.zip
 
-  build-cuda129:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Build wheels CUDA 129
+
+      - name: Prepare wheelhouse
         run: |
-          pip install wheel
-          pip wheel -r requirements-cuda129.txt -w wheels_cuda129/
-      - name: Update manifest for CUDA 129
-        run: python scripts/update_manifest.py blender_manifest.toml wheels_cuda129/
-      - name: Blender Addon Release CUDA 129
+          rm -rf wheels
+          mkdir -p wheels
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Download Linux wheels (CUDA 11.8)
+        env:
+          PIP_NO_CACHE_DIR: "1"
+        run: |
+          python -m pip download \
+            --only-binary=:all: \
+            -r requirements-cuda118.txt \
+            --dest wheels \
+            --extra-index-url https://download.pytorch.org/whl/cu118
+
+      - name: Download Windows wheels (CUDA 11.8)
+        env:
+          PIP_NO_CACHE_DIR: "1"
+        run: |
+          python -m pip download \
+            --only-binary=:all: \
+            -r requirements-cuda118.txt \
+            --dest wheels \
+            --platform win_amd64 \
+            --python-version 311 \
+            --implementation cp \
+            --abi cp311 \
+            --extra-index-url https://download.pytorch.org/whl/cu118
+
+      - name: Update manifest wheels list
+        run: python scripts/update_manifest.py blender_manifest.toml wheels
+
+      # Optional: persist the updated manifest in a manual run
+      - name: Commit manifest change (manual runs only)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if ! git diff --quiet blender_manifest.toml; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add blender_manifest.toml
+            git commit -m "CI: update wheels list in blender_manifest.toml"
+          fi
+
+      - name: Upload wheels artifact (for debugging)
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels
+          path: wheels
+
+  build:
+    name: Build addon zip
+    needs: wheels
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download wheels artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wheels
+          path: wheels
+
+      - name: Build addon
         uses: blenderkit/blender-addon-build@main
         with:
-          name: Diffused Texture Addon
-          name-suffix: 'commit-hash'
-          build-command: 'make build'
-          build-location: './build'
-          do-checkout: 'true'
-          exclude-files: '.git;.github;.gitignore;__pycache__/;.git/;*.zip;*.tar.gz;.github/;.vscode/;.ruff_cache/;documentation/;tests/;images/;scratchbook/;*.md;LICENSE;NOTICE;tests/;pytest.ini;.pytest_cache/;Dockerfile;pyproject.toml;requirements.txt;requirements-dev.txt;wheels_dev/;wheels-dev/'
-      - name: Upload CUDA 129 Release
-        uses: softprops/action-gh-release@v2
+          name: diffusedtexture-addon
+          # Keep wheels/, exclude caches and old wheel dirs
+          exclude-files: >
+            .git;.github;.gitignore;__pycache__/;.vscode/;.ruff_cache/;.pytest_cache/;
+            documentation/;tests/;images/;scratchbook/;*.md;LICENSE;NOTICE;Dockerfile;
+            pyproject.toml;requirements.txt;requirements-dev.txt;wheels_cuda118/;
+            wheels_dev/;wheels-dev/
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version from blender_manifest.toml
+        id: read_ver
+        shell: bash
+        run: |
+          VER=$(python - <<'PY' 
+          import tomllib
+          with open("blender_manifest.toml", "rb") as f:
+            d = tomllib.load(f)
+          print(d["version"])
+          PY
+          )
+          echo "value=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Set release version (input > manifest)
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "REL_VER=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          else
+            echo "REL_VER=${{ steps.read_ver.outputs.value }}" >> $GITHUB_ENV
+          fi
+
+      - name: Release addon
+        uses: blenderkit/blender-addon-release@main
         with:
-          files: dist_cuda129/*.zip
+          artifact_name: diffusedtexture-addon
+          release_name: DiffusedTextureAddon
+          version: ${{ env.REL_VER }}
