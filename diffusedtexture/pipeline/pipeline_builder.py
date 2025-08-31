@@ -18,7 +18,7 @@ def create_diffusion_pipeline(
     StableDiffusionControlNetInpaintPipeline
     | StableDiffusionXLControlNetUnionInpaintPipeline
 ):
-    from diffusers import (
+    from diffusers import (  # noqa: PLC0415, RUF100
         StableDiffusionControlNetInpaintPipeline,
         StableDiffusionXLControlNetUnionInpaintPipeline,
     )

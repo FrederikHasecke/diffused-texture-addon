@@ -16,6 +16,65 @@ permissions:
   contents: write
 
 jobs:
+
+  # 1) Lint
+  lint:
+    name: Ruff lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: |
+            requirements-dev.txt
+            pyproject.toml
+
+      - name: Install lint deps
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt || true; fi
+          pip install ruff
+
+      - name: Ruff check
+        run: ruff check . --output-format=github
+
+  # # 2) Tests
+  # test:
+  #   name: Pytest
+  #   needs: lint
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+
+  #     - uses: actions/setup-python@v5
+  #       with:
+  #         python-version: ${{ env.PYTHON_VERSION }}
+  #         cache: 'pip'
+  #         cache-dependency-path: |
+  #           requirements-dev.txt
+  #           pyproject.toml
+
+  #     - name: Install test deps
+  #       run: |
+  #         python -m pip install --upgrade pip
+  #         if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; else pip install pytest; fi
+  #         # If your tests import the package, this helps (won't fail the job if not a buildable package)
+  #         pip install -e . || true
+
+  #     - name: Run pytest
+  #       run: |
+  #         set -e
+  #         pytest -q || rc=$?
+  #         if [ "${rc:-0}" -eq 5 ]; then
+  #           echo "No tests collected. Skipping."
+  #           exit 0
+  #         else
+  #           exit "${rc:-0}"
+  #         fi
+
   wheels:
     name: Collect wheels (Linux + Windows, CUDA 11.8)
     runs-on: ubuntu-latest
@@ -124,21 +183,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Read version (kept from your workflow, but with safe quoting)
       - name: Read version from blender_manifest.toml
-        id: read_ver
         shell: bash
         run: |
           if [ -n "${{ github.event.inputs.version }}" ]; then
             echo "REL_VER=${{ github.event.inputs.version }}" >> $GITHUB_ENV
           else
-            VER=$(python - <<'PY'
-            import tomllib
-            with open("blender_manifest.toml", "rb") as f:
-                d = tomllib.load(f)
-            print(d["version"])
-            PY
-            )
+            VER=$(python3 -c 'import tomllib; print(tomllib.load(open("blender_manifest.toml","rb"))["version"])')
             echo "REL_VER=$VER" >> $GITHUB_ENV
           fi
           echo "Determined version: $REL_VER"

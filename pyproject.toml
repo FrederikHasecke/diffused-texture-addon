@@ -26,11 +26,16 @@ dev = [
 line-length = 88
 indent-width = 4
 target-version = "py311"
-select = ["ALL"]
-ignore = ["TD002", "TD003", "D100", "D103", "D104", "D400", "N801", "N999", "INP001", "TID252", "RUF012"]
 exclude = [
     "scratchbook/"
 ]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = ["TD002", "TD003", "D100", "D103", "D104", "D400", "N801", "N999", "INP001", "TID252", "RUF012"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.ruff.format]
 quote-style = "double"
@@ -39,9 +44,6 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 docstring-code-format = false
 docstring-code-line-length = "dynamic"
-
-[tool.ruff.pydocstyle]
-convention = "google"
 
 [tool.mypy]
 python_version = "3.11"

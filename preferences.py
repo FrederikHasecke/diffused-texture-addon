@@ -37,7 +37,7 @@ class InstallModelsOperator(bpy.types.Operator):
             os.environ["HF_HUB_OFFLINE"] = "1"
 
         try:
-            from .diffusedtexture.pipeline.pipeline_builder import (
+            from .diffusedtexture.pipeline.pipeline_builder import (  # noqa: PLC0415, RUF100
                 create_diffusion_pipeline,
             )
 
