@@ -91,18 +91,28 @@ jobs:
           name: wheels
           path: wheels
 
+      - name: Stage clean build dir
+        run: |
+          rm -rf dist/addon
+          mkdir -p dist/addon
+          rsync -a --delete \
+            --exclude='.git/' --exclude='.github/' --exclude='__pycache__/' \
+            --exclude='.vscode/' --exclude='.ruff_cache/' --exclude='.pytest_cache/' \
+            --exclude='documentation/' --exclude='tests/' --exclude='images/' \
+            --exclude='scratchbook/' --exclude='*.md' --exclude='LICENSE' \
+            --exclude='NOTICE' --exclude='Dockerfile' --exclude='pyproject.toml' \
+            --exclude='requirements.txt' --exclude='requirements-dev.txt' \
+            --exclude='wheels_cuda118/' --exclude='wheels_dev/' --exclude='wheels-dev/' \
+            ./ dist/addon/
+
       - name: Build addon
         uses: blenderkit/blender-addon-build@main
         with:
           name: diffusedtexture-addon
           do-checkout: 'false'
+          build-location: 'dist/addon'
           # Keep wheels/, exclude caches and old wheel dirs
-          exclude-files: >
-            .git;.github;.gitignore;__pycache__/;.vscode/;.ruff_cache/;.pytest_cache/;
-            documentation/;tests/;images/;scratchbook/;*.md;LICENSE;NOTICE;Dockerfile;
-            pyproject.toml;requirements.txt;requirements-dev.txt;wheels_cuda118/;
-            wheels_dev/;wheels-dev/
-
+          exclude-files: ".git"   # irrelevant now; staged dir is already clean
   release:
     name: Create GitHub Release
     needs: build
