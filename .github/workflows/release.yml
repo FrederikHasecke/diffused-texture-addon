@@ -1,35 +1,60 @@
-name: Release
+name: Blender Addon CUDA Releases
 
 on:
-  pull_request:
-    branches: [ '**' ]
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'version'
-        required: true
-        default: '1.0.0'
-
-permissions:
-  contents: write
+  push:
+    branches: [master]
 
 jobs:
-  Build:
+  build-cuda118:
     runs-on: ubuntu-latest
-    steps:        
-      - name: Build addon
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build wheels CUDA 118
+        run: |
+          pip install wheel
+          pip wheel -r requirements-cuda118.txt -w wheels_cuda118/
+      - name: Update manifest for CUDA 118
+        run: python scripts/update_manifest.py blender_manifest.toml wheels_cuda118/
+      - name: Blender Addon Release CUDA 118
         uses: blenderkit/blender-addon-build@main
         with:
-          name: diffused-texture-addon
-          exclude-files: ".git;.github;README.md;LICENSE;NOTICE;documentation;images"
-
-  Release:
-    runs-on: ubuntu-latest
-    needs: Build
-    steps:
-      - name: Release addon
-        uses: blenderkit/blender-addon-release@main
+          name: Diffused Texture Addon
+          name-suffix: 'commit-hash'
+          build-command: 'make build'
+          build-location: './build'
+          do-checkout: 'true'
+          exclude-files: '.git;.github;.gitignore;__pycache__/;.git/;*.zip;*.tar.gz;.github/;.vscode/;.ruff_cache/;documentation/;tests/;images/;scratchbook/;*.md;LICENSE;NOTICE;tests/;pytest.ini;.pytest_cache/;Dockerfile;pyproject.toml;requirements.txt;requirements-dev.txt;wheels_dev/;wheels-dev/'
+      - name: Upload CUDA 118 Release
+        uses: softprops/action-gh-release@v2
         with:
-          artifact_name: diffused-texture-addon
-          release_name: DiffusedTextureAddon
-          version: ${{github.event.inputs.version}}
+          files: dist_cuda118/*.zip
+
+  build-cuda129:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build wheels CUDA 129
+        run: |
+          pip install wheel
+          pip wheel -r requirements-cuda129.txt -w wheels_cuda129/
+      - name: Update manifest for CUDA 129
+        run: python scripts/update_manifest.py blender_manifest.toml wheels_cuda129/
+      - name: Blender Addon Release CUDA 129
+        uses: blenderkit/blender-addon-build@main
+        with:
+          name: Diffused Texture Addon
+          name-suffix: 'commit-hash'
+          build-command: 'make build'
+          build-location: './build'
+          do-checkout: 'true'
+          exclude-files: '.git;.github;.gitignore;__pycache__/;.git/;*.zip;*.tar.gz;.github/;.vscode/;.ruff_cache/;documentation/;tests/;images/;scratchbook/;*.md;LICENSE;NOTICE;tests/;pytest.ini;.pytest_cache/;Dockerfile;pyproject.toml;requirements.txt;requirements-dev.txt;wheels_dev/;wheels-dev/'
+      - name: Upload CUDA 129 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist_cuda129/*.zip

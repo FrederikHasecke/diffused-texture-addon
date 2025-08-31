@@ -27,6 +27,10 @@ sdist/
 var/ 
 wheels/
 wheels-dev/ 
+wheels*/
+wheels_118/
+wheels_128/
+wheels_129/
 *.whl
 *.egg-info/ 
 .installed.cfg 
