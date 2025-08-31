@@ -1,0 +1,65 @@
+# .github/actions/blender-addon-release-v4/action.yml
+name: 'Blender Addon Release (v4 artifacts)'
+description: 'Create a GitHub Release from a previously built Blender add-on artifact (uses actions/download-artifact@v4).'
+author: 'Frederik Hasecke + community'
+
+inputs:
+  version:
+    description: 'Version of the release, format: X.Y.Z (major.minor.patch).'
+    required: true
+  release_stage:
+    description: 'alpha | beta | rc | gold'
+    default: 'gold'
+  artifact_name:
+    description: 'Name of previously uploaded artifact. If empty, defaults to repository name.'
+    default: ''
+  release_name:
+    description: 'Release title. If empty, defaults to repository name.'
+    default: ''
+
+runs:
+  using: "composite"
+  steps:
+    - name: Compute names
+      shell: bash
+      run: |
+        ARTIFACT_NAME="${{ inputs.artifact_name }}"
+        if [ -z "$ARTIFACT_NAME" ]; then ARTIFACT_NAME="${{ github.event.repository.name }}"; fi
+        echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
+
+        if [ -z "${{ inputs.release_name }}" ]; then
+          echo "RELEASE_NAME=${{ github.event.repository.name }}" >> $GITHUB_ENV
+        else
+          echo "RELEASE_NAME=${{ inputs.release_name }}" >> $GITHUB_ENV
+        fi
+
+        if [ "${{ inputs.release_stage }}" != "gold" ]; then
+          echo "RELEASE_SUFFIX=-${{ inputs.release_stage }}" >> $GITHUB_ENV
+        else
+          echo "RELEASE_SUFFIX=" >> $GITHUB_ENV
+        fi
+
+        mkdir -p out
+
+    - name: Download build artifact (v4)
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ env.ARTIFACT_NAME }}
+        path: out
+
+    - name: Pack release zip
+      shell: bash
+      run: |
+        cd out
+        # zip the *contents* of out (correct top-level in the zip)
+        zip -r "${{ env.ARTIFACT_NAME }}-v${{ inputs.version }}${{ env.RELEASE_SUFFIX }}.zip" .
+        ls -la
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        draft: true
+        name: ${{ env.RELEASE_NAME }} v${{ inputs.version }}${{ env.RELEASE_SUFFIX }}
+        tag_name: v${{ inputs.version }}
+        prerelease: ${{ inputs.release_stage != 'gold' }}
+        files: ./out/${{ env.ARTIFACT_NAME }}-v${{ inputs.version }}${{ env.RELEASE_SUFFIX }}.zip

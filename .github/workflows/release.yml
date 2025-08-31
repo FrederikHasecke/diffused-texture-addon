@@ -113,37 +113,73 @@ jobs:
           build-location: 'dist/addon'
           # Keep wheels/, exclude caches and old wheel dirs
           exclude-files: ".git"   # irrelevant now; staged dir is already clean
+
+
   release:
     name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
+      # Read version (kept from your workflow, but with safe quoting)
       - name: Read version from blender_manifest.toml
         id: read_ver
         shell: bash
         run: |
-          VER=$(python - <<'PY' 
-          import tomllib
-          with open("blender_manifest.toml", "rb") as f:
-            d = tomllib.load(f)
-          print(d["version"])
-          PY
-          )
-          echo "value=$VER" >> "$GITHUB_OUTPUT"
-
-      - name: Set release version (input > manifest)
-        run: |
           if [ -n "${{ github.event.inputs.version }}" ]; then
             echo "REL_VER=${{ github.event.inputs.version }}" >> $GITHUB_ENV
           else
-            echo "REL_VER=${{ steps.read_ver.outputs.value }}" >> $GITHUB_ENV
+            VER=$(python - <<'PY'
+            import tomllib
+            with open("blender_manifest.toml", "rb") as f:
+                d = tomllib.load(f)
+            print(d["version"])
+            PY
+            )
+            echo "REL_VER=$VER" >> $GITHUB_ENV
           fi
+          echo "Determined version: $REL_VER"
+      - name: Compute release vars
+        shell: bash
+        run: |
+          ARTIFACT_NAME="diffusedtexture-addon"
+          RELEASE_NAME="DiffusedTextureAddon"
+          RELEASE_STAGE="gold"   # or alpha/beta/rc
+          if [ "$RELEASE_STAGE" != "gold" ]; then SUFFIX="-$RELEASE_STAGE"; else SUFFIX=""; fi
+          echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
+          echo "RELEASE_NAME=$RELEASE_NAME" >> $GITHUB_ENV
+          echo "RELEASE_SUFFIX=$SUFFIX" >> $GITHUB_ENV
+          mkdir -p out
 
-      - name: Release addon
-        uses: blenderkit/blender-addon-release@main
+      - name: Download build artifact (v4)
+        uses: actions/download-artifact@v4
         with:
-          artifact_name: diffusedtexture-addon
-          release_name: DiffusedTextureAddon
-          version: ${{ env.REL_VER }}
+          name: ${{ env.ARTIFACT_NAME }}
+          path: out
+
+      # If the build artifact is already a .zip, rename it; otherwise, zip the contents.
+      - name: Pack (or rename) release zip
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          zips=(out/*.zip)
+          if [ ${#zips[@]} -eq 1 ]; then
+            mv "${zips[0]}" "out/${ARTIFACT_NAME}-v${REL_VER}${RELEASE_SUFFIX}.zip"
+          else
+            (cd out && zip -r "${ARTIFACT_NAME}-v${REL_VER}${RELEASE_SUFFIX}.zip" .)
+          fi
+          ls -la out
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          name: ${{ env.RELEASE_NAME }} v${{ env.REL_VER }}${{ env.RELEASE_SUFFIX }}
+          tag_name: v${{ env.REL_VER }}
+          prerelease: ${{ env.RELEASE_SUFFIX != '' }}
+          files: out/${{ env.ARTIFACT_NAME }}-v${{ env.REL_VER }}${{ env.RELEASE_SUFFIX }}.zip
+
