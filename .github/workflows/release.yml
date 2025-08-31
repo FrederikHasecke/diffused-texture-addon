@@ -95,6 +95,7 @@ jobs:
         uses: blenderkit/blender-addon-build@main
         with:
           name: diffusedtexture-addon
+          do-checkout: 'false'
           # Keep wheels/, exclude caches and old wheel dirs
           exclude-files: >
             .git;.github;.gitignore;__pycache__/;.vscode/;.ruff_cache/;.pytest_cache/;
