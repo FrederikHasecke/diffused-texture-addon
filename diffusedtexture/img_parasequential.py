@@ -1,15 +1,26 @@
 import math
 
-import cv2
+try:
+    import cv2
+except ModuleNotFoundError:
+    cv2 = None
+
 import numpy as np
 from numpy.typing import NDArray
-from PIL import Image
+from collections.abc import Callable
+
+try:
+    from PIL import Image
+except ModuleNotFoundError:
+    Image = None
 
 from ..blender_operations import ProcessParameter
 from .pipeline.pipeline_builder import create_diffusion_pipeline
 from .pipeline.pipeline_runner import run_pipeline
 from .process_operations import (
+    _require_cv2,
     assemble_multiview_subgrid,
+    inpaint_missing,
     process_uv_texture,
 )
 
@@ -17,7 +28,7 @@ from .process_operations import (
 def img_parasequential(  # noqa: PLR0913
     multiview_images: dict[str, list[NDArray]],
     process_parameter: ProcessParameter,
-    progress_callback: callable,
+    progress_callback: Callable,
     texture: NDArray[np.float32] | None = None,
     subgrid_rows: int = 2,
     subgrid_cols: int = 2,
@@ -43,6 +54,7 @@ def img_parasequential(  # noqa: PLR0913
                                                 W=texture_resolution,
                                                 C=3).
     """
+    _require_cv2()
     if process_parameter.custom_sd_resolution:
         sd_tile_res = int(process_parameter.custom_sd_resolution)
     else:
@@ -75,6 +87,23 @@ def img_parasequential(  # noqa: PLR0913
     painted_area_texture = np.zeros((tex_res, tex_res, 3), dtype=np.uint8)
 
     pipeline = create_diffusion_pipeline(process_parameter)
+
+    all_texture_array = np.zeros(
+        shape=(
+            n_subgrids,
+            int(process_parameter.texture_resolution),
+            int(process_parameter.texture_resolution),
+            3,
+        ),
+    )
+    all_texture_weight_array = np.zeros(
+        shape=(
+            n_subgrids,
+            int(process_parameter.texture_resolution),
+            int(process_parameter.texture_resolution),
+        ),
+    )
+
     for s in range(n_subgrids):
         start_idx = s * views_per_subgrid
         count = min(views_per_subgrid, n_views - start_idx)
@@ -131,30 +160,31 @@ def img_parasequential(  # noqa: PLR0913
         # Add the new painted area to painted_area_texture
         painted_area_texture[subgrid_valid_texture == 255] = 255  # noqa: PLR2004
 
-        # DEBUG: Output all relevant images
-        cv2.imwrite(
-            f"{process_parameter.output_path}/subgrid_{s}_output.png",
-            subgrid_tex,
-        )
-        Image.fromarray(grids_resized["input_grid"].astype(np.uint8)).save(
-            f"{process_parameter.output_path}/input_view_{s}.png",
-        )
-        Image.fromarray(grids_resized["content_grid"]).save(
-            f"{process_parameter.output_path}/uv_mask_{s}.png",
-        )
-        output_grid.save(f"{process_parameter.output_path}/output_grid_{s}.png")
-
         # Paste only where the sub-grid is actually visible
         coverage_mask = build_uv_coverage_mask(
             mv_subset["uv"],
             mv_subset["facing"],
             tex_res,
         )
+
+        all_texture_array[s] = subgrid_tex
+        all_texture_weight_array[s] = subgrid_valid_texture / 255.0
+
         keep = coverage_mask > (facing_percentile * 255)
         previous_texture[keep] = subgrid_tex[keep]
 
+    textured_area = np.sum(all_texture_weight_array, axis=0)
+    textured_area = np.clip(textured_area, 0, 1)
+    textured_area = (textured_area * 255).astype(np.uint8)
+
+    final_texture = inpaint_missing(
+        int(process_parameter.texture_resolution),
+        all_texture_array,
+        all_texture_weight_array,
+    ).astype(np.uint8)
+
     progress_callback(100)
-    return previous_texture
+    return final_texture
 
 
 def slice_multiview_dict(

@@ -1,7 +1,14 @@
+from collections.abc import Callable
 from pathlib import Path
 
 import bpy
-import cv2
+
+from .process_operations import _require_cv2
+
+try:
+    import cv2
+except ModuleNotFoundError:
+    cv2 = None
 import numpy as np
 from numpy.typing import NDArray
 
@@ -70,10 +77,12 @@ def export_uv_layout(
 def uv_pass(
     baked_texture_dict: dict[str, NDArray[np.float32]],
     process_parameter: ProcessParameter,
-    progress_callback: callable,
+    progress_callback: Callable,
     texture_input: NDArray[np.float32] | None = None,
 ) -> NDArray[np.float32]:
     """Run the UV space refinement pass."""
+    _require_cv2()
+
     obj_name = process_parameter.my_mesh_object
     uv_map_name = process_parameter.my_uv_map
 
@@ -154,6 +163,7 @@ def uv_pass(
         uv_mask=mask,
         canny_img=canny,
         normal_img=baked_texture_dict["normal"],
+        depth_img=np.zeros_like(canny),
         progress_callback=progress_callback,
         strength=process_parameter.denoise_strength,
         guidance_scale=process_parameter.guidance_scale,

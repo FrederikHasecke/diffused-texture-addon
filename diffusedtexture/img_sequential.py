@@ -1,18 +1,39 @@
-import cv2
+try:
+    import cv2
+except ModuleNotFoundError:
+    cv2 = None
+
+from collections.abc import Callable
+
 import numpy as np
+
+try:
+    from PIL import Image
+except ModuleNotFoundError:
+    Image = None
+
 from numpy.typing import NDArray
-from PIL import Image
 
 from ..blender_operations import ProcessParameter
 from .pipeline.pipeline_builder import create_diffusion_pipeline
 from .pipeline.pipeline_runner import run_pipeline
-from .process_operations import assemble_multiview_list
+from .process_operations import _require_cv2, assemble_multiview_list
+
+if cv2 is not None:
+    CV2_INTER_NEAREST = cv2.INTER_NEAREST
+    CV2_INTER_LINEAR = cv2.INTER_LINEAR
+    CV2_INTER_LANCZOS4 = cv2.INTER_LANCZOS4
+else:
+    # OpenCV enum integer values; used only until deps are installed
+    CV2_INTER_NEAREST = 0
+    CV2_INTER_LINEAR = 1
+    CV2_INTER_LANCZOS4 = 4
 
 
 def img_sequential(
     multiview_images: dict[str, list[NDArray]],
     process_parameter: ProcessParameter,
-    progress_callback: callable,
+    progress_callback: Callable,
     texture: NDArray[np.float32] | None = None,
     facing_percentile: float = 0.5,
 ) -> NDArray[np.float32]:
@@ -28,6 +49,7 @@ def img_sequential(
     Returns:
         Processed full-resolution texture.
     """
+    _require_cv2()
     if process_parameter.custom_sd_resolution:
         sd_resolution = int(process_parameter.custom_sd_resolution)
     else:
@@ -50,9 +72,18 @@ def img_sequential(
         percent = int((sub_percent + i * 100) / n_views)
         progress_callback(percent)
 
+    # TODO: Only inpaint for 2-3 pixels for each view, and paste onto texture with feathering
+    # TODO: Check if para/weighted approach on all views improve the texture later on
+
     keep_mask = None
     texres = int(process_parameter.texture_resolution)
     unpainted_mask = 255 * np.ones((texres, texres), dtype=np.uint8)
+    # Initialize previous_texture before the loop
+    previous_texture = (
+        (255 * texture).astype(np.uint8)
+        if texture is not None
+        else 255 * np.ones_like(resized_list["input"][0], dtype=np.uint8)
+    )
     for i in range(n_views):
         arr_in = resized_list["input"][i]
         arr_content = resized_list["content"][i]
@@ -61,11 +92,6 @@ def img_sequential(
         if i == 0:
             input_img = Image.fromarray(arr_in.astype(np.uint8))
             mask_img = Image.fromarray(arr_content)
-            previous_texture = (
-                (255 * texture).astype(np.uint8)
-                if texture is not None
-                else 255 * np.ones_like(arr_in, dtype=np.uint8)
-            )
         else:
             input_img, keep_mask = create_new_view_input(
                 previous_texture,
@@ -73,8 +99,12 @@ def img_sequential(
                 arr_in,
                 arr_uv,
             )
+
+            facing_uint = resized_list["facing"][i]
+
+            arr_content[facing_uint < (facing_percentile * 255)] = 0
+
             mask_img = Image.fromarray(arr_content)
-            mask_img[resized_list["facing"][i] < facing_percentile * 255] = 0
 
         # Run the pipeline for the current view
         result = run_pipeline(
@@ -93,6 +123,8 @@ def img_sequential(
 
         # Project the current result back to the texture
         previous_texture, unpainted_mask = project_view_to_texture(
+            output_path=process_parameter.output_path,
+            integer=i,
             sd_result=result,
             uv_view=resized_list["uv"][i],
             facing_view=resized_list["facing"][i],
@@ -101,31 +133,6 @@ def img_sequential(
             unpainted_mask=unpainted_mask,
             facing_percentile=facing_percentile,
         )
-
-        # save all images with the index in the filename for debugging
-        input_img.save(f"{process_parameter.output_path}/input_view_{i}.png")
-        mask_img.save(f"{process_parameter.output_path}/mask_view_{i}.png")
-        result.save(f"{process_parameter.output_path}/result_view_{i}.png")
-        if hasattr(previous_texture, "save"):
-            previous_texture.save(
-                f"{process_parameter.output_path}/previous_texture_{i}.png",
-            )
-        else:
-            # If previous_texture is ndarray, convert to Image
-            Image.fromarray(previous_texture.astype(np.uint8)).save(
-                f"{process_parameter.output_path}/previous_texture_{i}.png",
-            )
-        cv2.imwrite(
-            f"{process_parameter.output_path}/unpainted_mask_{i}.png",
-            unpainted_mask,
-        )
-        if isinstance(mask_img, Image.Image):
-            cv2.imwrite(
-                f"{process_parameter.output_path}/mask_img_{i}.png",
-                np.array(mask_img),
-            )
-        else:
-            cv2.imwrite(f"{process_parameter.output_path}/mask_img_{i}.png", mask_img)
 
     if texture is None:
         # inpaint the texture for all areas that are not covered by the views
@@ -141,7 +148,9 @@ def img_sequential(
 
 
 def project_view_to_texture(  # noqa: PLR0913
-    sd_result: Image.Image,
+    output_path: str,
+    integer: int,
+    sd_result: Image,  # type: ignore
     uv_view: NDArray[np.uint8],
     facing_view: NDArray[np.uint8],
     texture_resolution: int,
@@ -188,12 +197,12 @@ def project_view_to_texture(  # noqa: PLR0913
         texture_scaled = cv2.resize(
             texture_scaled,
             (texture_resolution, texture_resolution),
-            interpolation=cv2.INTER_NEAREST,
+            interpolation=CV2_INTER_NEAREST,
         )
         facing_scaled = cv2.resize(
             facing_scaled,
             (texture_resolution, texture_resolution),
-            interpolation=cv2.INTER_NEAREST,
+            interpolation=CV2_INTER_NEAREST,
         )
 
         new_texture[facing_scaled > 0] = texture_scaled[facing_scaled > 0]
@@ -228,7 +237,7 @@ def create_new_view_input(
     unpainted_mask: NDArray[np.uint8],
     input_view: NDArray[np.uint8],
     uv_view: NDArray[np.uint8],
-) -> tuple[Image.Image, NDArray[np.uint8]]:
+) -> tuple[Image, NDArray[np.uint8]]:  # pyright: ignore[reportInvalidTypeForm]
     """Create new input image for the current view by projecting the output texture."""
     # get the uv coordinates from the uv_view
     uv_view = uv_view[..., :2]  # Ensure UVs are 2D

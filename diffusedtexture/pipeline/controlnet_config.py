@@ -1,7 +1,15 @@
 from typing import Any
 
-import torch
-from diffusers import ControlNetModel, ControlNetUnionModel
+try:
+    import torch
+except ModuleNotFoundError:
+    torch = None
+
+try:
+    from diffusers import ControlNetModel, ControlNetUnionModel
+except ModuleNotFoundError:
+    ControlNetModel = None
+    ControlNetUnionModel = None
 
 from ...blender_operations import ProcessParameter
 

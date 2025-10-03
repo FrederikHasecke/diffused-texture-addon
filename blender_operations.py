@@ -101,7 +101,7 @@ def apply_texture(
     apply_texture_to_object(selected_obj, output_path)
 
 
-def apply_texture_to_object(obj: bpy.types.Object, output_path: Path) -> None:
+def apply_texture_to_object(obj: bpy.types.Object, output_path: Path | str) -> None:
     """Apply the texture to the given object.
 
     Args:
@@ -158,7 +158,7 @@ def blendercs_to_ccs(
 
 def create_depth_condition(
     depth_image_path: str,
-    invalid_depth: int = 1e10,
+    invalid_depth: float = 1e10,
 ) -> NDArray[np.float32]:
     depth_array = load_img_to_numpy(depth_image_path)[..., 0]
 
@@ -466,19 +466,36 @@ def prepare_scene(obj: bpy.types.Object) -> dict[str, Any]:
 
 
 def restore_scene(backup_data: dict, cameras: list[bpy.types.Object]) -> None:
-    """Restore object position, unhide other objects, delete process cameras."""
+    """Restore the original Scene.
+
+    Restore object transform (matrix_world if available), unhide others,
+    delete temp cameras, TODO: restore original camera/rendering settings.
+
+    """
     obj = backup_data["target_object"]
-    obj.location = backup_data["original_location"]
 
-    for o in backup_data["hidden_objects"]:
-        o.hide_set(state=False)
-        o.hide_render = False
+    # Restore transform (matches isolate_object which edited matrix_world.translation)
+    if (
+        "original_matrix_world" in backup_data
+        and backup_data["original_matrix_world"] is not None
+    ):
+        obj.matrix_world = backup_data["original_matrix_world"].copy()
+    # Back-compat: if only location was stored
+    elif "original_location" in backup_data:
+        obj.location = backup_data["original_location"]
 
+    # Unhide objects we hid and re-enable render visibility
+    for o in backup_data.get("hidden_objects", []):
+        if o and o.name in bpy.data.objects:
+            o.hide_set(False)  # noqa: FBT003
+            o.hide_render = False
+
+    # Delete the temporary cameras used during processing
     for cam in cameras:
-        # delete the cameras created for rendering and their data
-        bpy.data.objects.remove(cam, do_unlink=True)
+        if cam and cam.name in bpy.data.objects:
+            bpy.data.objects.remove(cam, do_unlink=True)
 
-    # update the scene to reflect the changes
+    # Make sure depsgraph reflects the changes
     bpy.context.view_layer.update()
 
 

@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -37,8 +38,8 @@ def load_multiview_images(render_img_folders: str) -> dict[str, list[NDArray[Any
 def run_texture_generation(  # noqa: PLR0913
     process_parameter: ProcessParameter,
     render_img_folders: dict[str, NDArray | str],
-    progress_callback: callable,
-    mark_done: callable,
+    progress_callback: Callable,
+    mark_done: Callable,
     return_texture_bucket=list,  # noqa: ANN001
     texture: NDArray[np.float32] | None = None,
 ) -> None:

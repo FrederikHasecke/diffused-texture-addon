@@ -78,150 +78,42 @@ jobs:
   #           exit "${rc:-0}"
   #         fi
 
-  # 3) Collect/Save wheels
-  wheels-linux:
-    name: Collect Linux wheels (CUDA 11.8)
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-      - name: Prep wheelhouse
-        run: rm -rf wheels && mkdir -p wheels
-      - name: Upgrade pip
-        run: python -m pip install --upgrade pip
-      - name: Download Linux wheels
-        env: { PIP_NO_CACHE_DIR: "1" }
-        run: |
-          python -m pip download \
-            --only-binary=:all: \
-            -r requirements-cuda118.txt \
-            --dest wheels \
-            --extra-index-url https://download.pytorch.org/whl/cu118
-      - name: Upload wheels-linux
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheels-linux
-          path: wheels
-
-  wheels-windows:
-    name: Collect Windows wheels (CUDA 11.8)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-      - name: Prep wheelhouse
-        run: rm -rf wheels && mkdir -p wheels
-      - name: Upgrade pip
-        run: python -m pip install --upgrade pip
-      - name: Download Windows wheels
-        env: { PIP_NO_CACHE_DIR: "1" }
-        run: |
-          python -m pip download \
-            --only-binary=:all: \
-            -r requirements-cuda118.txt \
-            --dest wheels \
-            --platform win_amd64 \
-            --python-version 311 \
-            --implementation cp \
-            --abi cp311 \
-            --extra-index-url https://download.pytorch.org/whl/cu118
-      - name: Upload wheels-windows
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheels-windows
-          path: wheels
-
-
-  # 4) Build the addon zips
-  build-linux:
-    name: Build addon (Linux package)
-    needs: wheels-linux
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download wheels-linux
-        uses: actions/download-artifact@v4
-        with:
-          name: wheels-linux
-          path: wheels
-
-      # Update the manifest to only include the Linux wheel set
-      - name: Update manifest (Linux wheels)
-        run: python scripts/update_manifest.py blender_manifest.toml wheels
-
       - name: Stage clean build dir
         run: |
-          rm -rf dist/linux && mkdir -p dist/linux
+          rm -rf dist/addon && mkdir -p dist/addon
           rsync -a --delete \
             --exclude='.git/' --exclude='.github/' --exclude='__pycache__/' \
             --exclude='.vscode/' --exclude='.ruff_cache/' --exclude='.pytest_cache/' \
             --exclude='documentation/' --exclude='tests/' --exclude='images/' \
             --exclude='scratchbook/' --exclude='*.md' --exclude='LICENSE' \
             --exclude='NOTICE' --exclude='Dockerfile' --exclude='pyproject.toml' \
-            --exclude='requirements.txt' --exclude='requirements-dev.txt' \
-            --exclude='wheels_cuda118/' --exclude='wheels_dev/' --exclude='wheels-dev/' \
-            ./ dist/linux/
-
-      - name: Build addon (linux)
+            --exclude='requirements*.txt' \
+            --exclude='wheels*/' \
+            ./ dist/addon/
+      - name: Build addon
         uses: blenderkit/blender-addon-build@main
         with:
-          name: diffusedtexture-addon-linux
+          name: diffusedtexture-addon
           do-checkout: 'false'
-          build-location: 'dist/linux'
+          build-location: 'dist/addon'
           exclude-files: ".git"
-
-  build-windows:
-    name: Build addon (Windows package)
-    needs: wheels-windows
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download wheels-windows
-        uses: actions/download-artifact@v4
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: wheels-windows
-          path: wheels
-
-      - name: Update manifest (Windows wheels)
-        run: python scripts/update_manifest.py blender_manifest.toml wheels
-
-      - name: Stage clean build dir
-        run: |
-          rm -rf dist/windows && mkdir -p dist/windows
-          rsync -a --delete \
-            --exclude='.git/' --exclude='.github/' --exclude='__pycache__/' \
-            --exclude='.vscode/' --exclude='.ruff_cache/' --exclude='.pytest_cache/' \
-            --exclude='documentation/' --exclude='tests/' --exclude='images/' \
-            --exclude='scratchbook/' --exclude='*.md' --exclude='LICENSE' \
-            --exclude='NOTICE' --exclude='Dockerfile' --exclude='pyproject.toml' \
-            --exclude='requirements.txt' --exclude='requirements-dev.txt' \
-            --exclude='wheels_cuda118/' --exclude='wheels_dev/' --exclude='wheels-dev/' \
-            ./ dist/windows/
-
-      - name: Build addon (windows)
-        uses: blenderkit/blender-addon-build@main
-        with:
-          name: diffusedtexture-addon-windows
-          do-checkout: 'false'
-          build-location: 'dist/windows'
-          exclude-files: ".git"
+          name: diffusedtexture-addon
+          path: ./  # the action finds the produced zip
 
   release:
-    name: Create GitHub Release
-    needs: [build-linux, build-windows]
+    needs: build
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    permissions: { contents: write }
     steps:
       - uses: actions/checkout@v4
-
-      - name: Read version from blender_manifest.toml
+      - name: Read version
         shell: bash
         run: |
           if [ -n "${{ github.event.inputs.version }}" ]; then
@@ -230,47 +122,19 @@ jobs:
             VER=$(python3 -c 'import tomllib; print(tomllib.load(open("blender_manifest.toml","rb"))["version"])')
             echo "REL_VER=$VER" >> $GITHUB_ENV
           fi
-          echo "Determined version: $REL_VER"
-
-      - name: Download linux build artifact
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          name: diffusedtexture-addon-linux
-          path: out/linux
-
-      - name: Download windows build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: diffusedtexture-addon-windows
-          path: out/windows
-
-      # Rename artifacts to include version and platform tag
-      - name: Rename zips and check sizes
+          name: diffusedtexture-addon
+          path: out
+      - name: Normalize filename
         shell: bash
         run: |
-          set -euo pipefail
-          LZ=$(ls out/linux/*.zip | head -n1)
-          WZ=$(ls out/windows/*.zip | head -n1)
-          mv "$LZ" "out/diffusedtexture-addon-linux-v${REL_VER}.zip"
-          mv "$WZ" "out/diffusedtexture-addon-windows-v${REL_VER}.zip"
+          f=$(find out -maxdepth 1 -name '*.zip' -print -quit)
+          mv "$f" "out/diffusedtexture-addon-v${REL_VER}.zip"
           ls -lh out
-
-          # Hard guard: 2 GiB max per asset on GitHub Releases
-          for f in out/*.zip; do
-            bytes=$(stat -c%s "$f")
-            limit=$((1024*1024*1024*2))
-            if [ "$bytes" -ge "$limit" ]; then
-              echo "::error file=$f::Asset exceeds 2 GiB ($bytes bytes)."
-              exit 1
-            fi
-          done
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
           draft: true
           name: DiffusedTextureAddon v${{ env.REL_VER }}
           tag_name: v${{ env.REL_VER }}
-          files: |
-            out/diffusedtexture-addon-linux-v${{ env.REL_VER }}.zip
-            out/diffusedtexture-addon-windows-v${{ env.REL_VER }}.zip
+          files: out/diffusedtexture-addon-v${{ env.REL_VER }}.zip

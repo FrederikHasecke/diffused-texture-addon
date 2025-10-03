@@ -1,6 +1,12 @@
+from collections.abc import Callable
+
 import numpy as np
 from numpy.typing import NDArray
-from PIL import Image
+
+try:
+    from PIL import Image
+except ModuleNotFoundError:
+    Image = None
 
 from ..blender_operations import ProcessParameter
 from .pipeline.pipeline_builder import create_diffusion_pipeline
@@ -12,9 +18,9 @@ from .process_operations import (
 
 
 def img_parallel(
-    multiview_images: dict[str, list[NDArray]],
+    multiview_images: dict[str, list | NDArray],
     process_parameter: ProcessParameter,
-    progress_callback: callable,
+    progress_callback: Callable,
     texture: NDArray[np.float32] | None = None,
     facing_percentile: float = 0.5,
 ) -> NDArray[np.float32]:
@@ -23,7 +29,7 @@ def img_parallel(
     Args:
         multiview_images (dict[str, list[NDArray]]): Multiview images to process.
         process_parameter (ProcessParameter): parameter for the processing.
-        progress_callback (callable): Callback to report progress.
+        progress_callback (Callable): Callback to report progress.
         texture (NDArray[np.float32] | None, optional): Input texture. Defaults to None.
         facing_percentile (float, optional): Facing percentile. Defaults to 0.5.
 

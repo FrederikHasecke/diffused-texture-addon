@@ -1,5 +1,6 @@
 import bpy
 import numpy as np
+from mathutils import Vector
 
 
 def update_uv_maps(
@@ -82,26 +83,60 @@ def image_to_numpy(image: bpy.types.Image) -> np.ndarray:
 
 
 def isolate_object(obj: bpy.types.Object) -> dict:
-    """Temporarily hide all other objects and move target one to origin."""
+    """Isolate the target object.
+
+    Temporarily hide all other objects and translate the object so that
+    its *mesh geometry center* (not the origin) moves to world (0,0,0).
+    The object's origin is not moved.
+
+    """
     hidden_objects = []
 
+    # Hide everything else
     for other in bpy.data.objects:
         if other != obj:
             if not other.hide_get():
                 other.hide_set(state=True)
                 hidden_objects.append(other)
-
             if not other.hide_render:
                 other.hide_render = True
 
-    # Save original transform
+    # Save originals to restore later if needed
     original_location = obj.location.copy()
+    original_matrix_world = obj.matrix_world.copy()
 
-    # Move to origin
-    obj.location = (0.0, 0.0, 0.0)
+    # Prefer evaluated mesh so modifiers are respected
+    if obj.type == "MESH":
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        obj_eval = obj.evaluated_get(depsgraph)
+        me = obj_eval.to_mesh(preserve_all_data_layers=False, depsgraph=depsgraph)
+
+        if me and len(me.vertices):
+            acc = Vector((0.0, 0.0, 0.0))
+            mw_mesh = obj_eval.matrix_world
+            for v in me.vertices:
+                acc += mw_mesh @ v.co
+            center_world = acc / len(me.vertices)
+        else:
+            # Fallback: use current world translation if mesh is empty
+            center_world = obj.matrix_world.translation.copy()
+
+        # Cleanup evaluated mesh
+        obj_eval.to_mesh_clear()
+    else:
+        # Non-mesh fallback: use bounding box center
+        bb_local_center = sum((Vector(c) for c in obj.bound_box), Vector()) / 8.0
+        center_world = obj.matrix_world @ bb_local_center
+
+    # --- Move object so the mesh center lands at the world origin ---
+    mw = obj.matrix_world.copy()
+    mw.translation -= center_world
+    obj.matrix_world = mw
 
     return {
         "hidden_objects": hidden_objects,
         "target_object": obj,
         "original_location": original_location,
+        "original_matrix_world": original_matrix_world,
+        "moved_by_world": (-center_world.x, -center_world.y, -center_world.z),
     }

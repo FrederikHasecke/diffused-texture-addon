@@ -39,11 +39,15 @@ Included Dependencies and Licenses:
    License: Apache License 2.0
    https://github.com/huggingface/accelerate
 
-8. PEFT (Parameter-Efficient Fine-Tuning)
+8. Pillow
+   License: PIL Software License
+   https://github.com/python-pillow/Pillow
+
+9. PEFT (Parameter-Efficient Fine-Tuning)
    License: Apache License 2.0
    https://github.com/huggingface/peft
 
-9. Pytest
+10. Pytest
    License: MIT License
    https://github.com/pytest-dev/pytest
 

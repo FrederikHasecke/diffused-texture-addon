@@ -6,7 +6,11 @@ import time
 from pathlib import Path
 
 import bpy
-from PIL import Image
+
+try:
+    from PIL import Image
+except ModuleNotFoundError:
+    Image = None
 
 from .blender_operations import (
     apply_texture,
@@ -35,7 +39,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
     _last_progress = 0
     _progress = 0  # 0-100
 
-    def execute(
+    def execute(  # noqa: PLR0915
         self: "OBJECT_OT_GenerateTexture",
         context: bpy.types.Context,
     ) -> set[str]:
@@ -48,12 +52,25 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
             set[str]: _description_
 
         """
+        try:
+            from PIL import Image
+        except ModuleNotFoundError:
+            Image = None  # noqa: N806
+
+        if Image is None:
+            self.report(
+                {"ERROR"},
+                "Python dependencies missing. Open Preferences > Add-ons > DiffusedTexture > Install Python Dependencies.",  # noqa: E501
+            )
+            return {"CANCELLED"}
+
         self._done = False
         self._error = None
         self._progress = 0
         self._start_time = time.time()
         self._return_texture = []
         self._output_file = None
+        self.render_img_folders = None
 
         # Start progress bar for the whole process
         wm = context.window_manager
@@ -77,6 +94,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                 wm.progress_update(5)
                 render_img_folders, cameras = bake_uv_views(context, selected_obj)
                 wm.progress_update(10)
+            self.render_img_folders = render_img_folders
 
             # Restore the scene after rendering
             restore_scene(scene_backup, cameras)
@@ -126,25 +144,10 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
             self.report({"ERROR"}, f"Execution error: {e}")
             return {"CANCELLED"}
 
-        finally:
-            # delete the temporary render folders
-            for render_type in render_img_folders:
-                render_type_folder = render_img_folders[render_type]
-                if Path(render_type_folder).is_dir():
-                    shutil.rmtree(render_type_folder, ignore_errors=True)
-
         return {"RUNNING_MODAL"}
 
     def modal(self, context: bpy.types.Context, event: bpy.types.Event) -> set[str]:
-        """Update or end Timer.
-
-        Args:
-            context (bpy.context): _description_
-            event (bpy.types.Event): _description_
-
-        Returns:
-            set[str]: _description_
-        """
+        """Run modal opertations outside of threading."""
         wm = context.window_manager
         if event.type == "TIMER":
             # Update progress bar from thread progress
@@ -173,6 +176,24 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                 )
 
                 self.report({"INFO"}, "Texture saved successfully.")
+
+                # delete the temporary render folders
+                for render_type in self.render_img_folders:
+                    render_type_folder = self.render_img_folders[render_type]
+                    if Path(render_type_folder).is_dir():
+                        shutil.rmtree(render_type_folder, ignore_errors=True)
+
+                # delete the parent folders if they are empty
+                parent_folder = Path(self.render_img_folders["depth"]).parent
+                if (parent_folder.is_dir() and not any(parent_folder.iterdir())) or (
+                    parent_folder.is_dir()
+                    and list(parent_folder.iterdir())
+                    == [
+                        parent_folder / "render_.exr",
+                    ]
+                ):
+                    shutil.rmtree(parent_folder, ignore_errors=True)
+
                 return {"FINISHED"}
 
         return {"PASS_THROUGH"}

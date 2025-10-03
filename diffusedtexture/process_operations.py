@@ -1,20 +1,42 @@
+from __future__ import annotations
+
 import math
-import shutil
-from pathlib import Path
+from typing import TYPE_CHECKING
 
-import cv2
+try:
+    import cv2
+except ModuleNotFoundError:
+    cv2 = None
 import numpy as np
-from numpy.typing import NDArray
 
-from ..blender_operations import ProcessParameter
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
+    from ..blender_operations import ProcessParameter
+
+if cv2 is not None:
+    CV2_INTER_NEAREST = cv2.INTER_NEAREST
+    CV2_INTER_LINEAR = cv2.INTER_LINEAR
+    CV2_INTER_LANCZOS4 = cv2.INTER_LANCZOS4
+else:
+    # OpenCV enum integer values; used only until deps are installed
+    CV2_INTER_NEAREST = 0
+    CV2_INTER_LINEAR = 1
+    CV2_INTER_LANCZOS4 = 4
 
 
-def delete_render_folders(render_img_folders: list) -> None:
-    for render_folder in render_img_folders:
-        # Check if the folder exists
-        if Path(render_folder).exists() and Path(render_folder).is_dir():
-            # Delete the folder and all its contents
-            shutil.rmtree(render_folder)
+def _require_cv2() -> None:
+    try:
+        import cv2
+    except ModuleNotFoundError:
+        cv2 = None
+    if cv2 is None:
+        # Raise a clean, actionable error once a function is actually called
+        msg = (
+            "OpenCV not available. In Blender: Preferences > Add-ons > DiffusedTexture > "  # noqa: E501
+            "click 'Install Python Dependencies' and try again."
+        )
+        raise RuntimeError(msg)
 
 
 def process_uv_texture(  # noqa: PLR0913
@@ -26,13 +48,12 @@ def process_uv_texture(  # noqa: PLR0913
     render_resolution: int = 2048,
     facing_percentile: float = 1.0,
 ) -> tuple[NDArray[np.uint8], NDArray[np.uint8]]:
+    _require_cv2()
+
     num_cameras = len(uv_images)
 
     if process_parameter.custom_sd_resolution:
-        sd_resolution = int(
-            int(process_parameter.custom_sd_resolution)
-            // np.sqrt(int(process_parameter.num_cameras)),
-        )
+        sd_resolution = int(process_parameter.custom_sd_resolution)
     else:
         sd_resolution = 512 if process_parameter.sd_version == "sd15" else 1024
 
@@ -102,6 +123,22 @@ def process_uv_texture(  # noqa: PLR0913
         # in case we have uv coordinates beyond the texture
         uv_coordinates = uv_coordinates % int(target_resolution)
 
+        # Exception in thread Thread-9 (run_texture_generation):
+        # Traceback (most recent call last):
+        # File "C:\Program Files\Blender Foundation\Blender 4.5\4.5\python\Lib\threading.py", line 1045, in _bootstrap_inner
+        #     self.run()
+        # File "C:\Program Files\Blender Foundation\Blender 4.5\4.5\python\Lib\threading.py", line 982, in run
+        #     self._target(*self._args, **self._kwargs)
+        # File "C:\Users\fredd\AppData\Roaming\Blender Foundation\Blender\4.5\extensions\vscode_development\diffused_texture_addon\texture_generation.py", line 69, in run_texture_generation
+        #     output_texture: NDArray[np.uint8] = img_parallel(
+        #                                         ^^^^^^^^^^^^^
+        # File "C:\Users\fredd\AppData\Roaming\Blender Foundation\Blender\4.5\extensions\vscode_development\diffused_texture_addon\diffusedtexture\img_parallel.py", line 63, in img_parallel
+        #     output_texture, _ = process_uv_texture(
+        #                         ^^^^^^^^^^^^^^^^^^^
+        # File "C:\Users\fredd\AppData\Roaming\Blender Foundation\Blender\4.5\extensions\vscode_development\diffused_texture_addon\diffusedtexture\process_operations.py", line 136, in process_uv_texture
+        #     uv_texture_first_pass[
+        # ValueError: shape mismatch: value array of shape (0,3) could not be broadcast to indexing result of shape (1048576,3)
+
         uv_texture_first_pass[
             cam_index,
             uv_coordinates[:, 1],
@@ -146,6 +183,8 @@ def inpaint_missing(
     uv_texture_first_pass_weight: NDArray,
     lower_bound: float = 0.1,
 ) -> NDArray:
+    _require_cv2()
+
     # multiply the texture channels by the point at factor
     weighted_tex = (
         np.stack(
@@ -183,7 +222,7 @@ def inpaint_missing(
 
 def assemble_multiview_grid(
     texture: NDArray[np.uint8] | None,
-    multiview_images: dict[str, str],
+    multiview_images: dict[str, list | NDArray],
     render_resolution: int = 2048,
     sd_resolution: int = 512,
 ) -> tuple[dict[str, NDArray], dict[str, NDArray]]:
@@ -204,6 +243,8 @@ def assemble_multiview_grid(
         grids for each view and the resized grids for the SD model input.
 
     """
+    _require_cv2()
+
     num_cameras = len(multiview_images["depth"])
     grid_size = int(math.sqrt(num_cameras))  # Assuming a square grid
 
@@ -419,6 +460,8 @@ def assemble_multiview_list(
             - dict[str, list[NDArray]]: Processed original-resolution images.
             - dict[str, list[NDArray]]: Corresponding resized images.
     """
+    _require_cv2()
+
     n_views = len(multiview_images["depth"])
 
     # Lists to accumulate per-view outputs
@@ -472,14 +515,14 @@ def assemble_multiview_list(
         normal_small = cv2.resize(
             normal_img,
             resize_shape,
-            interpolation=cv2.INTER_LINEAR,
+            interpolation=CV2_INTER_NEAREST,
         )
         facing_small = cv2.resize(
             facing_img,
             resize_shape,
-            interpolation=cv2.INTER_NEAREST,
+            interpolation=CV2_INTER_NEAREST,
         )
-        uv_small = cv2.resize(uv_img, resize_shape, interpolation=cv2.INTER_LINEAR)
+        uv_small = cv2.resize(uv_img, resize_shape, interpolation=CV2_INTER_LINEAR)
 
         content_small = create_content_mask(uv_small)
         input_small = create_input_image_grid(texture, uv_small, content_small)
@@ -533,6 +576,7 @@ def populate_grids(  # noqa: PLR0913
     render_resolution: int,
 ) -> None:
     """Populate each grid with the corresponding multiview images."""
+    _require_cv2()
     grids["depth_grid"][
         row : row + render_resolution,
         col : col + render_resolution,
@@ -558,6 +602,7 @@ def populate_grids(  # noqa: PLR0913
 
 def create_content_mask(uv_img: NDArray[np.float32]) -> NDArray[np.uint8]:
     """Generate a content mask from the UV image."""
+    _require_cv2()
     content_mask = np.zeros(uv_img.shape[:2], dtype=np.uint8)
     content_mask[np.sum(uv_img[..., :2], axis=-1) > 0] = 255
     return cv2.dilate(content_mask, np.ones((10, 10), np.uint8), iterations=3)
@@ -567,15 +612,16 @@ def resize_grids(
     grids: dict[str, NDArray],
     render_resolution: int,
     sd_resolution: int = 512,
-    interpolation: int = cv2.INTER_NEAREST,
+    interpolation: int = CV2_INTER_NEAREST,
 ) -> dict[str, NDArray]:
     """Resize grids to target resolution for Stable Diffusion model."""
+    _require_cv2()
     scale_factor = sd_resolution / render_resolution
     resized_grids = {}
     for key, grid in grids.items():
         height, width = grid.shape[:2]
 
-        interpolation = interpolation if "mask" in key else cv2.INTER_LINEAR
+        interpolation = interpolation if "mask" in key else CV2_INTER_LINEAR
         resized_grids[key] = cv2.resize(
             grid,
             (int(scale_factor * height), int(scale_factor * width)),
@@ -593,7 +639,12 @@ def create_input_image_grid(
     if texture is None:
         return np.ones_like(uv_grid, dtype=np.uint8) * 255
 
-    texture = 255 * np.clip(texture, 0, 1)  # Ensure texture is in 0-255 range
+    texture = np.clip(
+        texture,
+        0,
+        1,
+    )
+    texture *= 255
     texture = texture.astype(np.uint8)
 
     input_texture_res = texture.shape[0]

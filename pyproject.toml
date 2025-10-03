@@ -6,8 +6,7 @@ authors = [{ name = "Frederik Hasecke" }]
 requires-python = ">=3.11"
 dependencies = [
     "scipy",
-    "bpy>=4.2.0",
-    "accelerate",
+    "bpy>=4.5.0",
     "diffusers",
     "transformers",
     "peft",
@@ -19,7 +18,7 @@ dev = [
   "pytest-mock",
   "coverage",
   "ruff",
-  "mypy",
+  "ty",
 ]
 
 [tool.ruff]
@@ -49,3 +48,8 @@ docstring-code-line-length = "dynamic"
 python_version = "3.11"
 strict = true
 ignore_missing_imports = true
+
+[tool.ty.rules]
+unresolved-attribute = "ignore"
+invalid-assignment = "ignore"
+unresolved-import = "ignore"

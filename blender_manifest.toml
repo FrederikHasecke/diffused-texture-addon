@@ -14,79 +14,11 @@ blender_version_min = "4.2.0"
 license = ["SPDX:GPL-3.0-or-later"]
 
 platforms = ["windows-x64", "linux-x64"]
-wheels = [
 
-  # Common wheels (cross-platform)
-  "./wheels/certifi-2025.1.31-py3-none-any.whl",
-  "./wheels/colorama-0.4.6-py2.py3-none-any.whl",
-  "./wheels/filelock-3.18.0-py3-none-any.whl",
-  "./wheels/fsspec-2025.3.2-py3-none-any.whl",
-  "./wheels/idna-3.10-py3-none-any.whl",
-  "./wheels/importlib_metadata-8.6.1-py3-none-any.whl",
-  "./wheels/jinja2-3.1.6-py3-none-any.whl",
-  "./wheels/mpmath-1.3.0-py3-none-any.whl",
-  "./wheels/networkx-3.4.2-py3-none-any.whl",
-  "./wheels/packaging-25.0-py3-none-any.whl",
-  "./wheels/peft-0.15.2-py3-none-any.whl",
-  "./wheels/requests-2.32.3-py3-none-any.whl",
-  "./wheels/sympy-1.13.1-py3-none-any.whl",
-  "./wheels/tqdm-4.67.1-py3-none-any.whl",
-  "./wheels/typing_extensions-4.13.2-py3-none-any.whl",
-  "./wheels/urllib3-2.4.0-py3-none-any.whl",
-  "./wheels/zipp-3.21.0-py3-none-any.whl",
-  "./wheels/huggingface_hub-0.30.2-py3-none-any.whl",
-  "./wheels/accelerate-1.6.0-py3-none-any.whl",
-  "./wheels/transformers-4.51.3-py3-none-any.whl",
-  "./wheels/diffusers-0.33.1-py3-none-any.whl",
-
-  # Windows-specific wheels
-  "./wheels/scipy-1.15.2-cp311-cp311-win_amd64.whl",
-  "./wheels/charset_normalizer-3.4.1-cp311-cp311-win_amd64.whl",
-  "./wheels/MarkupSafe-3.0.2-cp311-cp311-win_amd64.whl",
-  "./wheels/PyYAML-6.0.2-cp311-cp311-win_amd64.whl",
-  "./wheels/psutil-7.0.0-cp311-abi3-win_amd64.whl",
-  "./wheels/regex-2024.11.6-cp311-cp311-win_amd64.whl",
-  "./wheels/pillow-11.2.1-cp311-cp311-win_amd64.whl",
-  "./wheels/opencv_python_headless-4.8.1.78-cp311-abi3-win_amd64.whl",
-  "./wheels/torch-2.6.0+cu118-cp311-cp311-win_amd64.whl",
-  "./wheels/tokenizers-0.21.1-cp311-abi3-win_amd64.whl",
-  "./wheels/safetensors-0.5.3-cp311-abi3-win_amd64.whl",
-
-  # Windows Debug wheels
-  "./wheels-dev/tk-0.1.0-py3-none-any.whl",
-  "./wheels-dev/cycler-0.12.1-py3-none-any.whl",
-  "./wheels-dev/six-1.17.0-py2.py3-none-any.whl",
-  "./wheels-dev/pyparsing-3.2.3-py3-none-any.whl",
-  "./wheels-dev/pillow-11.3.0-cp311-cp311-win_amd64.whl",
-  "./wheels-dev/packaging-25.0-py3-none-any.whl",
-  # "./wheels-dev/numpy-2.3.2-cp311-cp311-win_amd64.whl",
-  "./wheels-dev/kiwisolver-1.4.8-cp311-cp311-win_amd64.whl",
-  "./wheels-dev/fonttools-4.59.0-cp311-cp311-win_amd64.whl",
-  "./wheels-dev/python_dateutil-2.9.0.post0-py2.py3-none-any.whl",
-  "./wheels-dev/contourpy-1.3.3-cp311-cp311-win_amd64.whl",
-  "./wheels-dev/matplotlib-3.10.3-cp311-cp311-win_amd64.whl",
-  "./wheels-dev/pyqt5-5.15.11-cp38-abi3-win_amd64.whl",
-  "./wheels-dev/pyqt5_qt5-5.15.2-py3-none-win_amd64.whl",
-  "./wheels-dev/pyqt5_sip-12.17.0-cp310-cp310-win_amd64.whl",
-
-
-
-  # Linux-specific wheels
-  "./wheels/scipy-1.15.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
-  "./wheels/charset_normalizer-3.4.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
-  "./wheels/MarkupSafe-3.0.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
-  "./wheels/PyYAML-6.0.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
-  "./wheels/psutil-6.1.1-cp311-abi3-manylinux_2_12_x86_64.manylinux2010_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
-  "./wheels/regex-2024.11.6-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
-  "./wheels/pillow-11.1.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
-  "./wheels/opencv_python_headless-4.8.1.78-cp311-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
-  "./wheels/torch-2.5.1-cp311-cp311-manylinux1_x86_64.whl",
-  "./wheels/tokenizers-0.21.0-cp311-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
-  "./wheels/safetensors-0.5.2-cp311-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
-]
 [permissions]
 network = "Download models from huggingface.co"
 files = "Load/save renderings and textures from/to disk"
+
 [build]
 paths_exclude_pattern = [
   "__pycache__/",

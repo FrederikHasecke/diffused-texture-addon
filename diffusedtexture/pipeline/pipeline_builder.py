@@ -1,15 +1,33 @@
+from __future__ import annotations
+
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import torch
-from diffusers.pipelines.controlnet.pipeline_controlnet_inpaint import (
-    StableDiffusionControlNetInpaintPipeline,
-)
-from diffusers.pipelines.controlnet.pipeline_controlnet_union_inpaint_sd_xl import (
-    StableDiffusionXLControlNetUnionInpaintPipeline,
-)
+if TYPE_CHECKING:
+    from diffusers.pipelines.controlnet.pipeline_controlnet_inpaint import (
+        StableDiffusionControlNetInpaintPipeline,
+    )
+    from diffusers.pipelines.controlnet.pipeline_controlnet_union_inpaint_sd_xl import (
+        StableDiffusionXLControlNetUnionInpaintPipeline,
+    )
 
-from ...blender_operations import ProcessParameter
+    from ...blender_operations import ProcessParameter
+
+
 from .controlnet_config import build_controlnet_config
+
+
+def _pick_device() -> str:
+    try:
+        import torch  # local import
+
+        if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+            return "mps"
+        if hasattr(torch, "cuda") and torch.cuda.is_available():
+            return "cuda"
+    except Exception:  # noqa: BLE001, S110
+        pass
+    return "cpu"
 
 
 def create_diffusion_pipeline(
@@ -18,10 +36,14 @@ def create_diffusion_pipeline(
     StableDiffusionControlNetInpaintPipeline
     | StableDiffusionXLControlNetUnionInpaintPipeline
 ):
-    from diffusers import (  # noqa: PLC0415, RUF100
-        StableDiffusionControlNetInpaintPipeline,
-        StableDiffusionXLControlNetUnionInpaintPipeline,
-    )
+    try:
+        import torch
+        from diffusers import (  # noqa: PLC0415, RUF100
+            StableDiffusionControlNetInpaintPipeline,
+            StableDiffusionXLControlNetUnionInpaintPipeline,
+        )
+    except ModuleNotFoundError:
+        return None
 
     config = build_controlnet_config(process_parameter)
     pipe_cls = None
@@ -36,30 +58,31 @@ def create_diffusion_pipeline(
 
     controlnets = config[process_parameter.mesh_complexity]["controlnets"]
 
-    if str(process_parameter.checkpoint_path).endswith(".safetensors"):
+    # Build pipeline from checkpoint or Hub
+    ckpt = str(process_parameter.checkpoint_path)
+    common_kwargs = {"torch_dtype": torch.float16, "safety_checker": None}
+
+    if ckpt.endswith(".safetensors"):
         pipe = pipe_cls.from_single_file(
-            process_parameter.checkpoint_path,
+            ckpt,
+            controlnet=controlnets,
             use_safetensors=True,
-            torch_dtype=torch.float16,
             variant="fp16",
-            safety_checker=None,
+            **common_kwargs,
         )
-    elif str(process_parameter.checkpoint_path).endswith(
-        (".ckpt", ".pt", ".pth", ".bin"),
-    ):
+    elif ckpt.endswith((".ckpt", ".pt", ".pth", ".bin")):
         pipe = pipe_cls.from_single_file(
-            process_parameter.checkpoint_path,
-            torch_dtype=torch.float16,
+            ckpt,
+            controlnet=controlnets,
             variant="fp16",
-            safety_checker=None,
+            **common_kwargs,
         )
     else:
         pipe = pipe_cls.from_pretrained(
-            process_parameter.checkpoint_path,
+            ckpt,
             controlnet=controlnets,
-            torch_dtype=torch.float16,
             use_safetensors=True,
-            safety_checker=None,
+            **common_kwargs,
         )
 
     # LoRA
@@ -87,6 +110,9 @@ def create_diffusion_pipeline(
             )
         pipe.set_ip_adapter_scale(process_parameter.ipadapter_strength)
 
-    pipe.to("cuda")
-    pipe.enable_model_cpu_offload()
+    device = _pick_device()
+    pipe.to(device)
+    if device != "cpu":
+        # Only useful when there is a GPU backend
+        pipe.enable_model_cpu_offload()
     return pipe

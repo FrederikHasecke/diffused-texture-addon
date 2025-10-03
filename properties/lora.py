@@ -47,6 +47,8 @@ def register_lora_properties() -> None:
 
 
 def unregister_lora_properties() -> None:
-    del bpy.types.Scene.num_loras
-    del bpy.types.Scene.lora_models
+    if hasattr(bpy.types.Scene, "num_loras"):
+        del bpy.types.Scene.num_loras
+    if hasattr(bpy.types.Scene, "lora_models"):
+        del bpy.types.Scene.lora_models
     bpy.utils.unregister_class(LoRAModel)

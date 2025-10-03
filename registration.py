@@ -7,7 +7,11 @@ and custom properties in the correct order.
 import bpy
 
 from .operators import OBJECT_OT_GenerateTexture
-from .preferences import DiffuseTexPreferences, InstallModelsOperator
+from .preferences import (
+    DiffuseTexPreferences,
+    InstallDepsOperator,
+    InstallModelsOperator,
+)
 from .properties import register_properties, unregister_properties
 from .user_interface.advanced_panel import OBJECT_PT_AdvancedPanel
 from .user_interface.ipadapter_panel import (
@@ -22,8 +26,9 @@ from .user_interface.main_panel import (
 )
 
 classes = [
-    DiffuseTexPreferences,
     InstallModelsOperator,
+    InstallDepsOperator,
+    DiffuseTexPreferences,
     OBJECT_OT_GenerateTexture,
     OBJECT_OT_SelectPipette,
     OBJECT_PT_DiffusedTextureMainPanel,
