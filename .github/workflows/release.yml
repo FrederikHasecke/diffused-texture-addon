@@ -94,6 +94,13 @@ jobs:
             --exclude='requirements*.txt' \
             --exclude='wheels*/' \
             ./ dist/addon/
+      
+      # Create zip file manually before building
+      - name: Create addon zip
+        run: |
+          cd dist
+          zip -r addon.zip addon/
+
       - name: Build addon
         uses: blenderkit/blender-addon-build@main
         with:
@@ -101,29 +108,22 @@ jobs:
           do-checkout: 'false'
           build-location: 'dist/addon'
           exclude-files: ".git"
-      # Upload the directory first
-      - name: Upload build directory
-        uses: actions/upload-artifact@v4
-        with:
-          name: diffusedtexture-addon
-          path: dist/addon
-      # Then upload the specific zip for release
-      - name: Find and upload zip
-        run: |
-          mkdir -p release
-          find dist/addon -name "*.zip" -exec cp {} release/ \;
+
+      # Upload the zip file as artifact
       - name: Upload release zip
         uses: actions/upload-artifact@v4
         with:
           name: diffusedtexture-addon-${{ github.run_number }}
-          path: release/*.zip
-  
+          path: dist/addon.zip
+          if-no-files-found: error
+
   release:
     needs: build
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
       - uses: actions/checkout@v4
+      
       - name: Read version
         shell: bash
         run: |
@@ -133,14 +133,16 @@ jobs:
             VER=$(python3 -c 'import tomllib; print(tomllib.load(open("blender_manifest.toml","rb"))["version"])')
             echo "REL_VER=$VER" >> $GITHUB_ENV
           fi
+
       - uses: actions/download-artifact@v4
         with:
           name: diffusedtexture-addon-${{ github.run_number }}
           path: out
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           draft: true
           name: DiffusedTextureAddon v${{ env.REL_VER }}
           tag_name: v${{ env.REL_VER }}
-          files: out/*.zip
+          files: out/addon.zip
