@@ -101,12 +101,23 @@ jobs:
           do-checkout: 'false'
           build-location: 'dist/addon'
           exclude-files: ".git"
-      - name: Upload artifact
+      # Upload the directory first
+      - name: Upload build directory
+        uses: actions/upload-artifact@v4
+        with:
+          name: diffusedtexture-addon
+          path: dist/addon
+      # Then upload the specific zip for release
+      - name: Find and upload zip
+        run: |
+          mkdir -p release
+          find dist/addon -name "*.zip" -exec cp {} release/ \;
+      - name: Upload release zip
         uses: actions/upload-artifact@v4
         with:
           name: diffusedtexture-addon-${{ github.run_number }}
-          path: dist/addon/*.zip
-
+          path: release/*.zip
+  
   release:
     needs: build
     runs-on: ubuntu-latest
@@ -126,19 +137,10 @@ jobs:
         with:
           name: diffusedtexture-addon-${{ github.run_number }}
           path: out
-      - name: Normalize filename
-        shell: bash
-        run: |
-          f=$(find out -type f -name '*.zip' -print -quit)
-          if [ -z "$f" ]; then
-            echo "No zip file found in 'out' directory!" >&2
-            exit 1
-          fi
-          mv "$f" "out/diffusedtexture-addon-v${REL_VER}.zip"
-          ls -lh out
-      - uses: softprops/action-gh-release@v2
+      - name: Create release
+        uses: softprops/action-gh-release@v2
         with:
           draft: true
           name: DiffusedTextureAddon v${{ env.REL_VER }}
           tag_name: v${{ env.REL_VER }}
-          files: out/diffusedtexture-addon-v${{ env.REL_VER }}.zip
+          files: out/*.zip
