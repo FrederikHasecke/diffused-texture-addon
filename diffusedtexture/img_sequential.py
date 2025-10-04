@@ -72,7 +72,7 @@ def img_sequential(
         percent = int((sub_percent + i * 100) / n_views)
         progress_callback(percent)
 
-    # TODO: Only inpaint for 2-3 pixels for each view, and paste onto texture with feathering
+    # TODO: Only inpaint for 2-3 pixels for each view, and paste onto texture with feathering  # noqa: E501
     # TODO: Check if para/weighted approach on all views improve the texture later on
 
     keep_mask = None
@@ -123,8 +123,6 @@ def img_sequential(
 
         # Project the current result back to the texture
         previous_texture, unpainted_mask = project_view_to_texture(
-            output_path=process_parameter.output_path,
-            integer=i,
             sd_result=result,
             uv_view=resized_list["uv"][i],
             facing_view=resized_list["facing"][i],
@@ -148,9 +146,7 @@ def img_sequential(
 
 
 def project_view_to_texture(  # noqa: PLR0913
-    output_path: str,
-    integer: int,
-    sd_result: Image,  # type: ignore
+    sd_result: Image | None,  # type: ignore  # noqa: PGH003
     uv_view: NDArray[np.uint8],
     facing_view: NDArray[np.uint8],
     texture_resolution: int,
@@ -225,7 +221,7 @@ def project_view_to_texture(  # noqa: PLR0913
         # Blend the new texture with the existing texture
         new_texture[~mask] = texture[..., :3][~mask]
 
-    # TODO(Frederik): Change the approach to stack all sequential textures  # noqa: E501, FIX002
+    # TODO(Frederik): Change the approach to stack all sequential textures
     # Inpaint missing areas on each and stack them together with the facing percentiles
     # as weighting.
 
@@ -237,7 +233,7 @@ def create_new_view_input(
     unpainted_mask: NDArray[np.uint8],
     input_view: NDArray[np.uint8],
     uv_view: NDArray[np.uint8],
-) -> tuple[Image, NDArray[np.uint8]]:  # pyright: ignore[reportInvalidTypeForm]
+) -> tuple[Image, NDArray[np.uint8]]:  # type: ignore  # noqa: PGH003
     """Create new input image for the current view by projecting the output texture."""
     # get the uv coordinates from the uv_view
     uv_view = uv_view[..., :2]  # Ensure UVs are 2D

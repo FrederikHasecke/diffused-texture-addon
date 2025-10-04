@@ -31,7 +31,7 @@ exclude = [
 
 [tool.ruff.lint]
 select = ["ALL"]
-ignore = ["TD002", "TD003", "D100", "D103", "D104", "D400", "N801", "N999", "INP001", "TID252", "RUF012"]
+ignore = ["TD002", "TD003", "D100", "D103", "D104", "D400", "N801", "N999", "INP001", "TID252", "RUF012","PLC0415", "FIX002"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -53,3 +53,4 @@ ignore_missing_imports = true
 unresolved-attribute = "ignore"
 invalid-assignment = "ignore"
 unresolved-import = "ignore"
+possibly-unbound-attribute = "ignore"

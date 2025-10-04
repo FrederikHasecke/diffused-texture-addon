@@ -5,9 +5,10 @@ try:
 except ModuleNotFoundError:
     cv2 = None
 
+from collections.abc import Callable
+
 import numpy as np
 from numpy.typing import NDArray
-from collections.abc import Callable
 
 try:
     from PIL import Image

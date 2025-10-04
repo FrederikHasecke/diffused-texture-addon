@@ -10,14 +10,12 @@ from .diffusedtexture.img_parallel import img_parallel
 from .diffusedtexture.img_parasequential import img_parasequential
 from .diffusedtexture.img_sequential import img_sequential
 
-# from .diffusedtexture.uv_pass import uv_pass # TODO(Frederik): Revisit this  # noqa: E501, ERA001, FIX002
-
 
 def load_multiview_images(render_img_folders: str) -> dict[str, list[NDArray[Any]]]:
     multiview_images = {"depth": [], "normal": [], "uv": [], "facing": []}
 
-    for output_key in render_img_folders:
-        for camera_folder_name in Path(render_img_folders[output_key]).iterdir():
+    for folder_path in render_img_folders.values():
+        for camera_folder_name in Path(folder_path).iterdir():
             for file_path in camera_folder_name.iterdir():
                 image = load_img_to_numpy(file_path)
 

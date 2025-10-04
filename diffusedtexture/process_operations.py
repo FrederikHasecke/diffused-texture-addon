@@ -123,22 +123,6 @@ def process_uv_texture(  # noqa: PLR0913
         # in case we have uv coordinates beyond the texture
         uv_coordinates = uv_coordinates % int(target_resolution)
 
-        # Exception in thread Thread-9 (run_texture_generation):
-        # Traceback (most recent call last):
-        # File "C:\Program Files\Blender Foundation\Blender 4.5\4.5\python\Lib\threading.py", line 1045, in _bootstrap_inner
-        #     self.run()
-        # File "C:\Program Files\Blender Foundation\Blender 4.5\4.5\python\Lib\threading.py", line 982, in run
-        #     self._target(*self._args, **self._kwargs)
-        # File "C:\Users\fredd\AppData\Roaming\Blender Foundation\Blender\4.5\extensions\vscode_development\diffused_texture_addon\texture_generation.py", line 69, in run_texture_generation
-        #     output_texture: NDArray[np.uint8] = img_parallel(
-        #                                         ^^^^^^^^^^^^^
-        # File "C:\Users\fredd\AppData\Roaming\Blender Foundation\Blender\4.5\extensions\vscode_development\diffused_texture_addon\diffusedtexture\img_parallel.py", line 63, in img_parallel
-        #     output_texture, _ = process_uv_texture(
-        #                         ^^^^^^^^^^^^^^^^^^^
-        # File "C:\Users\fredd\AppData\Roaming\Blender Foundation\Blender\4.5\extensions\vscode_development\diffused_texture_addon\diffusedtexture\process_operations.py", line 136, in process_uv_texture
-        #     uv_texture_first_pass[
-        # ValueError: shape mismatch: value array of shape (0,3) could not be broadcast to indexing result of shape (1048576,3)
-
         uv_texture_first_pass[
             cam_index,
             uv_coordinates[:, 1],

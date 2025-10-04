@@ -170,7 +170,7 @@ def uv_pass(
         num_inference_steps=process_parameter.num_inference_steps,
     )
 
-    # TODO: Use the position bake information to mean over xyz distance  # noqa: FIX002
+    # TODO: Use the position bake information to mean over xyz distance
 
     # remove alpha
     output_image = np.array(output_image)[..., :3]

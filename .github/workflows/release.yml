@@ -104,7 +104,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: diffusedtexture-addon
+          name: diffusedtexture-addon-${{ github.run_number }}
           path: ./  # the action finds the produced zip
 
   release:

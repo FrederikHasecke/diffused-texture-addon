@@ -30,11 +30,12 @@ def _pick_device() -> str:
     return "cpu"
 
 
-def create_diffusion_pipeline(
+def create_diffusion_pipeline(  # noqa: C901, PLR0912
     process_parameter: ProcessParameter,
 ) -> (
     StableDiffusionControlNetInpaintPipeline
     | StableDiffusionXLControlNetUnionInpaintPipeline
+    | None
 ):
     try:
         import torch
@@ -64,7 +65,7 @@ def create_diffusion_pipeline(
 
     if ckpt.endswith(".safetensors"):
         pipe = pipe_cls.from_single_file(
-            ckpt,
+            pretrained_model_link_or_path=ckpt,
             controlnet=controlnets,
             use_safetensors=True,
             variant="fp16",
@@ -72,7 +73,7 @@ def create_diffusion_pipeline(
         )
     elif ckpt.endswith((".ckpt", ".pt", ".pth", ".bin")):
         pipe = pipe_cls.from_single_file(
-            ckpt,
+            pretrained_model_link_or_path=ckpt,
             controlnet=controlnets,
             variant="fp16",
             **common_kwargs,

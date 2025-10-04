@@ -42,17 +42,17 @@ else:
     sys.path.insert(0, str(deps))
 
 
-def register():
+def register() -> None:
     """Register the add-on inside Blender."""
-    global _MINIMAL_PREFS_ONLY
+    global _MINIMAL_PREFS_ONLY  # noqa: PLW0603
     try:
         from .registration import register_addon
 
         register_addon()
         _MINIMAL_PREFS_ONLY = False
-        print("Full addon registration successful")
-    except Exception as e:
-        print(f"Full registration failed, falling back to minimal mode: {str(e)}")
+        print("Full addon registration successful")  # noqa: T201
+    except Exception as e:  # noqa: BLE001
+        print(f"Full registration failed, falling back to minimal mode: {e!s}")  # noqa: T201
         from .preferences import register as register_prefs
 
         register_prefs()
