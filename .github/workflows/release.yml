@@ -42,7 +42,7 @@ jobs:
           pip install ruff
 
       - name: Ruff check
-        run: ruff check . --output-format=github
+        run: ruff check . --output-format=github --config pyproject.toml
 
   # # 2) Tests
   # test:
