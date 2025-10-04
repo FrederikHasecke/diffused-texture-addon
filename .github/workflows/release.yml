@@ -105,7 +105,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: diffusedtexture-addon-${{ github.run_number }}
-          path: ./  # the action finds the produced zip
+          path: dist/addon/*.zip
 
   release:
     needs: build
@@ -129,7 +129,11 @@ jobs:
       - name: Normalize filename
         shell: bash
         run: |
-          f=$(find out -maxdepth 1 -name '*.zip' -print -quit)
+          f=$(find out -type f -name '*.zip' -print -quit)
+          if [ -z "$f" ]; then
+            echo "No zip file found in 'out' directory!" >&2
+            exit 1
+          fi
           mv "$f" "out/diffusedtexture-addon-v${REL_VER}.zip"
           ls -lh out
       - uses: softprops/action-gh-release@v2

@@ -75,7 +75,6 @@ def img_sequential(
     # TODO: Only inpaint for 2-3 pixels for each view, and paste onto texture with feathering  # noqa: E501
     # TODO: Check if para/weighted approach on all views improve the texture later on
 
-    keep_mask = None
     texres = int(process_parameter.texture_resolution)
     unpainted_mask = 255 * np.ones((texres, texres), dtype=np.uint8)
     # Initialize previous_texture before the loop
@@ -93,7 +92,7 @@ def img_sequential(
             input_img = Image.fromarray(arr_in.astype(np.uint8))
             mask_img = Image.fromarray(arr_content)
         else:
-            input_img, keep_mask = create_new_view_input(
+            input_img, _ = create_new_view_input(
                 previous_texture,
                 unpainted_mask,
                 arr_in,
