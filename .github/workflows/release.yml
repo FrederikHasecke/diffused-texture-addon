@@ -124,7 +124,7 @@ jobs:
           fi
       - uses: actions/download-artifact@v4
         with:
-          name: diffusedtexture-addon
+          name: diffusedtexture-addon-${{ github.run_number }}
           path: out
       - name: Normalize filename
         shell: bash
