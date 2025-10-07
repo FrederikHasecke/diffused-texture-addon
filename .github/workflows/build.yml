@@ -1,35 +1,19 @@
 name: Build
+
 on:
-  push:
-    branches: [ master, v0-redesign ]
-  pull_request:
-    branches: [ master ]
+  workflow_run:
+    workflows: ["Tests"]
+    types: [completed]
   workflow_dispatch:
 
-permissions:
-  contents: read
-
-env:
-  PYTHON_VERSION: '3.11'
-
 jobs:
-  lint:
-    name: Ruff lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: pyproject.toml
-      - run: pip install --upgrade pip ruff
-      - run: ruff check . --output-format=github --config pyproject.toml
-
   build:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Stage clean build dir
         run: |

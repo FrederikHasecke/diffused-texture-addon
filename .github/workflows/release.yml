@@ -1,12 +1,10 @@
 name: Release
 
 on:
-  # Auto-link to the Build workflow
   workflow_run:
-    workflows: [ "Build" ]
-    types: [ completed ]
-    branches: [ master ]         # only when Build ran on master
-  # Optional manual run (helpful for hotfixes)
+    workflows: ["Build"]
+    types: [completed]
+    branches: [ master ]               # only if Build ran on master
   workflow_dispatch:
     inputs:
       version:
@@ -16,46 +14,32 @@ on:
 
 permissions:
   contents: write
-  actions: read   # required to download artifacts from another run
+  actions: read                        # needed for cross-run artifact download
 
 jobs:
   release:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    # Only proceed on successful Build, or when manually dispatched
-    if: |
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
-      (github.event_name == 'workflow_dispatch')
-
-    concurrency:
-      group: release-${{ github.ref || 'manual' }}
-      cancel-in-progress: false
-
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
 
       - name: Read + validate semver and detect prerelease
-        id: ver
         shell: bash
         run: |
           set -euo pipefail
-
           if [ -n "${{ github.event.inputs.version || '' }}" ]; then
             REL_VER="${{ github.event.inputs.version }}"
           else
             REL_VER="$(python3 - <<'PY'
-import tomllib
-print(tomllib.load(open("blender_manifest.toml","rb"))["version"].strip())
-PY
-)"
+            import tomllib
+            print(tomllib.load(open("blender_manifest.toml","rb"))["version"].strip())
+            PY
+            )"
           fi
-
-          if [[ ! "$REL_VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Invalid semver: '$REL_VER'"; exit 1
-          fi
-
+          [[ "$REL_VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]] || { echo "Invalid semver: $REL_VER"; exit 1; }
           echo "REL_VER=$REL_VER" >> $GITHUB_ENV
-          echo "TAG=v$REL_VER"    >> $GITHUB_ENV
+          echo "TAG=v$REL_VER" >> $GITHUB_ENV
           [[ "$REL_VER" == *-* ]] && echo "IS_PRERELEASE=true" >> $GITHUB_ENV || echo "IS_PRERELEASE=false" >> $GITHUB_ENV
 
       - name: Skip if tag already exists
@@ -65,13 +49,11 @@ PY
           git fetch --tags --force
           if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
             echo "exists=true" >> $GITHUB_OUTPUT
-            echo "Tag ${TAG} already exists; skipping release."
           else
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
-      # Download artifact from the specific Build run (auto path)
-      - name: Download build artifact (from Build run)
+      - name: Download build artifact from Build run
         if: steps.tagcheck.outputs.exists == 'false' && github.event_name == 'workflow_run'
         uses: actions/download-artifact@v4
         with:
@@ -79,9 +61,6 @@ PY
           run-id: ${{ github.event.workflow_run.id }}
           name: addon-zip
           path: out
-
-      # Fallback for manual dispatch: fetch latest successful Build on master (optional)
-      # Tip: skip this and run Release via the Build completion most of the time.
 
       - name: Create GitHub Release
         if: steps.tagcheck.outputs.exists == 'false'

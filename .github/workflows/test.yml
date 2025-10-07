@@ -1,0 +1,27 @@
+name: Tests
+
+on:
+  workflow_run:
+    workflows: ["Lint"]
+    types: [completed]
+  workflow_dispatch:
+
+jobs:
+  test:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Set up uv + Python
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.11'
+          enable-cache: true
+
+      - run: uv venv
+      - run: uv pip install --force-reinstall --upgrade -r pyproject.toml --all-extras --group dev
+      - name: Run pytest
+        run: uv run pytest -q tests

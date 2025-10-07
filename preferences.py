@@ -45,15 +45,14 @@ class DiffuseTexPreferences(bpy.types.AddonPreferences):
             icon="IMPORT",
         )
 
-        layout.prop(self, "hf_cache_path", text="HuggingFace Cache Path")
-
         mdl = layout.box()
-        mdl.label(text="Models")
+        mdl.prop(self, "hf_cache_path", text="HuggingFace Cache Path")
+
         r = mdl.row()
         r.enabled = bpy.app.online_access
         r.operator(
             InstallModelsOperator.bl_idname,
-            text="Install Models",
+            text="Install Basic Models",
             icon="IMPORT",
         )
 
