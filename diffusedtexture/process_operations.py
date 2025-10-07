@@ -1,18 +1,13 @@
-from __future__ import annotations
-
 import math
-from typing import TYPE_CHECKING
 
 try:
     import cv2
 except ModuleNotFoundError:
     cv2 = None
 import numpy as np
+from numpy.typing import NDArray
 
-if TYPE_CHECKING:
-    from numpy.typing import NDArray
-
-    from ..blender_operations import ProcessParameter
+from ..blender_operations import ProcessParameter
 
 if cv2 is not None:
     CV2_INTER_NEAREST = cv2.INTER_NEAREST
@@ -34,7 +29,7 @@ def _require_cv2() -> None:
         # Raise a clean, actionable error once a function is actually called
         msg = (
             "OpenCV not available. In Blender: Preferences > Add-ons > DiffusedTexture > "  # noqa: E501
-            "click 'Install Python Dependencies' and try again."
+            "click 'Install Python Dependencies', restart Blender and try again."
         )
         raise RuntimeError(msg)
 
@@ -634,7 +629,7 @@ def create_input_image_grid(
     input_texture_res = texture.shape[0]
 
     # Scale UV coordinates to texture coordinates
-    uv_scaled: NDArray[np.float32] = uv_grid[..., :2]
+    uv_scaled = uv_grid[..., :2]
 
     # 0-1 range to 0-input_texture_res range
     uv_scaled = (uv_scaled * (input_texture_res - 1)).astype(np.int32)

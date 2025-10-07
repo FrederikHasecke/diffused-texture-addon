@@ -26,8 +26,10 @@ def farthest_point_ordering(positions: list[mathutils.Vector]) -> list[int]:
             d = min((positions[idx] - positions[j]).length for j in ordered)
             if d > best_dist:
                 best_idx, best_dist = idx, d
-        ordered.append(best_idx)
-        remaining.remove(best_idx)
+
+        if isinstance(best_idx, int):
+            ordered.append(best_idx)
+            remaining.remove(best_idx)
 
     return ordered
 

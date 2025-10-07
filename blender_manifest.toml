@@ -21,6 +21,7 @@ files = "Load/save renderings and textures from/to disk"
 
 [build]
 paths_exclude_pattern = [
+  ".venv/",
   "__pycache__/",
   ".git/",
   "*.zip",
@@ -39,7 +40,6 @@ paths_exclude_pattern = [
   "pytest.ini",
   ".pytest_cache/",
   "Dockerfile",
-  "pyproject.toml",
   "requirements.txt",
   "requirements-dev.txt",
   "wheels_dev/",

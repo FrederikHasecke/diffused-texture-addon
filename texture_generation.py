@@ -11,7 +11,9 @@ from .diffusedtexture.img_parasequential import img_parasequential
 from .diffusedtexture.img_sequential import img_sequential
 
 
-def load_multiview_images(render_img_folders: str) -> dict[str, list[NDArray[Any]]]:
+def load_multiview_images(
+    render_img_folders: dict[str, NDArray | str],
+) -> dict[str, list[NDArray[Any]]]:
     multiview_images = {"depth": [], "normal": [], "uv": [], "facing": []}
 
     for folder_path in render_img_folders.values():
@@ -38,7 +40,7 @@ def run_texture_generation(  # noqa: PLR0913
     render_img_folders: dict[str, NDArray | str],
     progress_callback: Callable,
     mark_done: Callable,
-    return_texture_bucket=list,  # noqa: ANN001
+    return_texture_bucket: list,
     texture: NDArray[np.float32] | None = None,
 ) -> None:
     """Run the texture generation in a separate thread.

@@ -17,8 +17,6 @@ Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 ======================= END GPL LICENSE BLOCK ========================
 """
 
-from __future__ import annotations
-
 import site
 import sys
 from pathlib import Path

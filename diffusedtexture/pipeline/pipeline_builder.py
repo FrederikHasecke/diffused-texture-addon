@@ -1,19 +1,18 @@
-from __future__ import annotations
-
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from diffusers.pipelines.controlnet.pipeline_controlnet_inpaint import (
-        StableDiffusionControlNetInpaintPipeline,
-    )
-    from diffusers.pipelines.controlnet.pipeline_controlnet_union_inpaint_sd_xl import (
-        StableDiffusionXLControlNetUnionInpaintPipeline,
-    )
+    try:
+        from diffusers import (
+            StableDiffusionControlNetInpaintPipeline,
+            StableDiffusionXLControlNetUnionInpaintPipeline,
+        )
+    except ModuleNotFoundError:
+        StableDiffusionControlNetInpaintPipeline = None  # type: ignore[assignment]
+        StableDiffusionXLControlNetUnionInpaintPipeline = None  # type: ignore[assignment]
 
-    from ...blender_operations import ProcessParameter
 
-
+from ...blender_operations import ProcessParameter
 from .controlnet_config import build_controlnet_config
 
 
@@ -21,29 +20,50 @@ def _pick_device() -> str:
     try:
         import torch  # local import
 
-        if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
-            return "mps"
         if hasattr(torch, "cuda") and torch.cuda.is_available():
             return "cuda"
+        if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+            return "mps"
+        return "cpu"  # noqa: TRY300
+    except Exception:  # noqa: BLE001
+        return "cpu"
+
+
+def _pick_dtype(device: str):  # noqa: ANN202
+    import torch
+
+    # Use fp32 on CPU to avoid slow/failing fp16 kernels; use bf16 on modern GPUs
+    if device in {"cpu", "mps"}:
+        return torch.float32
+    # cuda/rocm
+    try:
+        major, _ = torch.cuda.get_device_capability(0)
+        if (
+            major >= 8  # noqa: PLR2004
+        ):  # Ampere+ generally supports bf16 reasonably well
+            return torch.bfloat16
     except Exception:  # noqa: BLE001, S110
         pass
-    return "cpu"
+    return torch.float16
 
 
 def create_diffusion_pipeline(  # noqa: C901, PLR0912
     process_parameter: ProcessParameter,
-) -> (
-    StableDiffusionControlNetInpaintPipeline
-    | StableDiffusionXLControlNetUnionInpaintPipeline
-    | None
-):
+) -> Any:  # noqa: ANN401
     try:
-        import torch
-        from diffusers import (  # noqa: PLC0415, RUF100
+        import torch  # noqa: F401
+        from diffusers import (
             StableDiffusionControlNetInpaintPipeline,
             StableDiffusionXLControlNetUnionInpaintPipeline,
         )
+
     except ModuleNotFoundError:
+        return None
+
+    if (
+        StableDiffusionControlNetInpaintPipeline is None
+        or StableDiffusionXLControlNetUnionInpaintPipeline is None
+    ):
         return None
 
     config = build_controlnet_config(process_parameter)
@@ -61,21 +81,25 @@ def create_diffusion_pipeline(  # noqa: C901, PLR0912
 
     # Build pipeline from checkpoint or Hub
     ckpt = str(process_parameter.checkpoint_path)
-    common_kwargs = {"torch_dtype": torch.float16, "safety_checker": None}
+
+    device = _pick_device()
+
+    common_kwargs = {
+        "safety_checker": None,
+        "requires_safety_checker": False,
+    }
 
     if ckpt.endswith(".safetensors"):
         pipe = pipe_cls.from_single_file(
             pretrained_model_link_or_path=ckpt,
             controlnet=controlnets,
             use_safetensors=True,
-            variant="fp16",
             **common_kwargs,
         )
     elif ckpt.endswith((".ckpt", ".pt", ".pth", ".bin")):
         pipe = pipe_cls.from_single_file(
             pretrained_model_link_or_path=ckpt,
             controlnet=controlnets,
-            variant="fp16",
             **common_kwargs,
         )
     else:
@@ -111,9 +135,9 @@ def create_diffusion_pipeline(  # noqa: C901, PLR0912
             )
         pipe.set_ip_adapter_scale(process_parameter.ipadapter_strength)
 
-    device = _pick_device()
-    pipe.to(device)
-    if device != "cpu":
-        # Only useful when there is a GPU backend
+    if device == "cpu":
+        pipe.to("cpu")
+    elif device in ("cuda", "mps"):
+        pipe.to(device)
         pipe.enable_model_cpu_offload()
     return pipe

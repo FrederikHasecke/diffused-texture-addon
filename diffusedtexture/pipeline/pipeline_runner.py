@@ -1,45 +1,30 @@
-from __future__ import annotations
+from collections.abc import Callable
 
-from typing import TYPE_CHECKING
+from diffusers import (
+    StableDiffusionControlNetInpaintPipeline,
+    StableDiffusionXLControlNetUnionInpaintPipeline,
+)
+from PIL import Image
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    from diffusers.pipelines.controlnet.pipeline_controlnet_inpaint import (
-        StableDiffusionControlNetInpaintPipeline,
-    )
-    from diffusers.pipelines.controlnet.pipeline_controlnet_union_inpaint_sd_xl import (
-        StableDiffusionXLControlNetUnionInpaintPipeline,
-    )
-    from PIL import Image
-
-    PipeType = (
-        StableDiffusionControlNetInpaintPipeline
-        | StableDiffusionXLControlNetUnionInpaintPipeline
-    )
-    from ...blender_operations import ProcessParameter
-
-else:
-    Image = object  # runtime placeholder
-    PipeType = object
-
+from ...blender_operations import ProcessParameter
 from ...utils import image_to_numpy
 from .controlnet_config import build_controlnet_config
 
 
 def run_pipeline(  # noqa: PLR0913
-    pipe: PipeType,
+    pipe: StableDiffusionControlNetInpaintPipeline
+    | StableDiffusionXLControlNetUnionInpaintPipeline,
     process_parameter: ProcessParameter,
-    input_img: Image,
-    uv_mask: Image,
-    canny_img: Image,
-    normal_img: Image,
-    depth_img: Image,
+    input_img: Image.Image,
+    uv_mask: Image.Image,
+    canny_img: Image.Image,
+    normal_img: Image.Image,
+    depth_img: Image.Image,
     progress_callback: Callable,
     strength: float = 1.0,
     guidance_scale: float = 7.5,
     num_inference_steps: int = 50,
-) -> Image:
+) -> Image.Image | None:
     # Lazy imports so the add-on can register without deps.
     try:
         import torch
@@ -85,7 +70,8 @@ def run_pipeline(  # noqa: PLR0913
             kwargs["control_mode"] = control_mode
 
         def pipe_progress_callback(
-            pipe: PipeType,
+            pipe: StableDiffusionControlNetInpaintPipeline
+            | StableDiffusionXLControlNetUnionInpaintPipeline,
             step_index: int,
             timestep: int,  # noqa: ARG001
             callback_kwargs: dict,
@@ -97,7 +83,7 @@ def run_pipeline(  # noqa: PLR0913
 
         kwargs["callback_on_step_end"] = pipe_progress_callback
 
-        return pipe(**kwargs).images[0]
+        return pipe.__call__(**kwargs).images[0]
 
     except torch.cuda.OutOfMemoryError:
         del pipe

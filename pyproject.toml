@@ -3,23 +3,37 @@ name = "diffused_texture_addon"
 version = "0.1.0"
 description = "A Blender Addon for Generating Diffuse Textures on Meshes with Stable Diffusion"
 authors = [{ name = "Frederik Hasecke" }]
-requires-python = ">=3.11"
+requires-python = "==3.11.11"
 dependencies = [
-    "scipy",
-    "bpy>=4.5.0",
-    "diffusers",
-    "transformers",
-    "peft",
+    "pillow>=11.0.0",
+    "opencv-python-headless>=4.11.0.86,<4.12",
+    "diffusers==0.32.2",
+    "transformers==4.49.0",
+    "accelerate==1.4.0",
+    "safetensors>=0.6.2",
+    "peft>=0.17.1",
 ]
 
 [dependency-groups]
 dev = [
-  "pytest",
-  "pytest-mock",
-  "coverage",
-  "ruff",
+  "torch",
+  "bpy>=4.5.0",
+  "pytest>=8.4.2",
+  "pytest-mock>=3.15.1",
+  "coverage>=7.10.7",
+  "ruff>=0.13.3",
   "ty",
 ]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu126" }
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+
 
 [tool.ruff]
 line-length = 88

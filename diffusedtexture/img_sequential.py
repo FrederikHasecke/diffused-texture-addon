@@ -145,7 +145,7 @@ def img_sequential(
 
 
 def project_view_to_texture(  # noqa: PLR0913
-    sd_result: Image | None,  # type: ignore  # noqa: PGH003
+    sd_result: Image,  # type: ignore  # noqa: PGH003
     uv_view: NDArray[np.uint8],
     facing_view: NDArray[np.uint8],
     texture_resolution: int,

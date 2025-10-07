@@ -2,6 +2,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import bpy
+from PIL import Image
 
 from .process_operations import _require_cv2
 
@@ -141,18 +142,30 @@ def uv_pass(
     canny = canny.astype(np.uint8)
 
     # create the pipe
+    if texture_input is not None:
+        texture_input = texture_input[..., :3]
 
-    texture_input = texture_input[..., :3]
+        # create the base of the final texture
+        texture_input = cv2.resize(
+            texture_input,
+            (
+                int(process_parameter.texture_resolution),
+                int(process_parameter.texture_resolution),
+            ),
+            interpolation=cv2.INTER_LANCZOS4,
+        )
 
-    # create the base of the final texture
-    texture_input = cv2.resize(
-        texture_input,
-        (
-            int(process_parameter.texture_resolution),
-            int(process_parameter.texture_resolution),
-        ),
-        interpolation=cv2.INTER_LANCZOS4,
-    )
+        texture_input = Image.fromarray(texture_input)
+    else:
+        texture_input = 255 * np.ones(
+            (
+                int(process_parameter.texture_resolution),
+                int(process_parameter.texture_resolution),
+                3,
+            ),
+            dtype=np.uint8,
+        )
+        texture_input = Image.fromarray(texture_input)
 
     pipe = create_diffusion_pipeline(process_parameter)
 

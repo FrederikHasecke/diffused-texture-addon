@@ -21,7 +21,6 @@ def build_controlnet_config(
     if process_parameter.sd_version == "sdxl":
         controlnet_model = ControlNetUnionModel.from_pretrained(
             process_parameter.controlnet_union_path,
-            torch_dtype=torch.float16,
         )
         scale = process_parameter.union_controlnet_strength
         return {
@@ -48,9 +47,9 @@ def build_controlnet_config(
             },
         }
 
-    def load_model(path: str) -> ControlNetModel:
+    def load_model(path: str) -> ControlNetModel | None:  # type: ignore  # noqa: PGH003
         """Load sd15 cn model."""
-        return ControlNetModel.from_pretrained(path, torch_dtype=torch.float16)
+        return ControlNetModel.from_pretrained(path)
 
     return {
         "LOW": {

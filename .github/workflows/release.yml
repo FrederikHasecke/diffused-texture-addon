@@ -32,52 +32,19 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
           cache-dependency-path: |
-            requirements-dev.txt
             pyproject.toml
 
       - name: Install lint deps
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt || true; fi
           pip install ruff
 
       - name: Ruff check
         run: ruff check . --output-format=github --config pyproject.toml
 
-  # # 2) Tests
-  # test:
-  #   name: Pytest
-  #   needs: lint
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
+  # 2) Test (placeholder) to be implemented after redesign
 
-  #     - uses: actions/setup-python@v5
-  #       with:
-  #         python-version: ${{ env.PYTHON_VERSION }}
-  #         cache: 'pip'
-  #         cache-dependency-path: |
-  #           requirements-dev.txt
-  #           pyproject.toml
-
-  #     - name: Install test deps
-  #       run: |
-  #         python -m pip install --upgrade pip
-  #         if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; else pip install pytest; fi
-  #         # If your tests import the package, this helps (won't fail the job if not a buildable package)
-  #         pip install -e . || true
-
-  #     - name: Run pytest
-  #       run: |
-  #         set -e
-  #         pytest -q || rc=$?
-  #         if [ "${rc:-0}" -eq 5 ]; then
-  #           echo "No tests collected. Skipping."
-  #           exit 0
-  #         else
-  #           exit "${rc:-0}"
-  #         fi
-
+  # 3) Build
   build:
     runs-on: ubuntu-latest
     steps:
@@ -90,7 +57,7 @@ jobs:
             --exclude='.vscode/' --exclude='.ruff_cache/' --exclude='.pytest_cache/' \
             --exclude='documentation/' --exclude='tests/' --exclude='images/' \
             --exclude='scratchbook/' --exclude='*.md' --exclude='LICENSE' \
-            --exclude='NOTICE' --exclude='Dockerfile' --exclude='pyproject.toml' \
+            --exclude='NOTICE' --exclude='Dockerfile' \
             --exclude='requirements*.txt' \
             --exclude='wheels*/' \
             ./ dist/addon/
@@ -117,32 +84,111 @@ jobs:
           path: dist/addon.zip
           if-no-files-found: error
 
+  # 3) Release (master only)
   release:
     needs: build
     runs-on: ubuntu-latest
     permissions: { contents: write }
+    # ✅ only run this job on master push or manual dispatch targeting master
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Read version
+        with:
+          fetch-depth: 0   # we will look at tags
+
+      - name: Read + validate version (semver) and detect prerelease
+        id: ver
         shell: bash
         run: |
+          set -euo pipefail
+
+          # 1) pick source (manual input takes precedence)
           if [ -n "${{ github.event.inputs.version }}" ]; then
-            echo "REL_VER=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+            REL_VER="${{ github.event.inputs.version }}"
           else
-            VER=$(python3 -c 'import tomllib; print(tomllib.load(open("blender_manifest.toml","rb"))["version"])')
-            echo "REL_VER=$VER" >> $GITHUB_ENV
+            # Python >=3.11 has tomllib; runners currently provide that
+            REL_VER="$(python3 - <<'PY'
+            import tomllib, sys
+            with open("blender_manifest.toml","rb") as f:
+                d = tomllib.load(f)
+            print(d.get("version","").strip())
+            PY
+            )"
+          fi
+
+          # 2) basic semver validation: X.Y.Z[-prerelease][+build]
+          if [[ ! "$REL_VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid semver in blender_manifest.toml or input: '$REL_VER'"; exit 1
+          fi
+
+          # 3) prerelease flag if hyphen exists
+          if [[ "$REL_VER" == *-* ]]; then
+            echo "IS_PRERELEASE=true" >> $GITHUB_ENV
+          else
+            echo "IS_PRERELEASE=false" >> $GITHUB_ENV
+          fi
+
+          echo "REL_VER=$REL_VER"          >> $GITHUB_ENV
+          echo "TAG=v$REL_VER"             >> $GITHUB_ENV
+
+      - name: Skip if tag already exists
+        id: tagcheck
+        shell: bash
+        run: |
+          git fetch --tags --force
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Tag ${TAG} already exists; skipping release."
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
       - uses: actions/download-artifact@v4
+        if: steps.tagcheck.outputs.exists == 'false'
         with:
           name: diffusedtexture-addon-${{ github.run_number }}
           path: out
 
       - name: Create release
+        if: steps.tagcheck.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
           draft: true
           name: DiffusedTextureAddon v${{ env.REL_VER }}
-          tag_name: v${{ env.REL_VER }}
+          tag_name: ${{ env.TAG }}                # ✅ vX.Y.Z from semver
+          prerelease: ${{ env.IS_PRERELEASE }}    # ✅ auto when version has a '-'
+          generate_release_notes: true
           files: out/addon.zip
+
+  # release:
+  #   needs: build
+  #   runs-on: ubuntu-latest
+  #   permissions: { contents: write }
+  #   steps:
+  #     - uses: actions/checkout@v4
+      
+  #     - name: Read version
+  #       shell: bash
+  #       run: |
+  #         if [ -n "${{ github.event.inputs.version }}" ]; then
+  #           echo "REL_VER=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+  #         else
+  #           VER=$(python3 -c 'import tomllib; print(tomllib.load(open("blender_manifest.toml","rb"))["version"])')
+  #           echo "REL_VER=$VER" >> $GITHUB_ENV
+  #         fi
+
+  #     - uses: actions/download-artifact@v4
+  #       with:
+  #         name: diffusedtexture-addon-${{ github.run_number }}
+  #         path: out
+
+  #     - name: Create release
+  #       uses: softprops/action-gh-release@v2
+  #       with:
+  #         draft: true
+  #         name: DiffusedTextureAddon v${{ env.REL_VER }}
+  #         tag_name: v${{ env.REL_VER }}
+  #         files: out/addon.zip
