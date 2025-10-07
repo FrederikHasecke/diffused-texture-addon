@@ -14,6 +14,12 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
+      - name: Determine version (for filename)
+        shell: bash
+        run: |
+          REL_VER="$(python3 -c 'import tomllib;print(tomllib.load(open("blender_manifest.toml","rb"))["version"].strip())')"
+          echo "REL_VER=$REL_VER" >> $GITHUB_ENV
+
       - name: Stage clean build dir
         run: |
           rm -rf dist/addon && mkdir -p dist/addon
