@@ -1,83 +1,75 @@
-import math
+from collections.abc import Callable
+
 import numpy as np
-from PIL import Image
+from numpy.typing import NDArray
 
-from .diffusers_utils import (
-    create_pipeline,
-    infer_pipeline,
-)
+try:
+    from PIL import Image
+except ModuleNotFoundError:
+    Image = None
+
+from ..blender_operations import ProcessParameter
+from .pipeline.pipeline_builder import create_diffusion_pipeline
+from .pipeline.pipeline_runner import run_pipeline
 from .process_operations import (
-    process_uv_texture,
-    generate_multiple_views,
     assemble_multiview_grid,
-    create_input_image_grid,
-    delete_render_folders,
+    process_uv_texture,
 )
 
 
-def img_parallel(scene, max_size, texture=None):
-    """Run the first pass for texture generation."""
+def img_parallel(
+    multiview_images: dict[str, list | NDArray],
+    process_parameter: ProcessParameter,
+    progress_callback: Callable,
+    texture: NDArray[np.float32] | None = None,
+    facing_percentile: float = 0.5,
+) -> NDArray[np.float32]:
+    """Process multiview images in parallel.
 
-    multiview_images, render_img_folders = generate_multiple_views(
-        scene=scene,
-        max_size=max_size,
-        suffix="img_parallel",
-        render_resolution=int(scene.render_resolution),
+    Args:
+        multiview_images (dict[str, list[NDArray]]): Multiview images to process.
+        process_parameter (ProcessParameter): parameter for the processing.
+        progress_callback (Callable): Callback to report progress.
+        texture (NDArray[np.float32] | None, optional): Input texture. Defaults to None.
+        facing_percentile (float, optional): Facing percentile. Defaults to 0.5.
+
+    Returns:
+        NDArray[np.float32]: Processed texture.
+    """
+    # Assemble grids
+    _, resized_grids = assemble_multiview_grid(
+        texture=texture,
+        multiview_images=multiview_images,
+        render_resolution=int(process_parameter.render_resolution),
     )
 
-    # sd_resolution = 512 if scene.sd_version == "sd15" else 1024
+    # Create the diffusion pipeline
+    pipeline = create_diffusion_pipeline(process_parameter)
 
-    if scene.custom_sd_resolution:
-        sd_resolution = scene.custom_sd_resolution
-    else:
-        sd_resolution = 512 if scene.sd_version == "sd15" else 1024
-
-    _, resized_multiview_grids = assemble_multiview_grid(
-        multiview_images,
-        render_resolution=int(scene.render_resolution),
-        sd_resolution=sd_resolution,
+    # Run pipeline
+    output_grid = run_pipeline(
+        pipe=pipeline,
+        process_parameter=process_parameter,
+        input_img=Image.fromarray(resized_grids["input_grid"].astype(np.uint8)),
+        uv_mask=Image.fromarray(resized_grids["content_grid"]),
+        canny_img=Image.fromarray(resized_grids["canny_grid"]),
+        normal_img=Image.fromarray(resized_grids["normal_grid"]),
+        depth_img=Image.fromarray(resized_grids["depth_grid"]),
+        progress_callback=progress_callback,
+        strength=process_parameter.denoise_strength,
+        guidance_scale=process_parameter.guidance_scale,
+        num_inference_steps=process_parameter.num_inference_steps,
     )
 
-    if texture is not None:
-        # Flip texture vertically (blender y 0 is down, opencv y 0 is up)
-        texture = texture[::-1]
-
-        input_image_sd = create_input_image_grid(
-            texture,
-            resized_multiview_grids["uv_grid"],
-            resized_multiview_grids["uv_grid"],
-        )
-    else:
-        input_image_sd = (
-            255 * np.ones_like(resized_multiview_grids["canny_grid"])
-        ).astype(np.uint8)
-
-    pipe = create_pipeline(scene)
-    output_grid = infer_pipeline(
-        pipe,
-        scene,
-        Image.fromarray(input_image_sd),
-        resized_multiview_grids["content_mask"],
-        resized_multiview_grids["canny_grid"],
-        resized_multiview_grids["normal_grid"],
-        resized_multiview_grids["depth_grid"],
-        strength=scene.denoise_strength,
-        guidance_scale=scene.guidance_scale,
-    )[0]
-
-    output_grid = np.array(output_grid)
-
-    filled_uv_texture = process_uv_texture(
-        scene=scene,
+    # Process UV texture
+    output_texture, _ = process_uv_texture(
+        process_parameter=process_parameter,
         uv_images=multiview_images["uv"],
         facing_images=multiview_images["facing"],
-        output_grid=output_grid,
-        target_resolution=int(scene.texture_resolution),
-        render_resolution=int(scene.render_resolution),
-        facing_percentile=0.5,
+        output_grid=np.array(output_grid),
+        render_resolution=int(process_parameter.render_resolution),
+        target_resolution=int(process_parameter.texture_resolution),
+        facing_percentile=facing_percentile,
     )
 
-    # delete all rendering folders
-    delete_render_folders(render_img_folders)
-
-    return filled_uv_texture
+    return output_texture

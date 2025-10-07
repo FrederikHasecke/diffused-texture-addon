@@ -1,0 +1,73 @@
+name: release
+on:
+  workflow_run:
+    workflows: ["build"]
+    types: [completed]
+    branches: [ master ]               # only if Build ran on master
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (optional; falls back to blender_manifest.toml)'
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  actions: read                        # needed for cross-run artifact download
+
+jobs:
+  release:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Read + validate semver and detect prerelease
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${{ github.event.inputs.version || '' }}" ]; then
+            REL_VER="${{ github.event.inputs.version }}"
+          else
+            REL_VER="$(python3 - <<'PY'
+            import tomllib
+            print(tomllib.load(open("blender_manifest.toml","rb"))["version"].strip())
+            PY
+            )"
+          fi
+          [[ "$REL_VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]] || { echo "Invalid semver: $REL_VER"; exit 1; }
+          echo "REL_VER=$REL_VER" >> $GITHUB_ENV
+          echo "TAG=v$REL_VER" >> $GITHUB_ENV
+          [[ "$REL_VER" == *-* ]] && echo "IS_PRERELEASE=true" >> $GITHUB_ENV || echo "IS_PRERELEASE=false" >> $GITHUB_ENV
+
+      - name: Skip if tag already exists
+        id: tagcheck
+        shell: bash
+        run: |
+          git fetch --tags --force
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download build artifact from Build run
+        if: steps.tagcheck.outputs.exists == 'false' && github.event_name == 'workflow_run'
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+          name: addon-zip
+          path: out
+
+      - name: Create GitHub Release
+        if: steps.tagcheck.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          name: DiffusedTextureAddon v${{ env.REL_VER }}
+          tag_name: ${{ env.TAG }}
+          prerelease: ${{ env.IS_PRERELEASE }}
+          generate_release_notes: true
+          files: out/diffused_texture_addon-${{ env.REL_VER }}.zip

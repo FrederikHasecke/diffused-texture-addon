@@ -1,322 +1,317 @@
-import bpy
 import math
+from pathlib import Path
+
+import bpy
 import mathutils
 
 
+def farthest_point_ordering(positions: list[mathutils.Vector]) -> list[int]:
+    """Sample the order of farthest points.
+
+    Given a list of positions (Vectors), return an index ordering such that
+    consecutive items are far apart. Uses greedy farthest-point traversal.
+    """
+    if not positions:
+        return []
+
+    ordered = []
+    remaining = set(range(len(positions)))
+    current = 0
+    ordered.append(current)
+    remaining.remove(current)
+
+    while remaining:
+        best_idx, best_dist = None, -1
+        for idx in remaining:
+            d = min((positions[idx] - positions[j]).length for j in ordered)
+            if d > best_dist:
+                best_idx, best_dist = idx, d
+
+        if isinstance(best_idx, int):
+            ordered.append(best_idx)
+            remaining.remove(best_idx)
+
+    return ordered
+
+
 def create_cameras_on_one_ring(
-    num_cameras=16, max_size=1, name_prefix="Camera", fov=22.5
-):
-    """
-    Create n cameras evenly distributed on a ring around the world origin (Z-axis).
+    num_cameras: int,
+    max_size: float,
+    name_prefix: str = "Camera",
+    fov: float = 22.5,
+    elevation_ratio: float = 0.25,
+) -> list[bpy.types.Object]:
+    """Create single ring of cameras.
 
-    :param max_size: The maximum size of the object to be captured by the cameras.
-    :param name_prefix: Prefix for naming the cameras.
-    :param fov: Field of view for the cameras in degrees.
-    :return: List of created camera objects.
+    Evenly distribute cameras on one horizontal ring, then reorder them
+    with farthest-point ordering so consecutive cameras are far apart.
     """
-    cameras = []
-
-    # Convert FOV from degrees to radians
     fov_rad = math.radians(fov)
+    radius = 1.1 * (max_size * math.sqrt(2)) / math.tan(fov_rad)
+    elevation = radius * elevation_ratio
 
-    # Calculate the distance from the origin such that the FOV covers max_size
-    radius = (max_size * 0.5) / math.tan(fov_rad * 0.5)
-
-    angle_offset = math.pi / num_cameras  # Offset for the ring cameras
-
-    # Set the vertical offset for the rings (small elevation above/below the object)
-    elevation = radius * 0.25  # Adjust this value to control the elevation
-
-    # Loop to create the ring (around Z-axis), offset by half an angle
+    # Generate evenly spaced ring positions
+    positions = []
     for i in range(num_cameras):
-        theta = (2 * math.pi / num_cameras) * i + angle_offset
-
-        # Position for the upper ring (XZ-plane)
+        theta = (2 * math.pi / num_cameras) * i
         x = radius * math.cos(theta)
         y = radius * math.sin(theta)
-        location = mathutils.Vector((x, y, elevation))
+        positions.append(mathutils.Vector((x, y, elevation)))
 
-        # Create upper ring camera
-        bpy.ops.object.camera_add(location=location)
-        camera = bpy.context.object
-        camera.name = f"{name_prefix}_{i+1}"
+    # Reorder
+    order = farthest_point_ordering(positions)
 
-        # Set the camera's FOV
-        camera.data.lens_unit = "FOV"
-        camera.data.angle = fov_rad
+    cameras = []
+    for k, idx in enumerate(order):
+        loc = positions[idx]
+        cam_data = bpy.data.cameras.new(f"{name_prefix}_{k + 1}")
+        cam_data.lens_unit = "FOV"
+        cam_data.angle = fov_rad
 
-        # Point the camera at the origin
-        direction_upper = camera.location - mathutils.Vector((0, 0, 0))
-        rot_quat_upper = direction_upper.to_track_quat("Z", "Y")
-        camera.rotation_euler = rot_quat_upper.to_euler()
-
-        cameras.append(camera)
+        cam_obj = bpy.data.objects.new(f"{name_prefix}_{k + 1}", cam_data)
+        cam_obj.location = loc
+        cam_obj.rotation_euler = loc.to_track_quat("Z", "Y").to_euler()
+        bpy.context.collection.objects.link(cam_obj)
+        cameras.append(cam_obj)
 
     return cameras
 
 
 def create_cameras_on_two_rings(
-    num_cameras=16, max_size=1, name_prefix="Camera", fov=22.5
-):
-    """
-    Create 16 cameras evenly distributed on two rings around the world origin (Z-axis).
-    Each ring will have 8 cameras, with the upper and lower rings' cameras placed in the gaps of each other.
+    num_cameras: int = 16,
+    max_size: float = 1,
+    name_prefix: str = "Camera",
+    fov: float = 22.5,
+    elevation_ratio: float = 0.5,
+) -> list[bpy.types.Object]:
+    """Create cameras on two rings (upper/lower).
 
-    :param max_size: The maximum size of the object to be captured by the cameras.
-    :param name_prefix: Prefix for naming the cameras.
-    :param fov: Field of view for the cameras in degrees.
-    :return: List of created camera objects.
+    Create cameras on two rings (upper/lower), then reorder them so that
+    consecutive cameras are maximally separated.
     """
-    cameras = []
-
-    # Convert FOV from degrees to radians
     fov_rad = math.radians(fov)
-
-    # Calculate the distance from the origin such that the FOV covers max_size
     radius = (max_size * 0.5) / math.tan(fov_rad * 0.5)
 
     num_cameras_per_ring = num_cameras // 2
-    angle_offset = math.pi / num_cameras_per_ring  # Offset for the upper ring cameras
+    elevation_upper = radius * elevation_ratio
+    elevation_lower = -radius * elevation_ratio
 
-    # Set the vertical offset for the rings (small elevation above/below the object)
-    elevation_upper = radius * 0.5  # Adjust this value to control the elevation
-    elevation_lower = -radius * 0.5
+    positions = []
 
-    # Loop to create the lower ring (around Z-axis)
+    # Lower ring
     for i in range(num_cameras_per_ring):
         theta = (2 * math.pi / num_cameras_per_ring) * i
+        x, y = radius * math.cos(theta), radius * math.sin(theta)
+        positions.append(mathutils.Vector((x, y, elevation_lower)))
 
-        # Position for the lower ring (XZ-plane)
-        x = radius * math.cos(theta)
-        y = radius * math.sin(theta)
-        location_lower = mathutils.Vector((x, y, elevation_lower))
-
-        # Create lower ring camera
-        bpy.ops.object.camera_add(location=location_lower)
-        camera_lower = bpy.context.object
-        camera_lower.name = f"{name_prefix}_LowerRing_{i+1}"
-
-        # Set the camera's FOV
-        camera_lower.data.lens_unit = "FOV"
-        camera_lower.data.angle = fov_rad
-
-        # Point the camera at the origin
-        direction_lower = camera_lower.location - mathutils.Vector((0, 0, 0))
-        rot_quat_lower = direction_lower.to_track_quat("Z", "Y")
-        camera_lower.rotation_euler = rot_quat_lower.to_euler()
-
-        cameras.append(camera_lower)
-
-    # Loop to create the upper ring (around Z-axis), offset by half an angle
+    # Upper ring
     for i in range(num_cameras_per_ring):
-        theta = (2 * math.pi / num_cameras_per_ring) * i + angle_offset
+        theta = (
+            2 * math.pi / num_cameras_per_ring
+        ) * i + math.pi / num_cameras_per_ring
+        x, y = radius * math.cos(theta), radius * math.sin(theta)
+        positions.append(mathutils.Vector((x, y, elevation_upper)))
 
-        # Position for the upper ring (XZ-plane)
-        x = radius * math.cos(theta)
-        y = radius * math.sin(theta)
-        location_upper = mathutils.Vector((x, y, elevation_upper))
+    # Reorder
+    order = farthest_point_ordering(positions)
 
-        # Create upper ring camera
-        bpy.ops.object.camera_add(location=location_upper)
-        camera_upper = bpy.context.object
-        camera_upper.name = f"{name_prefix}_UpperRing_{i+1}"
+    cameras = []
+    for k, idx in enumerate(order):
+        loc = positions[idx]
+        cam_data = bpy.data.cameras.new(f"{name_prefix}_{k + 1}")
+        cam_data.lens_unit = "FOV"
+        cam_data.angle = fov_rad
 
-        # Set the camera's FOV
-        camera_upper.data.lens_unit = "FOV"
-        camera_upper.data.angle = fov_rad
-
-        # Point the camera at the origin
-        direction_upper = camera_upper.location - mathutils.Vector((0, 0, 0))
-        rot_quat_upper = direction_upper.to_track_quat("Z", "Y")
-        camera_upper.rotation_euler = rot_quat_upper.to_euler()
-
-        cameras.append(camera_upper)
+        cam_obj = bpy.data.objects.new(f"{name_prefix}_{k + 1}", cam_data)
+        cam_obj.location = loc
+        cam_obj.rotation_euler = loc.to_track_quat("Z", "Y").to_euler()
+        bpy.context.collection.objects.link(cam_obj)
+        cameras.append(cam_obj)
 
     return cameras
 
 
 def create_cameras_on_sphere(
-    num_cameras=16, max_size=1, name_prefix="Camera", fov=22.5
-):
+    num_cameras: int = 16,
+    max_size: float = 1,
+    name_prefix: str = "Camera",
+    fov: float = 22.5,
+) -> list[bpy.types.Camera]:
+    """Create cameras on a Fibonacci sphere.
+
+    Places cameras on a Fibonacci sphere, then reorders them so that
+    consecutive cameras are maximally separated (farthest-point ordering).
     """
-    Create cameras evenly distributed on a sphere around the world origin,
-    with each camera positioned such that it perfectly frames an object of size
-    max_size using a field of view of fov.
-
-    :param num_cameras: Number of cameras to create.
-    :param max_size: The maximum size of the object to be captured by the cameras.
-    :param name_prefix: Prefix for naming the cameras.
-    :param offset: Offset to change views slightly.
-    :param fov: Field of view for the cameras in degrees.
-    :return: List of created camera objects.
-    """
-
-    cameras = []
-    phi = math.pi * (3.0 - math.sqrt(5.0))  # Golden angle in radians
-
-    # Convert FOV from degrees to radians
+    phi = math.pi * (3.0 - math.sqrt(5.0))
     fov_rad = math.radians(fov)
-
-    # Calculate the distance from the origin such that the FOV covers max_size
     radius = (max_size * 0.5) / math.tan(fov_rad * 0.5)
 
+    positions = []
     for i in range(num_cameras):
-        y = 1 - (i / float(num_cameras - 1)) * 2  # y goes from 1 to -1
-        radius_at_y = math.sqrt(1 - y * y)  # Radius at y
-        theta = (phi) * i  # Golden angle increment
-
+        y = 1 - (i / float(num_cameras - 1)) * 2
+        radius_at_y = math.sqrt(1 - y * y)
+        theta = phi * i
         x = math.cos(theta) * radius_at_y
         z = math.sin(theta) * radius_at_y
-        location = mathutils.Vector((x, y, z)) * radius
+        loc = mathutils.Vector((x, y, z)) * radius
+        positions.append(loc)
 
-        # if offset:
-        #     # Swap coordinates: x -> y, y -> z, z -> x
-        #     location = mathutils.Vector((location.y, location.z, location.x))
+    ordered = farthest_point_ordering(positions)
 
-        # Create camera
-        bpy.ops.object.camera_add(location=location)
-        camera = bpy.context.object
-        camera.name = f"{name_prefix}_{i+1}"
+    cameras = []
+    for k, idx in enumerate(ordered):
+        loc = positions[idx]
+        cam_data = bpy.data.cameras.new(f"{name_prefix}_{k + 1}")
+        cam_data.lens_unit = "FOV"
+        cam_data.angle = fov_rad
 
-        # Set the camera's FOV
-        camera.data.lens_unit = "FOV"
-        camera.data.angle = fov_rad
+        cam_obj = bpy.data.objects.new(f"{name_prefix}_{k + 1}", cam_data)
+        cam_obj.location = loc
+        cam_obj.rotation_euler = loc.to_track_quat("Z", "Y").to_euler()
 
-        # Point the camera at the origin
-        direction = camera.location - mathutils.Vector((0, 0, 0))
-        rot_quat = direction.to_track_quat("Z", "Y")
-        camera.rotation_euler = rot_quat.to_euler()
-
-        cameras.append(camera)
+        bpy.context.collection.objects.link(cam_obj)
+        cameras.append(cam_obj)
 
     return cameras
 
 
-def setup_render_settings(scene, resolution=(512, 512)):
-    """
-    Configure render settings, including enabling specific passes and setting up the node tree.
-
-    :param scene: The scene to configure.
-    :param resolution: Tuple specifying the render resolution (width, height).
-    :return: A dictionary containing references to the output nodes for each pass.
-    """
-
+def setup_cycles_setting(context: bpy.types.Context) -> None:
     # Enable Cycles (Eevee does not offer UV output)
-    scene.render.engine = "CYCLES"
+    context.scene.render.engine = "CYCLES"
 
     # Attempt to enable GPU support with preference order: OPTIX, CUDA, OPENCL, CPU
     preferences = bpy.context.preferences.addons["cycles"].preferences
     try:
         preferences.compute_device_type = "OPTIX"
-        print("Using OPTIX for rendering.")
-    except Exception as e_optix:
-        print(f"OPTIX failed: {e_optix}")
+    except Exception:  # noqa: BLE001
         try:
             preferences.compute_device_type = "CUDA"
-            print("Using CUDA for rendering.")
-        except:
-            raise SystemError("You need an NVidia GPU for this Addon!")
+        except Exception as e_cuda:
+            msg = "An NVIDIA GPU is required for this addon."
+            raise SystemError(msg) from e_cuda
 
     # Set rendering samples and noise threshold
-    scene.cycles.samples = 1  # Reduce to 1 sample for no anti-aliasing in Cycles
-    scene.cycles.use_denoising = False
-    scene.cycles.use_light_tree = False
-    scene.cycles.max_bounces = 1
-    scene.cycles.diffuse_bounces = 1
-    scene.cycles.glossy_bounces = 0
-    scene.cycles.transmission_bounces = 0
-    scene.cycles.volume_bounces = 0
-    scene.cycles.transparent_max_bounces = 0
+    context.scene.cycles.samples = (
+        1  # Reduce to 1 sample for no anti-aliasing in Cycles
+    )
+    context.scene.cycles.use_denoising = False
+    context.scene.cycles.use_light_tree = False
+    context.scene.cycles.max_bounces = 1
+    context.scene.cycles.diffuse_bounces = 1
+    context.scene.cycles.glossy_bounces = 0
+    context.scene.cycles.transmission_bounces = 0
+    context.scene.cycles.volume_bounces = 0
+    context.scene.cycles.transparent_max_bounces = 0
+
+
+def setup_render_settings(
+    context: bpy.types.Context,
+    resolution: int,
+) -> dict[str, bpy.types.CompositorNodeOutputFile]:
+    """Configure render settings.
+
+    Include enabling specific passes and setting up the node tree.
+
+    :param scene:
+    :param resolution:
+    :return:
+
+    Args:
+        context (bpy.types.Context): The scene to configure.
+        resolution (tuple, optional): Tuple specifying the render resolution (w, h).
+                                        Defaults to (512, 512).
+
+    Raises:
+        SystemError: _description_
+
+    Returns:
+        dict[str, bpy.types.CompositorNodeOutputFile]:  A dictionary containing
+                                                        references to the output
+                                                        nodes for each pass.
+    """
+    setup_cycles_setting(context)
 
     # Set filter size to minimum (0.01 to disable most filtering)
-    scene.render.filter_size = 0.01
+    context.scene.render.filter_size = 0.01
 
     # Enable transparent background
-    scene.render.film_transparent = True
+    context.scene.render.film_transparent = True
 
     # Set the render resolution
-    scene.render.resolution_x, scene.render.resolution_y = resolution
+    context.scene.render.resolution_x = int(resolution)
+    context.scene.render.resolution_y = int(resolution)
 
     # put render resolution scale to 100%
-    scene.render.resolution_percentage = 100
+    context.scene.render.resolution_percentage = 100
 
     # Prevent interpolation for the UV, depth, and normal outputs
-    scene.render.image_settings.file_format = "OPEN_EXR"
-    scene.render.image_settings.color_depth = "32"  # Ensure high precision
+    context.scene.render.image_settings.file_format = "OPEN_EXR"
+    context.scene.render.image_settings.color_depth = "32"  # Ensure high precision
 
+    return setup_output_nodes(context)
+
+
+def setup_output_nodes(
+    context: bpy.types.Context,
+) -> dict[str, bpy.types.CompositorNodeOutputFile]:
+    """Create the Node tree.
+
+    Args:
+        context (bpy.types.Context): _description_
+
+    Returns:
+        dict[str, bpy.types.CompositorNodeOutputFile]: _description_
+
+    """
     # Ensure the scene uses nodes
-    scene.use_nodes = True
+    context.scene.use_nodes = True
 
     # Clear existing nodes
-    if scene.node_tree:
-        scene.node_tree.nodes.clear()
-
-    # Create a new node tree
-    tree = scene.node_tree
-    links = tree.links
+    if context.scene.node_tree:
+        context.scene.node_tree.nodes.clear()
 
     # Create render layers node
-    render_layers = tree.nodes.new("CompositorNodeRLayers")
+    render_layers = context.scene.node_tree.nodes.new("CompositorNodeRLayers")
 
     # Enable necessary passes
-    scene.view_layers["ViewLayer"].use_pass_z = True
-    scene.view_layers["ViewLayer"].use_pass_normal = True
-    scene.view_layers["ViewLayer"].use_pass_uv = True
-    scene.view_layers["ViewLayer"].use_pass_position = True
-
-    # scene.world.light_settings.use_ambient_occlusion = True  # turn AO on
-    # scene.world.light_settings.ao_factor = 1.0
-    scene.view_layers["ViewLayer"].use_pass_ambient_occlusion = True  # Enable AO pass
+    context.scene.view_layers["ViewLayer"].use_pass_z = True
+    context.scene.view_layers["ViewLayer"].use_pass_normal = True
+    context.scene.view_layers["ViewLayer"].use_pass_uv = True
+    context.scene.view_layers["ViewLayer"].use_pass_position = True
 
     # output path for the render
-    scene.render.filepath = scene.output_path + "RenderOutput/render_"
+    context.scene.render.filepath = context.scene.output_path + "RenderOutput/render_"
 
     # Create output nodes for each pass
     output_nodes = {}
 
-    # Depth pass
-    depth_output = tree.nodes.new("CompositorNodeOutputFile")
-    depth_output.label = "Depth Output"
-    depth_output.name = "DepthOutput"
-    depth_output.base_path = ""  # Set the base path in the calling function if needed
-    depth_output.file_slots[0].path = "depth_"
-    links.new(render_layers.outputs["Depth"], depth_output.inputs[0])
-    output_nodes["depth"] = depth_output
-
-    # Normal pass
-    normal_output = tree.nodes.new("CompositorNodeOutputFile")
-    normal_output.label = "Normal Output"
-    normal_output.name = "NormalOutput"
-    normal_output.base_path = ""
-    normal_output.file_slots[0].path = "normal_"
-    links.new(render_layers.outputs["Normal"], normal_output.inputs[0])
-    output_nodes["normal"] = normal_output
-
-    # UV pass
-    uv_output = tree.nodes.new("CompositorNodeOutputFile")
-    uv_output.label = "UV Output"
-    uv_output.name = "UVOutput"
-    uv_output.base_path = ""
-    uv_output.file_slots[0].path = "uv_"
-    links.new(render_layers.outputs["UV"], uv_output.inputs[0])
-    output_nodes["uv"] = uv_output
-
-    # Position pass
-    position_output = tree.nodes.new("CompositorNodeOutputFile")
-    position_output.label = "Position Output"
-    position_output.name = "PositionOutput"
-    position_output.base_path = ""
-    position_output.file_slots[0].path = "position_"
-    links.new(render_layers.outputs["Position"], position_output.inputs[0])
-    output_nodes["position"] = position_output
-
-    # Ambient Occlusion pass
-    img_output = tree.nodes.new("CompositorNodeOutputFile")
-    img_output.label = "Image Output"
-    img_output.name = "ImageOutput"
-    img_output.base_path = ""
-    img_output.file_slots[0].path = "img_"
-    links.new(render_layers.outputs["Image"], img_output.inputs[0])
-    output_nodes["img"] = img_output
+    for name in ["Depth", "Normal", "UV", "Position"]:
+        output_nodes[name.lower()] = set_node_path(name, context, render_layers)
+        output_nodes[name.lower()].base_path = str(
+            Path(context.scene.output_path) / f"render_{name.lower()}",
+        )
+        Path(output_nodes[name.lower()].base_path).mkdir(parents=True, exist_ok=True)
 
     return output_nodes
+
+
+def set_node_path(
+    name: str,
+    context: bpy.types.Context,
+    render_layers: bpy.types.CompositorNodeRLayers,
+) -> bpy.types.CompositorNodeOutputFile:
+    output_node = context.scene.node_tree.nodes.new("CompositorNodeOutputFile")
+    output_node.label = f"{name.lower()}_output"
+    output_node.name = f"{name.lower()}_output"
+    output_node.base_path = ""  # Set the base path in the calling function if needed
+    output_node.file_slots[0].path = f"{name.lower()}_"
+
+    output_node.format.file_format = "OPEN_EXR"
+    output_node.format.color_depth = "32"
+    output_node.format.color_mode = "RGBA"
+
+    context.scene.node_tree.links.new(
+        render_layers.outputs[name],
+        output_node.inputs[0],
+    )
+    return output_node

@@ -1,0 +1,47 @@
+name: build
+on:
+  workflow_run:
+    workflows: ["test"]
+    types: [completed]
+  workflow_dispatch:
+
+jobs:
+  build:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Stage clean build dir
+        run: |
+          rm -rf dist/addon && mkdir -p dist/addon
+          rsync -a --delete \
+            --exclude='.git/' --exclude='.github/' --exclude='__pycache__/' \
+            --exclude='.vscode/' --exclude='.ruff_cache/' --exclude='.pytest_cache/' \
+            --exclude='documentation/' --exclude='tests/' --exclude='images/' \
+            --exclude='scratchbook/' --exclude='*.md' --exclude='LICENSE' \
+            --exclude='NOTICE' --exclude='Dockerfile' --exclude='requirements*.txt' \
+            --exclude='wheels*/' \
+            ./ dist/addon/
+
+      - name: Create addon zip
+        run: |
+          cd dist
+          zip -r diffused_texture_addon-${{ env.REL_VER }}.zip addon/
+
+      - name: Build addon
+        uses: blenderkit/blender-addon-build@main
+        with:
+          name: diffusedtexture-addon
+          do-checkout: 'false'
+          build-location: 'dist/addon'
+          exclude-files: ".git"
+
+      - name: Upload artifact (stable name)
+        uses: actions/upload-artifact@v4
+        with:
+          name: addon-zip
+          path: dist/diffused_texture_addon-${{ env.REL_VER }}.zip
+          if-no-files-found: error

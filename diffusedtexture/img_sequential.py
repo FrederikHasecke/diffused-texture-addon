@@ -1,321 +1,256 @@
-import os
+try:
+    import cv2
+except ModuleNotFoundError:
+    cv2 = None
+
+from collections.abc import Callable
+
 import numpy as np
-from PIL import Image
 
-import cv2
-from .diffusers_utils import create_pipeline, infer_pipeline
-from .process_operations import (
-    generate_multiple_views,
-    create_input_image,
-    create_content_mask,
-    delete_render_folders,
-)
+try:
+    from PIL import Image
+except ModuleNotFoundError:
+    Image = None
 
+from numpy.typing import NDArray
 
-# Helper Functions
-def prepare_texture(texture, texture_resolution):
-    """Prepare the texture by flipping and scaling."""
-    if texture is None:
-        return (
-            np.ones((texture_resolution, texture_resolution, 3), dtype=np.uint8) * 255
-        )
-    texture = texture[::-1]
-    if texture.shape[0] != texture_resolution:
-        texture = cv2.resize(
-            texture[..., :3],
-            (texture_resolution, texture_resolution),
-            interpolation=cv2.INTER_LANCZOS4,
-        )
-    return np.copy(texture)[..., :3]
+from ..blender_operations import ProcessParameter
+from .pipeline.pipeline_builder import create_diffusion_pipeline
+from .pipeline.pipeline_runner import run_pipeline
+from .process_operations import _require_cv2, assemble_multiview_list
+
+if cv2 is not None:
+    CV2_INTER_NEAREST = cv2.INTER_NEAREST
+    CV2_INTER_LINEAR = cv2.INTER_LINEAR
+    CV2_INTER_LANCZOS4 = cv2.INTER_LANCZOS4
+else:
+    # OpenCV enum integer values; used only until deps are installed
+    CV2_INTER_NEAREST = 0
+    CV2_INTER_LINEAR = 1
+    CV2_INTER_LANCZOS4 = 4
 
 
-def prepare_uv_coordinates(uv_image, texture_resolution, target_resolution=None):
-    """Prepare UV coordinates scaled to the texture resolution."""
+def img_sequential(
+    multiview_images: dict[str, list[NDArray]],
+    process_parameter: ProcessParameter,
+    progress_callback: Callable,
+    texture: NDArray[np.float32] | None = None,
+    facing_percentile: float = 0.5,
+) -> NDArray[np.float32]:
+    """Process multiview images sequentially view-by-view with diffusion pipeline.
 
-    if target_resolution is not None:
-        uv_image = cv2.resize(
-            uv_image,
-            (target_resolution, target_resolution),
-            interpolation=cv2.INTER_NEAREST,
-        )
+    Args:
+        multiview_images: Dict of multiview input images per view.
+        process_parameter: Processing parameters.
+        progress_callback: Function to track progress.
+        texture: Optional texture to project.
+        facing_percentile: Float value for facing percentile.
 
-    uv_image = uv_image[..., :2].reshape(-1, 2)
-
-    uv_coords = np.round(uv_image * (texture_resolution - 1)).astype(np.int32)
-    uv_coords[:, 1] = texture_resolution - 1 - uv_coords[:, 1]  # Flip v-axis
-    uv_coords %= texture_resolution
-    return uv_coords
-
-
-def update_content_mask(
-    content_mask_texture, pixel_status, facing_texture, max_angle_status
-):
-    """Update the content mask based on pixel status and facing angles."""
-    content_mask_texture[pixel_status == 2] = 0  # Exclude fixed pixels
-    content_mask_texture[(pixel_status == 1) & (max_angle_status > facing_texture)] = 0
-    return content_mask_texture
-
-
-def generate_inputs_for_inference(
-    input_render_resolution,
-    content_mask_texture,
-    multiview_images,
-    uv_coordinates_sd,
-    scene,
-    i,
-):
-    """Generate inputs for Stable Diffusion inference."""
-
-    # sd_resolution = 512 if scene.sd_version == "sd15" else 1024
-
-    if scene.custom_sd_resolution:
-        sd_resolution = scene.custom_sd_resolution
+    Returns:
+        Processed full-resolution texture.
+    """
+    _require_cv2()
+    if process_parameter.custom_sd_resolution:
+        sd_resolution = int(process_parameter.custom_sd_resolution)
     else:
-        sd_resolution = 512 if scene.sd_version == "sd15" else 1024
+        sd_resolution = 512 if process_parameter.sd_version == "sd15" else 1024
 
-    input_image_sd = cv2.resize(
-        input_render_resolution,
-        (sd_resolution, sd_resolution),
-        interpolation=cv2.INTER_LINEAR,
-    )
-    canny_img = cv2.Canny(
-        cv2.resize(
-            multiview_images["normal"][i].astype(np.uint8),
-            (sd_resolution, sd_resolution),
-        ),
-        100,
-        200,
-    )
-    canny_img = np.stack([canny_img] * 3, axis=-1)
-    normal_img = cv2.resize(
-        multiview_images["normal"][i],
-        (sd_resolution, sd_resolution),
-        interpolation=cv2.INTER_LINEAR,
-    )
-    depth_img = cv2.resize(
-        multiview_images["depth"][i],
-        (sd_resolution, sd_resolution),
-        interpolation=cv2.INTER_LINEAR,
+    # Assemble per-view processed/resized maps
+    _, resized_list = assemble_multiview_list(
+        texture=texture,
+        multiview_images=multiview_images,
+        sd_resolution=sd_resolution,
     )
 
-    content_mask_sd = content_mask_texture_to_render_sd(
-        content_mask_texture, uv_coordinates_sd, scene, sd_resolution
+    n_views = int(process_parameter.num_cameras)
+
+    # Create the diffusion pipeline once
+    pipeline = create_diffusion_pipeline(process_parameter)
+
+    # create a sub callback to report progress
+    def sub_progress_callback(sub_percent: int) -> None:
+        percent = int((sub_percent + i * 100) / n_views)
+        progress_callback(percent)
+
+    # TODO: Only inpaint for 2-3 pixels for each view, and paste onto texture with feathering  # noqa: E501
+    # TODO: Check if para/weighted approach on all views improve the texture later on
+
+    texres = int(process_parameter.texture_resolution)
+    unpainted_mask = 255 * np.ones((texres, texres), dtype=np.uint8)
+    # Initialize previous_texture before the loop
+    previous_texture = (
+        (255 * texture).astype(np.uint8)
+        if texture is not None
+        else 255 * np.ones_like(resized_list["input"][0], dtype=np.uint8)
     )
+    for i in range(n_views):
+        arr_in = resized_list["input"][i]
+        arr_content = resized_list["content"][i]
+        arr_uv = resized_list["uv"][i]
 
-    return input_image_sd, content_mask_sd, canny_img, normal_img, depth_img
-
-
-def save_debug_images(
-    scene,
-    i,
-    input_image_sd,
-    content_mask_render_sd,
-    content_mask_texture,
-    canny_img,
-    normal_img,
-    depth_img,
-    output,
-):
-    """Save intermediate debugging images."""
-    output_path = scene.output_path
-    cv2.imwrite(
-        f"{output_path}/input_image_sd_{i}.png",
-        cv2.cvtColor(input_image_sd, cv2.COLOR_RGB2BGR),
-    )
-    cv2.imwrite(f"{output_path}/content_mask_render_sd_{i}.png", content_mask_render_sd)
-    cv2.imwrite(f"{output_path}/content_mask_texture_{i}.png", content_mask_texture)
-    cv2.imwrite(
-        f"{output_path}/canny_{i}.png", cv2.cvtColor(canny_img, cv2.COLOR_RGB2BGR)
-    )
-    cv2.imwrite(
-        f"{output_path}/normal_{i}.png", cv2.cvtColor(normal_img, cv2.COLOR_RGB2BGR)
-    )
-    cv2.imwrite(
-        f"{output_path}/depth_{i}.png", cv2.cvtColor(depth_img, cv2.COLOR_RGB2BGR)
-    )
-    cv2.imwrite(
-        f"{output_path}/output_{i}.png", cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
-    )
-
-
-def blend_output(
-    input_render_resolution, output, content_mask_render, render_resolution
-):
-    """Blend output with input using feathered overlay."""
-    overlay_mask = cv2.resize(
-        content_mask_render,
-        (render_resolution, render_resolution),
-        interpolation=cv2.INTER_LINEAR,
-    )
-    # overlay_mask = cv2.erode(overlay_mask, np.ones((3, 3)), iterations=2)
-    # overlay_mask = cv2.blur(overlay_mask, (9, 9))
-    overlay_mask = cv2.blur(overlay_mask, (3, 3))
-    overlay_mask = np.stack([overlay_mask] * 3, axis=-1).astype(np.float32) / 255
-
-    # blended = (1 - overlay_mask) * input_render_resolution + overlay_mask * output
-    blended = (1 - overlay_mask) * input_render_resolution + overlay_mask * output
-
-    return np.clip(blended, 0, 255).astype(np.uint8)
-
-
-def content_mask_texture_to_render_sd(
-    content_mask_texture, uv_coordinates_sd, scene, target_resolution
-):
-    """Convert content mask from texture resolution to SD resolution."""
-
-    content_mask_sd = content_mask_texture[
-        uv_coordinates_sd[:, 1], uv_coordinates_sd[:, 0]
-    ]
-
-    input_resolution = np.sqrt(len(uv_coordinates_sd)).astype(np.int32)
-
-    content_mask_sd = cv2.resize(
-        content_mask_sd.reshape(input_resolution, input_resolution),
-        (target_resolution, target_resolution),
-        interpolation=cv2.INTER_NEAREST,
-    )
-
-    content_mask_sd = content_mask_sd.reshape(
-        target_resolution, target_resolution
-    ).astype(np.uint8)
-
-    return content_mask_sd
-
-
-# Main Function
-def img_sequential(scene, max_size, texture):
-    """Run the third pass for sequential texture refinement."""
-    texture_resolution = int(scene.texture_resolution)
-    render_resolution = int(scene.render_resolution)
-    num_cameras = int(scene.num_cameras)
-
-    final_texture = prepare_texture(texture, texture_resolution)
-    multiview_images, render_img_folders = generate_multiple_views(
-        scene, max_size, suffix="img_sequential", render_resolution=render_resolution
-    )
-
-    pixel_status = np.zeros((texture_resolution, texture_resolution))
-    max_angle_status = np.zeros((texture_resolution, texture_resolution))
-
-    pipe = create_pipeline(scene)
-
-    for i in range(num_cameras):
-        _, input_render_resolution, _ = create_input_image(
-            final_texture,
-            multiview_images["uv"][i],
-            render_resolution,
-            texture_resolution,
-        )
-
-        content_mask_fullsize = create_content_mask(multiview_images["uv"][i])
-        uv_image = multiview_images["uv"][i][..., :2]
-        uv_image[content_mask_fullsize == 0] = 0
-
-        uv_coordinates_tex = prepare_uv_coordinates(
-            uv_image, texture_resolution, texture_resolution
-        )
-        facing_render = cv2.resize(
-            multiview_images["facing"][i],
-            (texture_resolution, texture_resolution),
-            interpolation=cv2.INTER_LINEAR,
-        ).flatten()
-
-        facing_texture = np.zeros((texture_resolution, texture_resolution))
-
-        facing_texture[uv_coordinates_tex[:, 1], uv_coordinates_tex[:, 0]] = (
-            facing_render
-        )
-
-        content_mask_tex_size = cv2.resize(
-            content_mask_fullsize,
-            (texture_resolution, texture_resolution),
-            interpolation=cv2.INTER_NEAREST,
-        )
-
-        content_mask_texture = np.zeros((texture_resolution, texture_resolution))
-        content_mask_texture[uv_coordinates_tex[:, 1], uv_coordinates_tex[:, 0]] = (
-            content_mask_tex_size.reshape(-1)
-        )
-
-        content_mask_texture = cv2.resize(
-            content_mask_texture,
-            (texture_resolution, texture_resolution),
-            interpolation=cv2.INTER_NEAREST,
-        )
-
-        content_mask_texture = update_content_mask(
-            content_mask_texture, pixel_status, facing_texture, max_angle_status
-        )
-
-        max_angle_status[content_mask_texture > 0] = facing_texture[
-            content_mask_texture > 0
-        ]
-        pixel_status[content_mask_texture > 0] = np.clip(
-            pixel_status[content_mask_texture > 0] + 1, 0, 2
-        )
-
-        uv_coordinates_sd = prepare_uv_coordinates(
-            uv_image, texture_resolution, 512 if scene.sd_version == "sd15" else 1024
-        )
-
-        input_image_sd, content_mask_render_sd, canny_img, normal_img, depth_img = (
-            generate_inputs_for_inference(
-                input_render_resolution,
-                content_mask_texture,
-                multiview_images,
-                uv_coordinates_sd,
-                scene,
-                i,
-            )
-        )
-
-        output = infer_pipeline(
-            pipe,
-            scene,
-            Image.fromarray(input_image_sd),
-            content_mask_render_sd,
-            canny_img,
-            normal_img,
-            depth_img,
-            strength=scene.denoise_strength,
-            guidance_scale=scene.guidance_scale,
-        )[0]
-        output = cv2.resize(
-            np.array(output)[..., :3],
-            (render_resolution, render_resolution),
-            interpolation=cv2.INTER_LINEAR,
-        )
-
-        save_debug_images(
-            scene,
-            i,
-            input_image_sd,
-            content_mask_render_sd,
-            content_mask_texture,
-            canny_img,
-            normal_img,
-            depth_img,
-            output,
-        )
-
-        uv_coordinates_render = prepare_uv_coordinates(
-            uv_image, texture_resolution, render_resolution
-        )
-        content_mask_render = content_mask_texture_to_render_sd(
-            content_mask_texture, uv_coordinates_render, scene, render_resolution
-        )
-
-        # TODO: Implement feathered overlay
-
-        if i > 0:
-            output = blend_output(
-                input_render_resolution, output, content_mask_render, render_resolution
+        if i == 0:
+            input_img = Image.fromarray(arr_in.astype(np.uint8))
+            mask_img = Image.fromarray(arr_content)
+        else:
+            input_img, _ = create_new_view_input(
+                previous_texture,
+                unpainted_mask,
+                arr_in,
+                arr_uv,
             )
 
-        uv_coordinates_render = prepare_uv_coordinates(uv_image, texture_resolution)
-        final_texture[uv_coordinates_render[:, 1], uv_coordinates_render[:, 0], :] = (
-            output.reshape(-1, 3)
+            facing_uint = resized_list["facing"][i]
+
+            arr_content[facing_uint < (facing_percentile * 255)] = 0
+
+            mask_img = Image.fromarray(arr_content)
+
+        # Run the pipeline for the current view
+        result = run_pipeline(
+            pipe=pipeline,
+            process_parameter=process_parameter,
+            input_img=input_img,
+            uv_mask=mask_img,
+            canny_img=Image.fromarray(resized_list["canny"][i]),
+            normal_img=Image.fromarray(resized_list["normal"][i]),
+            depth_img=Image.fromarray(resized_list["depth"][i]),
+            progress_callback=sub_progress_callback,
+            strength=process_parameter.denoise_strength,
+            guidance_scale=process_parameter.guidance_scale,
+            num_inference_steps=process_parameter.num_inference_steps,
         )
 
-    delete_render_folders(render_img_folders)
-    return final_texture
+        # Project the current result back to the texture
+        previous_texture, unpainted_mask = project_view_to_texture(
+            sd_result=result,
+            uv_view=resized_list["uv"][i],
+            facing_view=resized_list["facing"][i],
+            texture_resolution=texres,
+            texture=previous_texture,
+            unpainted_mask=unpainted_mask,
+            facing_percentile=facing_percentile,
+        )
+
+    if texture is None:
+        # inpaint the texture for all areas that are not covered by the views
+        # if no texture is provided, we assume the texture is white
+        previous_texture = cv2.inpaint(
+            previous_texture.astype(np.uint8),
+            unpainted_mask.astype(np.uint8),
+            inpaintRadius=3,
+            flags=cv2.INPAINT_TELEA,
+        )
+
+    return previous_texture
+
+
+def project_view_to_texture(  # noqa: PLR0913
+    sd_result: Image,  # type: ignore  # noqa: PGH003
+    uv_view: NDArray[np.uint8],
+    facing_view: NDArray[np.uint8],
+    texture_resolution: int,
+    texture: NDArray[np.uint8],
+    unpainted_mask: NDArray[np.uint8] = None,
+    facing_percentile: float = 0.5,
+) -> NDArray[np.uint8]:
+    """Project the output of the diffusion model back onto the texture."""
+    sd_array = np.array(sd_result)
+    sd_array = sd_array[..., :3]  # Ensure we only take RGB channels
+
+    uv_view = (
+        uv_view[..., :2] * texture_resolution
+    ) % texture_resolution  # handle UV wrapping
+
+    # Clamp UVs to valid range
+    uv_y = uv_view[..., 1].astype(int)
+    uv_y = texture_resolution - 1 - uv_y  # Flip Y axis for correct orientation
+    uv_x = uv_view[..., 0].astype(int)
+
+    # Create a new texture to hold the projected result
+    new_texture = np.zeros((texture_resolution, texture_resolution, 3), dtype=np.uint8)
+    facing_texture = np.zeros((texture_resolution, texture_resolution), dtype=np.uint8)
+
+    for scale in [0.25, 0.5, 1.0]:
+        texture_scaled = np.zeros(
+            (int(scale * texture_resolution), int(scale * texture_resolution), 3),
+            dtype=np.uint8,
+        )
+        facing_scaled = np.zeros(
+            (int(scale * texture_resolution), int(scale * texture_resolution)),
+            dtype=np.uint8,
+        )
+
+        # Scale the UV coordinates
+        scaled_uv_x = (uv_x * scale).astype(int)
+        scaled_uv_y = (uv_y * scale).astype(int)
+
+        # Project the output texture to the input view using UV coordinates
+        texture_scaled[scaled_uv_y, scaled_uv_x] = sd_array
+        facing_scaled[scaled_uv_y, scaled_uv_x] = facing_view
+
+        # resize to target resolution
+        texture_scaled = cv2.resize(
+            texture_scaled,
+            (texture_resolution, texture_resolution),
+            interpolation=CV2_INTER_NEAREST,
+        )
+        facing_scaled = cv2.resize(
+            facing_scaled,
+            (texture_resolution, texture_resolution),
+            interpolation=CV2_INTER_NEAREST,
+        )
+
+        new_texture[facing_scaled > 0] = texture_scaled[facing_scaled > 0]
+        facing_texture[facing_scaled > 0] = facing_scaled[facing_scaled > 0]
+
+    # keep areas which are facing the camera
+    mask = facing_texture > (facing_percentile * 255)
+
+    new_texture[~mask] = 0
+    if unpainted_mask is not None:
+        unpainted_mask[mask] = 0
+
+    if texture is not None:
+        # Ensure texture is in the correct format, else resize it
+        if texture.ndim == 3:  # noqa: PLR2004
+            if texture.shape[2] == 4:  # noqa: PLR2004
+                texture = texture[..., :3]
+            texture = cv2.resize(texture, (texture_resolution, texture_resolution))
+
+        # Blend the new texture with the existing texture
+        new_texture[~mask] = texture[..., :3][~mask]
+
+    # TODO(Frederik): Change the approach to stack all sequential textures
+    # Inpaint missing areas on each and stack them together with the facing percentiles
+    # as weighting.
+
+    return new_texture, unpainted_mask
+
+
+def create_new_view_input(
+    output_texture: NDArray[np.float32],
+    unpainted_mask: NDArray[np.uint8],
+    input_view: NDArray[np.uint8],
+    uv_view: NDArray[np.uint8],
+) -> tuple[Image, NDArray[np.uint8]]:  # type: ignore  # noqa: PGH003
+    """Create new input image for the current view by projecting the output texture."""
+    # get the uv coordinates from the uv_view
+    uv_view = uv_view[..., :2]  # Ensure UVs are 2D
+    h, w = input_view.shape[0], input_view.shape[1]
+    uv_view = uv_view * (w - 1) % w  # Scale UVs to input size
+
+    # Clamp UVs to valid range
+    uv_y = np.clip(uv_view[..., 1].flatten().astype(int), 0, h - 1)
+    uv_x = np.clip(uv_view[..., 0].flatten().astype(int), 0, w - 1)
+
+    # Project the output texture to the input view using UV coordinates
+    view_from_texture = output_texture[uv_y, uv_x]
+    view_from_texture = view_from_texture.reshape(h, w, 3)
+    mask_from_texture = unpainted_mask[uv_y, uv_x]
+    mask_from_texture = mask_from_texture.reshape(h, w)
+    mask_from_texture = np.stack([mask_from_texture] * 3, axis=-1)  # Make it 3-channel
+
+    # mask_from_texture is either 0 or 255, where 255 == unpainted
+    mask_from_texture[mask_from_texture == 255] = 1  # noqa: PLR2004
+
+    return Image.fromarray(view_from_texture), mask_from_texture[..., 0]

@@ -1,306 +1,56 @@
-import os
-import shutil
 import math
 
-import bpy
-import mathutils
-import cv2
+try:
+    import cv2
+except ModuleNotFoundError:
+    cv2 = None
 import numpy as np
-import torch
-from scipy.spatial.transform import Rotation
-from pathlib import Path
+from numpy.typing import NDArray
 
-from ..condition_setup import (
-    bpy_img_to_numpy,
-    create_depth_condition,
-    create_normal_condition,
-    create_similar_angle_image,
-)
+from ..blender_operations import ProcessParameter
 
-from ..render_setup import (
-    setup_render_settings,
-    create_cameras_on_sphere,
-    create_cameras_on_one_ring,
-)
+if cv2 is not None:
+    CV2_INTER_NEAREST = cv2.INTER_NEAREST
+    CV2_INTER_LINEAR = cv2.INTER_LINEAR
+    CV2_INTER_LANCZOS4 = cv2.INTER_LANCZOS4
+else:
+    # OpenCV enum integer values; used only until deps are installed
+    CV2_INTER_NEAREST = 0
+    CV2_INTER_LINEAR = 1
+    CV2_INTER_LANCZOS4 = 4
 
 
-def delete_render_folders(render_img_folders):
-    """
-    Deletes all rendering folders and their contents if they exist.
-
-    :param render_img_folders: List of folder paths to delete.
-    """
-    for render_folder in render_img_folders:
-        # Check if the folder exists
-        if os.path.exists(render_folder) and os.path.isdir(render_folder):
-            # Delete the folder and all its contents
-            shutil.rmtree(render_folder)
-            print(f"Deleted folder: {render_folder}")
-        else:
-            print(f"Folder not found or not a directory: {render_folder}")
-
-
-def latent_mixing_parallel(
-    scene, uv_list, facing_list, latents, mixing_mode="weighted"
-):
-    """
-    Perform latent mixing using the provided latents and return the mixed latents.
-
-    Args:
-        scene (bpy.types.Scene): The Blender scene object.
-        uv_list (list): List of UV images corresponding to different camera views.
-        facing_list (list): List of facing images corresponding to different camera views.
-        latents (numpy.ndarray): Numpy array of all latents in one image corresponding to different camera views.
-    """
-
-    # remove the batch dimension
-    latents = latents.squeeze(0)
-
-    # support "mean", "weighted" and "max" mixing
-    if mixing_mode not in ["mean", "weighted", "max"]:
-        raise ValueError("Invalid mixing mode, can only be 'mean', 'weighted' or 'max'")
-
-    # save the device of the latents
-    device = latents.device
-
-    # move the latents to the cpu
-    latents = latents.cpu().numpy()
-
-    # latents shape is torch.Size([4, 64, 64]) for sd15 and torch.Size([4, 128, 128]) for sdxl
-
-    # get the target resolution of a latent image
-    latent_resolution = (
-        64 if scene.sd_version == "sd15" else 128
-    )  # We cant use the size of the latents since they are multiple ones together
-
-    # change the latents from torch.Size([4, 64, 64]) to (64, 64, 4)
-    latents = np.moveaxis(latents, 0, -1)
-
-    # split the latents into the different views
-    num_cameras = len(uv_list)
-    latent_images = []
-    for cam_index in range(num_cameras):
-        # Calculate the position in the grid
-        row = int((cam_index // int(math.sqrt(num_cameras))) * latent_resolution)
-        col = int((cam_index % int(math.sqrt(num_cameras))) * latent_resolution)
-
-        output_chunk = latents[
-            row : row + latent_resolution, col : col + latent_resolution
-        ]
-
-        latent_images.append(output_chunk)
-
-    # create a num_camera*latent_res*latent_res*-1 mixed latents array (one channel for each grid img)
-    mixed_latents = np.zeros(
-        (
-            num_cameras,
-            latent_resolution,
-            latent_resolution,
-            4,
-        ),
-        dtype=np.float32,
-    )
-
-    if mixing_mode == "mean":
-        weights_latents = np.ones(
-            (num_cameras, latent_resolution, latent_resolution), dtype=np.float32
+def _require_cv2() -> None:
+    try:
+        import cv2
+    except ModuleNotFoundError:
+        cv2 = None
+    if cv2 is None:
+        # Raise a clean, actionable error once a function is actually called
+        msg = (
+            "OpenCV not available. In Blender: Preferences > Add-ons > DiffusedTexture > "  # noqa: E501
+            "click 'Install Python Dependencies', restart Blender and try again."
         )
-        weights_latents = weights_latents / num_cameras  # all weights are equal
-
-    else:
-        # create a num_camera*latent_res*latent_res mixed latents array (one for each grid img)
-        weights_latents = np.zeros(
-            (
-                num_cameras,
-                latent_resolution,
-                latent_resolution,
-            ),
-            dtype=np.float32,
-        )
-
-    for cam_index in range(num_cameras):
-        # Calculate the position in the grid
-        row = int((cam_index // int(math.sqrt(num_cameras))) * latent_resolution)
-        col = int((cam_index % int(math.sqrt(num_cameras))) * latent_resolution)
-
-        # load the uv image
-        uv_image = uv_list[cam_index]
-        uv_image = uv_image[..., :2]  # Keep only u and v
-
-        # resize the uv_image to the latent_resolution
-        uv_image = cv2.resize(
-            uv_image,
-            (latent_resolution, latent_resolution),
-            interpolation=cv2.INTER_NEAREST,
-        )
-
-        content_mask = np.zeros((latent_resolution, latent_resolution))
-        content_mask[np.sum(uv_image, axis=-1) > 0] = 255
-        content_mask = content_mask.astype(np.uint8)
-
-        uv_image[content_mask == 0] = 0
-
-        # resize the uv values to 0-511
-        uv_coordinates = (
-            (uv_image * int(latent_resolution - 1)).astype(np.uint16).reshape(-1, 2)
-        )
-
-        # the uvs are meant to start from the bottom left corner, so we flip the y axis (v axis)
-        uv_coordinates[:, 1] = int(latent_resolution - 1) - uv_coordinates[:, 1]
-
-        # in case we have uv coordinates beyond the texture
-        uv_coordinates = uv_coordinates % int(latent_resolution)
-
-        mixed_latents[cam_index, uv_coordinates[:, 1], uv_coordinates[:, 0], ...] = (
-            latent_images[cam_index].reshape(-1, 4)
-        )
-
-        # adjust the facing weight to the chosen percentile
-        cur_facing_image = facing_list[cam_index]
-
-        # resize the facing image to the latent_resolution
-        cur_facing_image = cv2.resize(
-            cur_facing_image,
-            (latent_resolution, latent_resolution),
-            interpolation=cv2.INTER_LINEAR,
-        )
-
-        if mixing_mode != "mean":
-            weights_latents[
-                cam_index, uv_coordinates[:, 1], uv_coordinates[:, 0], ...
-            ] = cur_facing_image.reshape(
-                -1,
-            )
-
-    if mixing_mode == "max":
-        max_latents = np.argmax(weights_latents, axis=0)
-
-        weighted_latents_texture = mixed_latents[
-            max_latents, np.arange(latent_resolution), np.arange(latent_resolution)
-        ]
-
-        # reshape the weighted latents to the original shape
-        weighted_latents_texture = weighted_latents_texture.reshape(
-            latent_resolution, latent_resolution, -1
-        )
-
-    else:
-        # multiply the texture channels by the point at factor
-        weighted_latents_texture = (
-            np.stack(
-                (
-                    weights_latents,
-                    weights_latents,
-                    weights_latents,
-                    weights_latents,
-                ),
-                axis=-1,
-            )
-            * mixed_latents
-        )
-
-        weighted_latents_texture = np.sum(weighted_latents_texture, axis=0) / np.stack(
-            (
-                np.sum(weights_latents, axis=0),
-                np.sum(weights_latents, axis=0),
-                np.sum(weights_latents, axis=0),
-                np.sum(weights_latents, axis=0),
-            ),
-            axis=-1,
-        )
-
-    # project the weighted_latents_texture to the original views and stitch them back together
-    weighted_latents = np.copy(latents)
-
-    for cam_index in range(num_cameras):
-        # Calculate the position in the grid
-        row = int((cam_index // int(math.sqrt(num_cameras))) * latent_resolution)
-        col = int((cam_index % int(math.sqrt(num_cameras))) * latent_resolution)
-
-        # load the uv image
-        uv_image = uv_list[cam_index]
-        uv_image = uv_image[..., :2]  # Keep only u and v
-
-        # resize the uv_image to the latent_resolution
-        uv_image = cv2.resize(
-            uv_image,
-            (latent_resolution, latent_resolution),
-            interpolation=cv2.INTER_NEAREST,
-        )
-
-        content_mask = np.zeros((latent_resolution, latent_resolution))
-        content_mask[np.sum(uv_image, axis=-1) > 0] = 255
-        content_mask = content_mask.astype(np.uint8)
-
-        uv_image[content_mask == 0] = 0
-
-        # resize the uv values to 0 .. latent_res-1
-        uv_coordinates = (
-            (uv_image * int(latent_resolution - 1)).astype(np.uint16).reshape(-1, 2)
-        )
-
-        # the uvs are meant to start from the bottom left corner, so we flip the y axis (v axis)
-        uv_coordinates[:, 1] = int(latent_resolution - 1) - uv_coordinates[:, 1]
-
-        # in case we have uv coordinates beyond the texture
-        uv_coordinates = uv_coordinates % int(latent_resolution)
-
-        # only replace the parts that are in the content mask
-        cams_latent_image = latent_images[cam_index].copy()
-
-        cams_weighted_latents_texture = weighted_latents_texture[
-            uv_coordinates[:, 1], uv_coordinates[:, 0], ...
-        ].reshape(latent_resolution, latent_resolution, 4)
-
-        cams_latent_image[content_mask == 255] = cams_weighted_latents_texture[
-            content_mask == 255
-        ]
-
-        weighted_latents[
-            row : row + latent_resolution, col : col + latent_resolution
-        ] = cams_latent_image
-
-    # change the latents from torch.Size([4, 64, 64]) to (64, 64, 4)
-    weighted_latents = np.moveaxis(weighted_latents, -1, 0)
-
-    # move the latents back to the device
-    weighted_latents = torch.tensor(weighted_latents, device=device)
-
-    # add the batch dimension back
-    weighted_latents = weighted_latents.unsqueeze(0)
-
-    return weighted_latents
+        raise RuntimeError(msg)
 
 
-def process_uv_texture(
-    scene,
-    uv_images,
-    facing_images,
-    output_grid,
-    target_resolution=512,
-    render_resolution=2048,
-    facing_percentile=1.0,
-):
-    """
-    Processes the UV texture from multiple images and applies the inpainting on missing pixels.
-
-    :param scene: Blender scene object, used to get the output path.
-    :param uv_images: List of UV images corresponding to different camera views.
-    :param output_grid: Output grid image containing the combined render.
-    :param target_resolution: Resolution for each UV grid image.
-    :param render_resolution: Resolution of each render in the output_grid.
-    :return: Inpainted UV texture.
-    """
+def process_uv_texture(  # noqa: PLR0913
+    process_parameter: ProcessParameter,
+    uv_images: list[NDArray],
+    facing_images: list[NDArray],
+    output_grid: NDArray,
+    target_resolution: int = 512,
+    render_resolution: int = 2048,
+    facing_percentile: float = 1.0,
+) -> tuple[NDArray[np.uint8], NDArray[np.uint8]]:
+    _require_cv2()
 
     num_cameras = len(uv_images)
 
-    # Convert the output grid to a NumPy array and save it for debugging
-    output_grid = np.array(output_grid)
-
-    if scene.custom_sd_resolution:
-        sd_resolution = scene.custom_sd_resolution
+    if process_parameter.custom_sd_resolution:
+        sd_resolution = int(process_parameter.custom_sd_resolution)
     else:
-        sd_resolution = 512 if scene.sd_version == "sd15" else 1024
+        sd_resolution = 512 if process_parameter.sd_version == "sd15" else 1024
 
     # Resize output_grid to render resolution
     output_grid = cv2.resize(
@@ -323,19 +73,22 @@ def process_uv_texture(
         col = int((cam_index % int(math.sqrt(num_cameras))) * render_resolution)
 
         output_chunk = output_grid[
-            row : row + render_resolution, col : col + render_resolution
+            row : row + render_resolution,
+            col : col + render_resolution,
         ]
 
         resized_tiles.append(output_chunk)
 
     # create a 16x512x512x3 uv map (one for each grid img)
     uv_texture_first_pass = np.zeros(
-        (num_cameras, target_resolution, target_resolution, 3), dtype=np.float32
+        (num_cameras, target_resolution, target_resolution, 3),
+        dtype=np.float32,
     )
 
     # create a 16x512x512x3 uv map (one for each grid img)
     uv_texture_first_pass_weight = np.zeros(
-        (num_cameras, target_resolution, target_resolution), dtype=np.float32
+        (num_cameras, target_resolution, target_resolution),
+        dtype=np.float32,
     )
 
     for cam_index in range(num_cameras):
@@ -358,20 +111,25 @@ def process_uv_texture(
             (uv_image * int(target_resolution - 1)).astype(np.uint16).reshape(-1, 2)
         )
 
-        # the uvs are meant to start from the bottom left corner, so we flip the y axis (v axis)
+        # the uvs are meant to start from the bottom left corner
+        # so we flip the y axis (v axis)
         uv_coordinates[:, 1] = int(target_resolution - 1) - uv_coordinates[:, 1]
 
         # in case we have uv coordinates beyond the texture
         uv_coordinates = uv_coordinates % int(target_resolution)
 
         uv_texture_first_pass[
-            cam_index, uv_coordinates[:, 1], uv_coordinates[:, 0], ...
+            cam_index,
+            uv_coordinates[:, 1],
+            uv_coordinates[:, 0],
+            ...,
         ] = resized_tiles[cam_index].reshape(-1, 3)
 
         # adjust the facing weight to the chosen percentile
-        cur_facing_image = facing_images[cam_index]
+        cur_facing_image = facing_images[cam_index][..., 0]
 
-        # goes from 0 to 1, we cut of the bottom 1.0-facing_percentile and stretch the rest 0 to 1
+        # goes from 0 to 1
+        # we cut of the bottom 1.0-facing_percentile and stretch the rest 0 to 1
         cur_facing_image = cur_facing_image * (
             1.0 + facing_percentile
         )  # 0..1 now 0..1.2
@@ -379,10 +137,32 @@ def process_uv_texture(
         cur_facing_image[cur_facing_image < 0] = 0
 
         uv_texture_first_pass_weight[
-            cam_index, uv_coordinates[:, 1], uv_coordinates[:, 0], ...
+            cam_index,
+            uv_coordinates[:, 1],
+            uv_coordinates[:, 0],
+            ...,
         ] = cur_facing_image.reshape(
             -1,
         )
+
+    textured_area = np.sum(uv_texture_first_pass_weight, axis=0)
+    textured_area = np.clip(textured_area, 0, 1)
+    textured_area = (textured_area * 255).astype(np.uint8)
+
+    return inpaint_missing(
+        target_resolution,
+        uv_texture_first_pass,
+        uv_texture_first_pass_weight,
+    ).astype(np.uint8), textured_area
+
+
+def inpaint_missing(
+    target_resolution: int,
+    uv_texture_first_pass: NDArray,
+    uv_texture_first_pass_weight: NDArray,
+    lower_bound: float = 0.1,
+) -> NDArray:
+    _require_cv2()
 
     # multiply the texture channels by the point at factor
     weighted_tex = (
@@ -408,189 +188,41 @@ def process_uv_texture(
 
     # make the unpainted mask 0-255 uint8
     unpainted_mask = np.zeros((target_resolution, target_resolution))
-    unpainted_mask[np.sum(uv_texture_first_pass_weight, axis=0) <= 0.1] = 255
+    unpainted_mask[np.sum(uv_texture_first_pass_weight, axis=0) <= lower_bound] = 255
 
     # inpaint all the missing pixels
-    filled_uv_texture = cv2.inpaint(
+    return cv2.inpaint(
         weighted_tex.astype(np.uint8),
         unpainted_mask.astype(np.uint8),
         inpaintRadius=3,
         flags=cv2.INPAINT_TELEA,
     )
 
-    return filled_uv_texture
-
-
-def load_image(base_path, index, frame_number, prefix=""):
-    """Helper function to load an image file as a numpy array."""
-    file_path = Path(base_path) / f"{prefix}camera_{index:02d}_{frame_number:04d}.exr"
-    return bpy_img_to_numpy(str(file_path))[..., :3]
-
-
-def load_depth_image(base_path, index, frame_number):
-    """Helper function to load and process a depth image."""
-    file_path = Path(base_path) / f"depth_camera_{index:02d}_{frame_number:04d}.exr"
-    return create_depth_condition(str(file_path))[..., :3]
-
-
-def load_normal_image(base_path, index, frame_number, camera):
-    """Helper function to load and process a normal image."""
-    file_path = Path(base_path) / f"normal_camera_{index:02d}_{frame_number:04d}.exr"
-    return create_normal_condition(str(file_path), camera)[..., :3]
-
-
-def rotate_cameras_around_origin(angle_degrees):
-    """
-    Rotates all cameras in the current Blender scene around the world origin by the specified angle.
-
-    :param angle_degrees: The angle in degrees to rotate the cameras.
-    """
-    # Convert angle to radians
-    angle_radians = math.radians(angle_degrees)
-
-    # Create a rotation matrix for rotation around the Z-axis
-    rotation_matrix = mathutils.Matrix.Rotation(angle_radians, 4, "Z")
-
-    # Iterate through all objects in the scene
-    for obj in bpy.data.objects:
-        if obj.type == "CAMERA":
-            # Apply the rotation matrix to the object's location
-            obj.location = rotation_matrix @ obj.location
-
-            # Rotate the camera's orientation as well
-            obj.rotation_euler.rotate(rotation_matrix)
-
-
-def generate_multiple_views(
-    scene, max_size, suffix, render_resolution=2048, offset_additional=0
-):
-    """
-    Generates texture maps for a 3D model using multiple views and saves outputs for depth, normal, UV, position, and image maps.
-
-    :param scene: The Blender scene object.
-    :param max_size: Maximum bounding box size of the model.
-    :param create_cameras_on_one_ring: Function to create cameras on a single ring around the object.
-    :param create_cameras_on_sphere: Function to create cameras in a spherical arrangement.
-    :param setup_render_settings: Function to set up render settings and node outputs.
-    :return: A dictionary of rendered images with keys: 'depth', 'normal', 'uv', 'position', 'image', 'facing'.
-    """
-
-    # Set parameters
-    num_cameras = int(scene.num_cameras)
-
-    # Create cameras based on the number specified in the scene
-    if num_cameras == 4:
-        cameras = create_cameras_on_one_ring(
-            num_cameras=num_cameras,
-            max_size=max_size,
-            name_prefix=f"Camera_{suffix}",
-        )
-    elif num_cameras in [9, 16]:
-        cameras = create_cameras_on_sphere(
-            num_cameras=num_cameras,
-            max_size=max_size,
-            name_prefix=f"Camera_{suffix}",
-        )
-    else:
-        raise ValueError("Only 4, 9, or 16 cameras are supported.")
-
-    # To have different viewpoints between modes
-    if offset_additional > 0:
-        rotate_cameras_around_origin(offset_additional)
-
-    # Set up render nodes and paths
-    output_path = Path(scene.output_path)
-    output_nodes = setup_render_settings(
-        scene, resolution=(render_resolution, render_resolution)
-    )
-    output_dirs = ["depth", "normal", "uv", "position", "img"]
-    render_img_folders = []
-    for output_type in output_dirs:
-        output_nodes[output_type].base_path = str(
-            output_path / f"first_pass_{output_type}"
-        )
-        os.makedirs(output_nodes[output_type].base_path, exist_ok=True)
-
-        render_img_folders.append(str(output_nodes[output_type].base_path))
-
-    render_img_folders.append(str(output_path / "RenderOutput"))
-
-    # Update to make new cameras available
-    bpy.context.view_layer.update()
-
-    # Initialize lists for loaded images
-    (
-        depth_images,
-        normal_images,
-        uv_images,
-        position_images,
-        img_images,
-        facing_images,
-    ) = ([] for _ in range(6))
-    frame_number = scene.frame_current
-
-    # Render and load images for each camera
-    for i, camera in enumerate(cameras):
-        scene.camera = camera  # Set active camera
-
-        # Set file paths for each render pass
-        for pass_type in output_dirs:
-            output_nodes[pass_type].file_slots[0].path = f"{pass_type}_camera_{i:02d}_"
-
-        bpy.context.view_layer.update()
-        bpy.ops.render.render(write_still=True)  # Render and save images
-
-        # Load UV image
-        uv_images.append(
-            load_image(output_nodes["uv"].base_path, i, frame_number, "uv_")
-        )
-
-        # Load depth image with processing
-        depth_images.append(
-            load_depth_image(output_nodes["depth"].base_path, i, frame_number)
-        )
-
-        # Load position image
-        position_images.append(
-            load_image(output_nodes["position"].base_path, i, frame_number, "position_")
-        )
-
-        # Load normal image with processing
-        normal_images.append(
-            load_normal_image(output_nodes["normal"].base_path, i, frame_number, camera)
-        )
-
-        # Create a facing ratio image to show alignment between normals and camera direction
-        facing_img = create_similar_angle_image(
-            load_image(output_nodes["normal"].base_path, i, frame_number, "normal_")[
-                ..., :3
-            ],
-            position_images[-1][..., :3],
-            camera,
-        )
-        facing_images.append(facing_img)
-
-    return {
-        "depth": depth_images,
-        "normal": normal_images,
-        "uv": uv_images,
-        "position": position_images,
-        "image": img_images,
-        "facing": facing_images,
-    }, render_img_folders
-
 
 def assemble_multiview_grid(
-    multiview_images, render_resolution=2048, sd_resolution=512, latent_resolution=None
-):
-    """
-    Assembles images from multiple views into a structured grid, applies a mask, and resizes the outputs.
+    texture: NDArray[np.uint8] | None,
+    multiview_images: dict[str, list | NDArray],
+    render_resolution: int = 2048,
+    sd_resolution: int = 512,
+) -> tuple[dict[str, NDArray], dict[str, NDArray]]:
+    """Assemble images from multiple views into a structured grid.
 
-    :param multiview_images: Dictionary containing lists of images for 'depth', 'normal', 'facing', and 'uv'.
-    :param render_resolution: Resolution for rendering each camera view before scaling.
-    :param target_resolution: Target resolution for the SD images.
-    :return: A dictionary containing assembled grids for 'depth', 'normal', 'uv', 'facing', and 'content mask'.
+    Args:
+        texture (NDArray[np.uint8] | None): The optional prior texture to be used
+                                            for the input grid.
+        multiview_images (dict[str, str]): Dictionary containing paths to multiview
+                                            images.
+        render_resolution (int, optional): Resolution for rendering each camera view
+                                            before scaling. Defaults to 2048.
+        sd_resolution (int, optional): Target resolution for the SD images.
+                                        Defaults to 512.
+
+    Returns:
+        tuple[dict[str, NDArray], dict[str, NDArray]]: A tuple containing the assembled
+        grids for each view and the resized grids for the SD model input.
+
     """
+    _require_cv2()
 
     num_cameras = len(multiview_images["depth"])
     grid_size = int(math.sqrt(num_cameras))  # Assuming a square grid
@@ -605,7 +237,8 @@ def assemble_multiview_grid(
             multiview_images["normal"],
             multiview_images["facing"],
             multiview_images["uv"],
-        )
+            strict=False,
+        ),
     ):
         row, col = compute_grid_position(i, grid_size, render_resolution)
         populate_grids(
@@ -620,21 +253,20 @@ def assemble_multiview_grid(
         )
 
     # Generate content mask and input image
-    grids["content_mask"] = create_content_mask(grids["uv_grid"])
+    grids["content_grid"] = create_content_mask(grids["uv_grid"])
+
+    # Create the input image grid from the texture (if provided)
+    grids["input_grid"] = create_input_image_grid(
+        texture,
+        grids["uv_grid"],
+        grids["content_grid"],
+    )
 
     # Resize grids to target resolution for SD model input
     resized_grids = resize_grids(grids, render_resolution, sd_resolution)
-    resized_grids["content_mask"] = create_content_mask(resized_grids["uv_grid"])
 
-    if latent_resolution is not None:
-        latent_grids = resize_grids(
-            grids, render_resolution, latent_resolution, interpolation=cv2.INTER_LINEAR
-        )
-        # Add the latent resolution grids to the resized grids with "latent_" prefix
-        for key, grid in latent_grids.items():
-            resized_grids[f"latent_{key}"] = grid
-
-    # Create the canny for the resized grids
+    # Overwrite the content and canny grid with newly created resized versions
+    resized_grids["content_grid"] = create_content_mask(resized_grids["uv_grid"])
     resized_grids["canny_grid"] = np.stack(
         (
             cv2.Canny(resized_grids["normal_grid"].astype(np.uint8), 100, 200),
@@ -643,11 +275,254 @@ def assemble_multiview_grid(
         ),
         axis=-1,
     )
+    resized_grids["input_grid"] = create_input_image_grid(
+        texture,
+        resized_grids["uv_grid"],
+        resized_grids["content_grid"],
+    )
 
     return grids, resized_grids
 
 
-def initialize_grids(grid_size, render_resolution):
+def assemble_multiview_subgrid(  # noqa: PLR0913
+    texture: NDArray[np.uint8] | None,
+    painted_area_texture: NDArray[np.uint8] | None,
+    multiview_images: dict[str, list[NDArray]],
+    render_resolution: int,
+    sd_resolution: int,
+    n_subgrids: int,
+    n_rows_subgrid: int,
+    n_cols_subgrid: int,
+) -> tuple[list[dict[str, NDArray]], list[dict[str, NDArray]]]:
+    """Assemble multiple subgrids of multiview images with optional reuse.
+
+    Args:
+        texture: Optional texture for input grid.
+        painted_area_texture: Area that has already been painted (if any).
+        multiview_images: Dictionary of loaded multiview images (NDArray format).
+        render_resolution: High-res grid resolution.
+        sd_resolution: Resized resolution for SD input.
+        n_subgrids: How many subgrids to create.
+        n_rows_subgrid: Rows in each subgrid (e.g., 1, 2, 3).
+        n_cols_subgrid: Columns in each subgrid (e.g., 2, 2, 3).
+
+    Returns:
+        Tuple of ([high-res subgrids], [resized subgrids]).
+    """
+    total_views = len(multiview_images["depth"])
+    views_per_subgrid = n_rows_subgrid * n_cols_subgrid
+
+    def get_view(index: int) -> tuple[NDArray, NDArray, NDArray, NDArray]:
+        idx = index % total_views  # Reuse views cyclically if needed
+        return (
+            multiview_images["depth"][idx],
+            multiview_images["normal"][idx],
+            multiview_images["facing"][idx],
+            multiview_images["uv"][idx],
+        )
+
+    subgrid_results = []
+    subgrid_results_resized = []
+
+    for s in range(n_subgrids):
+        grids = initialize_grids(
+            grid_size=max(n_rows_subgrid, n_cols_subgrid),  # actual layout
+            render_resolution=render_resolution,
+        )
+
+        for i in range(views_per_subgrid):
+            view_global_idx = s * views_per_subgrid + i
+            row_offset = (i // n_cols_subgrid) * render_resolution
+            col_offset = (i % n_cols_subgrid) * render_resolution
+
+            depth_img, normal_img, facing_img, uv_img = get_view(view_global_idx)
+
+            populate_grids(
+                grids,
+                depth_img,
+                normal_img,
+                facing_img,
+                uv_img,
+                row=row_offset,
+                col=col_offset,
+                render_resolution=render_resolution,
+            )
+
+        # Content & Input
+        grids["content_grid"] = create_content_mask(grids["uv_grid"])
+        grids["input_grid"] = create_input_image_grid(
+            texture,
+            grids["uv_grid"],
+            grids["content_grid"],
+        )
+
+        # Painted Area
+        grids["already_painted_grid"] = create_input_image_grid(
+            painted_area_texture,
+            grids["uv_grid"],
+            grids["content_grid"],
+        )[:, :, 0]
+
+        # feather out already painted areas
+        grids["already_painted_grid"] = cv2.erode(
+            grids["already_painted_grid"],
+            np.ones((5, 5), np.uint8),
+            iterations=1,
+        )
+        grids["already_painted_grid"] = cv2.GaussianBlur(
+            grids["already_painted_grid"],
+            (5, 5),
+            0,
+        )
+
+        # Adjust the content grid with the painted area to exclude already painted areas
+        grids["content_grid"][grids["already_painted_grid"] == 255] = 0  # noqa: PLR2004
+
+        # Resize
+        resized_grids = resize_grids(grids, render_resolution, sd_resolution)
+        resized_grids["content_grid"] = create_content_mask(resized_grids["uv_grid"])
+        resized_grids["canny_grid"] = np.stack(
+            [
+                cv2.Canny(resized_grids["normal_grid"].astype(np.uint8), 100, 200)
+                for _ in range(3)
+            ],
+            axis=-1,
+        )
+        resized_grids["input_grid"] = create_input_image_grid(
+            texture,
+            resized_grids["uv_grid"],
+            resized_grids["content_grid"],
+        )
+
+        # Painted Area
+        resized_grids["already_painted_grid"] = create_input_image_grid(
+            painted_area_texture,
+            resized_grids["uv_grid"],
+            resized_grids["content_grid"],
+        )[:, :, 0]
+
+        # feather out already painted areas
+        resized_grids["already_painted_grid"] = cv2.erode(
+            resized_grids["already_painted_grid"],
+            np.ones((5, 5), np.uint8),
+            iterations=1,
+        )
+        resized_grids["already_painted_grid"] = cv2.GaussianBlur(
+            resized_grids["already_painted_grid"],
+            (5, 5),
+            0,
+        )
+
+        # Adjust the content grid with the painted area to exclude already painted areas
+        resized_grids["content_grid"][resized_grids["already_painted_grid"] == 255] = 0  # noqa: PLR2004
+
+        subgrid_results.append(grids)
+        subgrid_results_resized.append(resized_grids)
+
+    return subgrid_results, subgrid_results_resized
+
+
+def assemble_multiview_list(
+    texture: NDArray[np.uint8] | None,
+    multiview_images: dict[str, list[NDArray]],
+    sd_resolution: int = 512,
+) -> tuple[dict[str, list[NDArray]], dict[str, list[NDArray]]]:
+    """Process and return lists of individual images per view.
+
+    Args:
+        texture: Optional texture to project.
+        multiview_images: Dict of lists of multiview NDArray images.
+        sd_resolution: Resolution of resized images for SD model.
+
+    Returns:
+        Tuple containing:
+            - dict[str, list[NDArray]]: Processed original-resolution images.
+            - dict[str, list[NDArray]]: Corresponding resized images.
+    """
+    _require_cv2()
+
+    n_views = len(multiview_images["depth"])
+
+    # Lists to accumulate per-view outputs
+    outputs = {
+        "depth": [],
+        "normal": [],
+        "facing": [],
+        "uv": [],
+        "content": [],
+        "input": [],
+    }
+    outputs_resized = {
+        "depth": [],
+        "normal": [],
+        "facing": [],
+        "uv": [],
+        "content": [],
+        "input": [],
+        "canny": [],
+    }
+
+    for i in range(n_views):
+        depth_img = (255 * np.clip(multiview_images["depth"][i], 0, 1)).astype(
+            np.uint8,
+        )[..., :3]
+        normal_img = (255 * np.clip(multiview_images["normal"][i], 0, 1)).astype(
+            np.uint8,
+        )[..., :3]
+        facing_img = (255 * multiview_images["facing"][i][..., 0]).astype(np.uint8)
+        uv_img = multiview_images["uv"][i][..., :3]
+
+        content_mask = create_content_mask(uv_img)
+        input_img = create_input_image_grid(texture, uv_img, content_mask)
+
+        # Store original-resolution images
+        outputs["depth"].append(depth_img)
+        outputs["normal"].append(normal_img)
+        outputs["facing"].append(facing_img)
+        outputs["uv"].append(uv_img)
+        outputs["content"].append(content_mask)
+        outputs["input"].append(input_img)
+
+        # Resize all for SD input
+        resize_shape = (sd_resolution, sd_resolution)
+
+        depth_small = cv2.resize(
+            depth_img,
+            resize_shape,
+            interpolation=cv2.INTER_LINEAR,
+        )
+        normal_small = cv2.resize(
+            normal_img,
+            resize_shape,
+            interpolation=CV2_INTER_NEAREST,
+        )
+        facing_small = cv2.resize(
+            facing_img,
+            resize_shape,
+            interpolation=CV2_INTER_NEAREST,
+        )
+        uv_small = cv2.resize(uv_img, resize_shape, interpolation=CV2_INTER_LINEAR)
+
+        content_small = create_content_mask(uv_small)
+        input_small = create_input_image_grid(texture, uv_small, content_small)
+
+        canny_small = np.stack(
+            [cv2.Canny(normal_small.astype(np.uint8), 100, 200) for _ in range(3)],
+            axis=-1,
+        )
+
+        outputs_resized["depth"].append(depth_small)
+        outputs_resized["normal"].append(normal_small)
+        outputs_resized["facing"].append(facing_small)
+        outputs_resized["uv"].append(uv_small)
+        outputs_resized["content"].append(content_small)
+        outputs_resized["input"].append(input_small)
+        outputs_resized["canny"].append(canny_small)
+
+    return outputs, outputs_resized
+
+
+def initialize_grids(grid_size: int, render_resolution: int) -> dict[str, NDArray]:
     """Initialize blank grids for each map type."""
     grid_shape = (grid_size * render_resolution, grid_size * render_resolution)
     return {
@@ -658,50 +533,74 @@ def initialize_grids(grid_size, render_resolution):
     }
 
 
-def compute_grid_position(index, grid_size, render_resolution):
+def compute_grid_position(
+    index: int,
+    grid_size: int,
+    render_resolution: int,
+) -> tuple[int, int]:
     """Compute row and column position in the grid based on index."""
     row = (index // grid_size) * render_resolution
     col = (index % grid_size) * render_resolution
     return row, col
 
 
-def populate_grids(
-    grids, depth_img, normal_img, facing_img, uv_img, row, col, render_resolution
-):
+def populate_grids(  # noqa: PLR0913
+    grids: dict[str, NDArray],
+    depth_img: NDArray,
+    normal_img: NDArray,
+    facing_img: NDArray,
+    uv_img: NDArray,
+    row: int,
+    col: int,
+    render_resolution: int,
+) -> None:
     """Populate each grid with the corresponding multiview images."""
+    _require_cv2()
     grids["depth_grid"][
-        row : row + render_resolution, col : col + render_resolution
-    ] = depth_img
+        row : row + render_resolution,
+        col : col + render_resolution,
+    ] = (255 * np.clip(depth_img, 0, 1)).astype(np.uint8)[
+        ...,
+        :3,
+    ]  # Ensure depth image is RGB
     grids["normal_grid"][
-        row : row + render_resolution, col : col + render_resolution
-    ] = normal_img
+        row : row + render_resolution,
+        col : col + render_resolution,
+    ] = (255 * np.clip(normal_img, 0, 1)).astype(np.uint8)[
+        ...,
+        :3,
+    ]  # Ensure depth image is RGB# normal_img[..., :3]  # Ensure normal image is RGB
     grids["facing_grid"][
-        row : row + render_resolution, col : col + render_resolution
-    ] = (255 * facing_img).astype(np.uint8)
-    grids["uv_grid"][
-        row : row + render_resolution, col : col + render_resolution
-    ] = uv_img
+        row : row + render_resolution,
+        col : col + render_resolution,
+    ] = (255 * facing_img[..., 0]).astype(np.uint8)
+    grids["uv_grid"][row : row + render_resolution, col : col + render_resolution] = (
+        uv_img[..., :3]
+    )  # Keep only u and v (ignore alpha if present)
 
 
-def create_content_mask(uv_img):
+def create_content_mask(uv_img: NDArray[np.float32]) -> NDArray[np.uint8]:
     """Generate a content mask from the UV image."""
+    _require_cv2()
     content_mask = np.zeros(uv_img.shape[:2], dtype=np.uint8)
-    content_mask[np.sum(uv_img, axis=-1) > 0] = 255
+    content_mask[np.sum(uv_img[..., :2], axis=-1) > 0] = 255
     return cv2.dilate(content_mask, np.ones((10, 10), np.uint8), iterations=3)
 
 
 def resize_grids(
-    grids, render_resolution, sd_resolution, interpolation=cv2.INTER_NEAREST
-):
+    grids: dict[str, NDArray],
+    render_resolution: int,
+    sd_resolution: int = 512,
+    interpolation: int = CV2_INTER_NEAREST,
+) -> dict[str, NDArray]:
     """Resize grids to target resolution for Stable Diffusion model."""
-
+    _require_cv2()
     scale_factor = sd_resolution / render_resolution
     resized_grids = {}
     for key, grid in grids.items():
-
         height, width = grid.shape[:2]
 
-        interpolation = interpolation if "mask" in key else cv2.INTER_LINEAR
+        interpolation = interpolation if "mask" in key else CV2_INTER_LINEAR
         resized_grids[key] = cv2.resize(
             grid,
             (int(scale_factor * height), int(scale_factor * width)),
@@ -710,127 +609,64 @@ def resize_grids(
     return resized_grids
 
 
-def save_multiview_grids(multiview_grids, output_folder, file_format="png", prefix=""):
-    """
-    Save each grid in multiview_grids to the specified output folder.
+def create_input_image_grid(
+    texture: NDArray[np.float32] | None,
+    uv_grid: NDArray[np.float32],
+    content_mask: NDArray[np.uint8] | None = None,
+) -> NDArray[np.uint8]:
+    """Project a texture onto renderings using UV coordinates."""
+    if texture is None:
+        return np.ones_like(uv_grid, dtype=np.uint8) * 255
 
-    :param multiview_grids: Dictionary where keys are grid names and values are images (numpy arrays).
-    :param output_folder: Path to the output folder where images will be saved.
-    :param file_format: File format for the saved images (default is 'png').
-    """
-    os.makedirs(output_folder, exist_ok=True)  # Ensure output directory exists
-
-    for key, image in multiview_grids.items():
-        file_path = os.path.join(output_folder, f"{prefix}{key}.{file_format}")
-
-        if image.dtype == np.float32:
-            image = 255 * image
-            image = image.astype(np.uint8)
-
-        # Convert to BGR format if needed for OpenCV (assumes input is RGB)
-        if image.ndim == 3 and image.shape[2] == 3:
-            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-
-        # Write the image to disk
-        cv2.imwrite(file_path, image)
-
-        print(f"Saved {key} grid to {file_path}")
-
-
-def create_input_image(texture, uv, render_resolution, texture_resolution):
-    """
-    Project a texture onto renderings using UV coordinates, then resize the projected texture
-    images to match the resolution of the resized UV rendering images.
-
-    :param texture: Input texture image (H, W, C) with texture resolution as dimensions.
-    :param uv: Original UV coordinates (H, W, 2) corresponding to the renderings, values in range [0, 1].
-    :param input_texture_res: Target Resolution for the input
-    :param render_resolution: render_resolution
-    :param texture_resolution: texture_resolution
-    :return: The projected and resized texture as 3 image arrays.
-    """
+    texture = np.clip(
+        texture,
+        0,
+        1,
+    )
+    texture *= 255
+    texture = texture.astype(np.uint8)
 
     input_texture_res = texture.shape[0]
-
-    # Scale UV coordinates to texture coordinates
-    uv_scaled = uv[..., :2]
-    uv_scaled = (uv_scaled * (input_texture_res - 1)).astype(np.int32)
-    uv_scaled[..., 1] = int(input_texture_res - 1) - uv_scaled[..., 1]
-
-    # Reshape UV coordinates for indexing
-    uv_coordinates = uv_scaled[..., :2].reshape(-1, 2)
-    uv_coordinates = uv_coordinates % input_texture_res  # Handle wrap-around
-
-    # Ensure texture has three channels
-    texture = texture[..., :3]
-
-    # Project texture using the UV coordinates
-    projected_texture = texture[uv_coordinates[:, 1], uv_coordinates[:, 0], :3].reshape(
-        (uv.shape[0], uv.shape[1], 3)
-    )
-
-    # Resize to match the resized UV rendering dimensions
-    input_texture_resolution = cv2.resize(
-        projected_texture,
-        (input_texture_res, input_texture_res),
-        interpolation=cv2.INTER_LINEAR,
-    )
-
-    input_render_resolution = cv2.resize(
-        projected_texture,
-        (render_resolution, render_resolution),
-        interpolation=cv2.INTER_LINEAR,
-    )
-
-    target_texture_resolution = cv2.resize(
-        projected_texture,
-        (texture_resolution, texture_resolution),
-        interpolation=cv2.INTER_LINEAR,
-    )
-
-    return (
-        input_texture_resolution,
-        input_render_resolution,
-        target_texture_resolution,
-    )
-
-
-def create_input_image_grid(texture, uv_grid, target_size_grid):
-    """
-    Project a texture onto renderings using UV coordinates, then resize the projected texture
-    images to match the resolution of the resized UV rendering images.
-
-    :param texture: Input texture image (H, W, C) with texture resolution as dimensions.
-    :param uv: Original UV coordinates (H, W, 2) corresponding to the renderings, values in range [0, 1].
-    :return: The projected texture onto the grid.
-    """
-
-    input_texture_res = texture.shape[0]
-
-    target_texture_res = target_size_grid.shape[0]
 
     # Scale UV coordinates to texture coordinates
     uv_scaled = uv_grid[..., :2]
+
+    # 0-1 range to 0-input_texture_res range
     uv_scaled = (uv_scaled * (input_texture_res - 1)).astype(np.int32)
+
+    # Flip the y-axis (v-axis) to match texture coordinates
     uv_scaled[..., 1] = int(input_texture_res - 1) - uv_scaled[..., 1]
 
     # Reshape UV coordinates for indexing
     uv_coordinates = uv_scaled[..., :2].reshape(-1, 2)
-    uv_coordinates = uv_coordinates % input_texture_res  # Handle wrap-around
+    uv_coordinates = (
+        uv_coordinates % input_texture_res
+    )  # Handle wrap-around UV coordinates
 
-    # Ensure texture has three channels
+    # Ensure texture has three channels (remove alpha if present)
     texture = texture[..., :3]
+
+    projected_texture_grid = np.zeros(
+        (uv_grid.shape[0], uv_grid.shape[1], 3),
+        dtype=np.uint8,
+    )
 
     # Project texture using the UV coordinates
     projected_texture_grid = texture[
-        uv_coordinates[:, 1], uv_coordinates[:, 0], :3
-    ].reshape((uv_grid.shape[0], uv_grid.shape[1], 3))
-
-    # resize to target_texture_res size
-    projected_texture_grid = cv2.resize(
-        projected_texture_grid[..., :3],
-        (int(target_texture_res), int(target_texture_res)),
-        interpolation=cv2.INTER_LANCZOS4,
+        uv_coordinates[:, 1],
+        uv_coordinates[:, 0],
+        :3,
+    ].reshape(
+        uv_grid.shape[0],
+        uv_grid.shape[1],
+        3,
     )
 
-    return projected_texture_grid
+    projected_texture_grid[content_mask == 0] = 255
+    projected_texture_grid = np.clip(
+        projected_texture_grid,
+        0,
+        255,
+    )
+
+    return projected_texture_grid.astype(np.uint8)

@@ -1,0 +1,72 @@
+[project]
+name = "diffused_texture_addon"
+version = "0.1.0"
+description = "A Blender Addon for Generating Diffuse Textures on Meshes with Stable Diffusion"
+authors = [{ name = "Frederik Hasecke" }]
+requires-python = "==3.11.11"
+dependencies = [
+    "numpy>=1.26,<2.0",
+    "pillow>=11.0.0",
+    "opencv-python-headless>=4.11.0.86,<4.12",
+    "diffusers==0.32.2",
+    "transformers==4.49.0",
+    "accelerate==1.10.1",
+    "safetensors>=0.6.2",
+    "peft>=0.17.1",
+]
+
+[dependency-groups]
+dev = [
+  "torch",
+  "bpy>=4.5.0",
+  "pytest>=8.4.2",
+  "pytest-mock>=3.15.1",
+  "coverage>=7.10.7",
+  "ruff>=0.13.3",
+  "ty",
+]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu126" }
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+
+
+[tool.ruff]
+line-length = 88
+indent-width = 4
+target-version = "py311"
+exclude = [
+    "scratchbook/",
+    "tests/"
+]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = ["TD002", "TD003", "D100", "D103", "D104", "D400", "N801", "N999", "INP001", "TID252", "RUF012","PLC0415", "FIX002"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = false
+docstring-code-line-length = "dynamic"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+
+[tool.ty.rules]
+unresolved-attribute = "ignore"
+invalid-assignment = "ignore"
+unresolved-import = "ignore"
+possibly-unbound-attribute = "ignore"

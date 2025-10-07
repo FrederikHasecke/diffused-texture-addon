@@ -4,8 +4,16 @@ __pycache__
 *.py[cod]
 *$py.class
 
+# packages
+vendor/
+vendor/*
+
+
 # conda env
 .conda/
+
+# linting cache
+.ruff_cache/
 
 # scratchbook code snippets for prototyping
 scratchbook/
@@ -22,7 +30,12 @@ lib64/
 parts/ 
 sdist/ 
 var/ 
-wheels/ 
+wheels/
+wheels-dev/ 
+wheels*/
+wheels_118/
+wheels_128/
+wheels_129/
 *.whl
 *.egg-info/ 
 .installed.cfg 
@@ -36,17 +49,21 @@ pip-log.txt
 pip-delete-this-directory.txt
 *.log
 
-# Unit test / coverage reports 
-htmlcov/ 
-.tox/ 
-.coverage 
-.coverage.* 
-.cache 
+# Unit test / coverage reports
+tests/
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
 .pytest_cache/ 
 nosetests.xml 
 coverage.xml 
 *.cover 
 .hypothesis/ 
+Dockerfile
+pytest.ini
+
 
 # Translations
 *.mo
