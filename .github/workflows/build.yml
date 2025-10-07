@@ -1,8 +1,8 @@
-name: Build
+name: build
 
 on:
   workflow_run:
-    workflows: ["Tests"]
+    workflows: ["tests"]
     types: [completed]
   workflow_dispatch:
 

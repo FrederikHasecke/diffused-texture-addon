@@ -1,8 +1,8 @@
-name: Tests
+name: tests
 
 on:
   workflow_run:
-    workflows: ["Lint"]
+    workflows: ["lint"]
     types: [completed]
   workflow_dispatch:
 
