@@ -1,7 +1,7 @@
 name: build
 on:
   workflow_run:
-    workflows: ["test"]
+    workflows: ["lint"]
     types: [completed]
   workflow_dispatch:
 
