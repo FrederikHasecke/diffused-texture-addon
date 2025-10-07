@@ -91,8 +91,8 @@ class InstallDepsOperator(bpy.types.Operator):
         ].preferences
         channel = normalize_choice(prefs.cuda_variant)
         index_url, label = torch_index_url(
-            channel
-        )  # e.g. https://download.pytorch.org/whl/cu129 | rocm6.3 | cpu
+            channel,
+        )
         ensure_pip()
 
         target = deps_target_dir()
@@ -141,7 +141,6 @@ class InstallDepsOperator(bpy.types.Operator):
         )
 
         if rc != 0:
-            print(out)
             self.report({"ERROR"}, f"Dependency install failed.\n{out}")
             return {"CANCELLED"}
 
@@ -149,8 +148,14 @@ class InstallDepsOperator(bpy.types.Operator):
 
         # Minimal import sanity
         try:
-            import torch, diffusers, transformers, accelerate, safetensors, cv2, PIL  # noqa: F401
-        except Exception as e:
+            import accelerate  # noqa: F401
+            import cv2  # noqa: F401
+            import diffusers  # noqa: F401
+            import PIL  # noqa: F401
+            import safetensors  # noqa: F401
+            import torch  # noqa: F401
+            import transformers  # noqa: F401
+        except Exception as e:  # noqa: BLE001
             self.report({"ERROR"}, f"Installed, but imports failing: {e}")
             return {"CANCELLED"}
 

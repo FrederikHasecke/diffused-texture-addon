@@ -1,0 +1,64 @@
+name: Build
+on:
+  push:
+    branches: [ master, v0-redesign ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  lint:
+    name: Ruff lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: pip install --upgrade pip ruff
+      - run: ruff check . --output-format=github --config pyproject.toml
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stage clean build dir
+        run: |
+          rm -rf dist/addon && mkdir -p dist/addon
+          rsync -a --delete \
+            --exclude='.git/' --exclude='.github/' --exclude='__pycache__/' \
+            --exclude='.vscode/' --exclude='.ruff_cache/' --exclude='.pytest_cache/' \
+            --exclude='documentation/' --exclude='tests/' --exclude='images/' \
+            --exclude='scratchbook/' --exclude='*.md' --exclude='LICENSE' \
+            --exclude='NOTICE' --exclude='Dockerfile' --exclude='requirements*.txt' \
+            --exclude='wheels*/' \
+            ./ dist/addon/
+
+      - name: Create addon zip
+        run: |
+          cd dist
+          zip -r addon.zip addon/
+
+      - name: Build addon
+        uses: blenderkit/blender-addon-build@main
+        with:
+          name: diffusedtexture-addon
+          do-checkout: 'false'
+          build-location: 'dist/addon'
+          exclude-files: ".git"
+
+      - name: Upload artifact (stable name)
+        uses: actions/upload-artifact@v4
+        with:
+          name: addon-zip
+          path: dist/addon.zip
+          if-no-files-found: error

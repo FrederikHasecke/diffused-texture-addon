@@ -6,8 +6,9 @@
 ![Blender 4.2](https://img.shields.io/badge/Blender-4.2-blue?style=flat-square)![Blender 4.3](https://img.shields.io/badge/Blender-4.3-blue?style=flat-square)![Blender 4.4](https://img.shields.io/badge/Blender-4.4-blue?style=flat-square)![Blender 4.5+](https://img.shields.io/badge/Blender-4.5%2B-blue?style=flat-square)
 
 
-[![Build](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/ci.yml/badge.svg)](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/ci.yml)
-[![Lint](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/ci.yml/badge.svg?label=ruff)](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/ci.yml)
+[![Build](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/build.yml)
+[![Lint](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/lint.yml/badge.svg?branch=master)](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/lint.yml)
+[![Tests](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/test.yml)
 
 DiffusedTexture is a Blender add-on that uses Stable Diffusion to create textures directly on 3D meshes.
 

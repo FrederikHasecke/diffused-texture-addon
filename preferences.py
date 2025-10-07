@@ -34,8 +34,6 @@ class DiffuseTexPreferences(bpy.types.AddonPreferences):
             row = box.row()
             row.label(text="Enable in Preferences > System > Network.")
 
-        layout.prop(self, "hf_cache_path", text="HuggingFace Cache Path")
-
         deps = layout.box()
         deps.label(text="Python Dependencies")
         deps.prop(self, "cuda_variant", text="PyTorch build")
@@ -46,6 +44,8 @@ class DiffuseTexPreferences(bpy.types.AddonPreferences):
             text="Install Python Dependencies (Requires Restart of Blender)",
             icon="IMPORT",
         )
+
+        layout.prop(self, "hf_cache_path", text="HuggingFace Cache Path")
 
         mdl = layout.box()
         mdl.label(text="Models")
