@@ -1,5 +1,4 @@
-name: tests
-
+name: test
 on:
   workflow_run:
     workflows: ["lint"]

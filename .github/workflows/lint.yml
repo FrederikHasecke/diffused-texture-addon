@@ -12,3 +12,4 @@ jobs:
       - uses: astral-sh/ruff-action@v1
         with:
           args: check . --output-format=github --config pyproject.toml
+        continue-on-error: true

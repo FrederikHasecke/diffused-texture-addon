@@ -1,8 +1,7 @@
 name: build
-
 on:
   workflow_run:
-    workflows: ["tests"]
+    workflows: ["test"]
     types: [completed]
   workflow_dispatch:
 
@@ -30,7 +29,7 @@ jobs:
       - name: Create addon zip
         run: |
           cd dist
-          zip -r addon.zip addon/
+          zip -r diffused_texture_addon-${{ env.REL_VER }}.zip addon/
 
       - name: Build addon
         uses: blenderkit/blender-addon-build@main
@@ -44,5 +43,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: addon-zip
-          path: dist/addon.zip
+          path: dist/diffused_texture_addon-${{ env.REL_VER }}.zip
           if-no-files-found: error

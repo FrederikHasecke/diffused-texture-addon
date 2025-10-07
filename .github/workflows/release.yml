@@ -1,5 +1,4 @@
 name: release
-
 on:
   workflow_run:
     workflows: ["build"]
@@ -71,4 +70,4 @@ jobs:
           tag_name: ${{ env.TAG }}
           prerelease: ${{ env.IS_PRERELEASE }}
           generate_release_notes: true
-          files: out/addon.zip
+          files: out/diffused_texture_addon-${{ env.REL_VER }}.zip
