@@ -7,7 +7,7 @@
 
 [![Lint](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/lint.yml/badge.svg?branch=master)](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/lint.yml)
 [![Build](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/build.yml)
-
+[![Build](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/release.yml/badge.svg?branch=master)](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/release.yml)
 
 DiffusedTexture is a Blender add-on that uses Stable Diffusion to create textures directly on 3D meshes.
 
