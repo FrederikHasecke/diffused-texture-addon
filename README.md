@@ -1,5 +1,5 @@
 # DiffusedTexture: AI-Powered Texture Generation for Blender
-[![Latest Release](https://flat.badgen.net/github/release/FrederikHasecke/diffused-texture-addon)](https://github.com/FrederikHasecke/diffused-texture-addon/releases/latest)
+[![Latest Release](https://flat.badgen.net/github/release/FrederikHasecke/diffused-texture-addon/latest)](https://github.com/FrederikHasecke/diffused-texture-addon/releases/latest)
 [![Total Downloads](https://img.shields.io/github/downloads/FrederikHasecke/diffused-texture-addon/total?style=flat-square)](https://github.com/FrederikHasecke/diffused-texture-addon/releases/latest)
 ![Python Version](https://img.shields.io/badge/Python-3.11-blue?style=flat-square)
 
