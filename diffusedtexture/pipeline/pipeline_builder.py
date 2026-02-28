@@ -4,12 +4,14 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     try:
         from diffusers import (
+            QwenImageControlNetPipeline,
             StableDiffusionControlNetInpaintPipeline,
             StableDiffusionXLControlNetUnionInpaintPipeline,
         )
     except ModuleNotFoundError:
         StableDiffusionControlNetInpaintPipeline = None  # type: ignore[assignment]
         StableDiffusionXLControlNetUnionInpaintPipeline = None  # type: ignore[assignment]
+        QwenImageControlNetPipeline = None  # type: ignore[assignment]
 
 
 from ...blender_operations import ProcessParameter
@@ -27,24 +29,6 @@ def _pick_device() -> str:
         return "cpu"  # noqa: TRY300
     except Exception:  # noqa: BLE001
         return "cpu"
-
-
-def _pick_dtype(device: str):  # noqa: ANN202
-    import torch
-
-    # Use fp32 on CPU to avoid slow/failing fp16 kernels; use bf16 on modern GPUs
-    if device in {"cpu", "mps"}:
-        return torch.float32
-    # cuda/rocm
-    try:
-        major, _ = torch.cuda.get_device_capability(0)
-        if (
-            major >= 8  # noqa: PLR2004
-        ):  # Ampere+ generally supports bf16 reasonably well
-            return torch.bfloat16
-    except Exception:  # noqa: BLE001, S110
-        pass
-    return torch.float16
 
 
 def create_diffusion_pipeline(  # noqa: C901, PLR0912
@@ -71,8 +55,16 @@ def create_diffusion_pipeline(  # noqa: C901, PLR0912
 
     if process_parameter.sd_version == "sd15":
         pipe_cls = StableDiffusionControlNetInpaintPipeline
+        dtype = process_parameter.dtype if process_parameter.dtype else "float16"
     elif process_parameter.sd_version == "sdxl":
         pipe_cls = StableDiffusionXLControlNetUnionInpaintPipeline
+        dtype = process_parameter.dtype if process_parameter.dtype else "float16"
+    elif process_parameter.sd_version == "flux":
+        msg = "Flux model is not yet implemented."
+        raise NotImplementedError(msg)
+    elif process_parameter.sd_version == "qwen":
+        pipe_cls = QwenImageControlNetPipeline
+        dtype = process_parameter.dtype if process_parameter.dtype else "bfloat16"
     else:
         msg = "Unknown SD version: must be 'sd15' or 'sdxl'"
         raise ValueError(msg)
@@ -83,6 +75,10 @@ def create_diffusion_pipeline(  # noqa: C901, PLR0912
     ckpt = str(process_parameter.checkpoint_path)
 
     device = _pick_device()
+    torch_dtype = {
+        "float16": torch.float16,
+        "bfloat16": torch.bfloat16,
+    }.get(dtype, torch.float16)
 
     common_kwargs = {
         "safety_checker": None,
@@ -94,12 +90,14 @@ def create_diffusion_pipeline(  # noqa: C901, PLR0912
             pretrained_model_link_or_path=ckpt,
             controlnet=controlnets,
             use_safetensors=True,
+            torch_dtype=torch_dtype,
             **common_kwargs,
         )
     elif ckpt.endswith((".ckpt", ".pt", ".pth", ".bin")):
         pipe = pipe_cls.from_single_file(
             pretrained_model_link_or_path=ckpt,
             controlnet=controlnets,
+            torch_dtype=torch_dtype,
             **common_kwargs,
         )
     else:
@@ -107,6 +105,7 @@ def create_diffusion_pipeline(  # noqa: C901, PLR0912
             ckpt,
             controlnet=controlnets,
             use_safetensors=True,
+            torch_dtype=torch_dtype,
             **common_kwargs,
         )
 
@@ -127,17 +126,23 @@ def create_diffusion_pipeline(  # noqa: C901, PLR0912
                 subfolder="models",
                 weight_name="ip-adapter_sd15.bin",
             )
-        else:
+        elif process_parameter.sd_version == "sdxl":
             pipe.load_ip_adapter(
                 "h94/IP-Adapter",
                 subfolder="sdxl_models",
                 weight_name="ip-adapter_sdxl.bin",
             )
+        elif process_parameter.sd_version == "flux":
+            msg = "Flux model is not yet implemented."
+            raise NotImplementedError(msg)
+        elif process_parameter.sd_version == "qwen":
+            msg = "Qwen IPAdapter model is not yet implemented."
+            raise NotImplementedError(msg)
         pipe.set_ip_adapter_scale(process_parameter.ipadapter_strength)
 
     if device == "cpu":
         pipe.to("cpu")
-    elif device in ("cuda", "mps"):
+    else:
         pipe.to(device)
         pipe.enable_model_cpu_offload()
     return pipe

@@ -50,7 +50,18 @@ def process_uv_texture(  # noqa: PLR0913
     if process_parameter.custom_sd_resolution:
         sd_resolution = int(process_parameter.custom_sd_resolution)
     else:
-        sd_resolution = 512 if process_parameter.sd_version == "sd15" else 1024
+        match process_parameter.sd_version:
+            case "sd15":
+                sd_resolution = 512
+            case "sdxl":
+                sd_resolution = 1024
+            case "qwen":
+                sd_resolution = 1328
+            case "flux":
+                sd_resolution = 1024
+            case _:
+                msg = "Unknown SD version: must be 'sd15', 'sdxl', 'qwen' or 'flux'"
+                raise ValueError(msg)
 
     # Resize output_grid to render resolution
     output_grid = cv2.resize(
@@ -177,13 +188,14 @@ def inpaint_missing(
         * uv_texture_first_pass
     )
 
-    weighted_tex = np.sum(weighted_tex, axis=0) / np.stack(
-        (
-            np.sum(uv_texture_first_pass_weight, axis=0),
-            np.sum(uv_texture_first_pass_weight, axis=0),
-            np.sum(uv_texture_first_pass_weight, axis=0),
-        ),
-        axis=-1,
+    weight_sum = np.sum(uv_texture_first_pass_weight, axis=0)
+    denom = np.stack((weight_sum, weight_sum, weight_sum), axis=-1)
+    weighted_tex_sum = np.sum(weighted_tex, axis=0)
+    weighted_tex = np.divide(
+        weighted_tex_sum,
+        denom,
+        out=np.zeros_like(weighted_tex_sum),
+        where=denom > 1e-8,
     )
 
     # make the unpainted mask 0-255 uint8

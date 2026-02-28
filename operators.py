@@ -129,7 +129,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                     render_img_folders,
                     progress_callback,
                     mark_done,
-                    self._return_texture,
+                    self._return_texture,  #
                     input_texture,
                 ),
                 daemon=True,

@@ -15,8 +15,15 @@ class stable_diffusion_paths(Enum):
     sd15_cn_canny = "lllyasviel/sd-controlnet-canny"
     sd15_cn_normal = "lllyasviel/sd-controlnet-normal"
     sd15_cn_depth = "lllyasviel/sd-controlnet-depth"
+
     sdxl_ckpt = "stabilityai/stable-diffusion-xl-base-1.0"
     sdxl_cn_union = "xinsir/controlnet-union-sdxl-1.0"
+
+    qwen_ckpt = "Qwen/Qwen-Image"
+    qwen_cn_union = "InstantX/Qwen-Image-ControlNet-Union"
+
+    flux_ckpt = "black-forest-labs/FLUX.1-Depth-dev"
+    flux_cn = "sayakpaul/FLUX.1-Depth-dev-nf4"
 
 
 def update_sd_paths(self: bpy.types.Scene, context: bpy.types.Context) -> None:  # noqa: ARG001
@@ -30,10 +37,14 @@ def update_sd_paths(self: bpy.types.Scene, context: bpy.types.Context) -> None: 
     elif context.scene.sd_version == "sdxl":
         context.scene.checkpoint_path = stable_diffusion_paths.sdxl_ckpt.value
         context.scene.controlnet_union_path = stable_diffusion_paths.sdxl_cn_union.value
+    elif context.scene.sd_version == "flux":
+        context.scene.checkpoint_path = stable_diffusion_paths.flux_ckpt.value
+        context.scene.controlnet_union_path = stable_diffusion_paths.flux_cn.value
+    elif context.scene.sd_version == "qwen":
+        context.scene.checkpoint_path = stable_diffusion_paths.qwen_ckpt.value
+        context.scene.controlnet_union_path = stable_diffusion_paths.qwen_cn_union.value
     else:
-        msg = (
-            "Invalid Stable Diffusion version selected. Please choose 'sd15' or 'sdxl'."
-        )
+        msg = "Invalid Stable Diffusion version selected."
         context.scene.checkpoint_path = ""
         raise ValueError(msg)
 
@@ -55,6 +66,20 @@ def register_stable_diffusion_properties() -> None:
         description="Path to the base Stable Diffusion model",
         subtype="FILE_PATH",
         default="runwayml/stable-diffusion-v1-5",
+    )
+
+    bpy.types.Scene.dtype = EnumProperty(
+        name="Data Type",
+        description="Data type for model inference",
+        items=[
+            (
+                "float16",
+                "float16",
+                "Use float16 precision (most SD 1.5 and most SDXL models)",
+            ),
+            ("bfloat16", "bfloat16", "Use bfloat16 precision (FLUX and Qwen models)"),
+        ],
+        default="float16",
     )
 
     bpy.types.Scene.custom_sd_resolution = IntProperty(

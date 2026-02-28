@@ -61,8 +61,9 @@ class ProcessParameter:
     input_texture: bpy.types.Image | NDArray | None
 
     # Advanced Settings
-    sd_version: Literal["sd15", "sdxl"] | None
+    sd_version: Literal["sd15", "sdxl", "flux", "qwen"] | None
     checkpoint_path: str
+    dtype: Literal["float16", "bfloat16"] | None
     custom_sd_resolution: int
     controlnet_union_path: str | None
     union_controlnet_strength: float | None
@@ -256,6 +257,7 @@ def extract_process_parameter_from_context(
         input_texture=getattr(scene, "input_texture", None),
         sd_version=getattr(scene, "sd_version", None),
         checkpoint_path=getattr(scene, "checkpoint_path", ""),
+        dtype=getattr(scene, "dtype", None),
         custom_sd_resolution=getattr(scene, "custom_sd_resolution", 0),
         controlnet_union_path=getattr(scene, "controlnet_union_path", None),
         union_controlnet_strength=getattr(scene, "union_controlnet_strength", None),

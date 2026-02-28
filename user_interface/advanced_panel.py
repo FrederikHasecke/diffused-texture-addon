@@ -25,8 +25,8 @@ class OBJECT_PT_AdvancedPanel(bpy.types.Panel):
 
         box = layout.box()
 
-        # dropdown menu for the sd model (sd15 or sdxl so far)
-        box.prop(context.scene, "sd_version", text="Stable Diffusion Version:")
+        # dropdown menu for the sd model version
+        box.prop(context.scene, "sd_version", text="Model Type:")
 
         # custom SD checkpoints
         box.prop(context.scene, "checkpoint_path", text="Checkpoint")

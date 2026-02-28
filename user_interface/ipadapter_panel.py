@@ -17,37 +17,41 @@ class OBJECT_PT_IPAdapterPanel(bpy.types.Panel):
     bl_order = 2
 
     def draw(self, context: bpy.types.Context) -> None:
-        """Draw function.
-
-        Args:
-            context (bpy.types.Context): _description_
-        """
+        """Draw function."""
         layout = self.layout
         scene = context.scene
 
-        # IPAdapter Activation Checkbox
-        layout.prop(scene, "use_ipadapter", text="Activate IPAdapter")
+        if scene.sd_version not in {"sdxl", "sd15"}:
+            layout.label(
+                text="IPAdapter is only implemented for SD 1.5 and SDXL models.",
+                icon="ERROR",
+            )
+            layout.enabled = False
 
-        # IPAdapter Image Preview and Selection
-        row = layout.row()
+        else:
+            # IPAdapter Activation Checkbox
+            layout.prop(scene, "use_ipadapter", text="Activate IPAdapter")
 
-        # disable the IPAdapter image selection if the IPAdapter is not activated
-        row.enabled = scene.use_ipadapter
-        row.template_ID_preview(scene, "ipadapter_image", rows=2, cols=6)
+            # IPAdapter Image Preview and Selection
+            row = layout.row()
 
-        row = layout.row()
-        row.enabled = scene.use_ipadapter
-        # Button to open the file browser and load a new image
-        row.operator(
-            "image.open_new_ipadapter_image",
-            text="Open New IPAdapter Image",
-            icon="IMAGE_DATA",
-        )
+            # disable the IPAdapter image selection if the IPAdapter is not activated
+            row.enabled = scene.use_ipadapter
+            row.template_ID_preview(scene, "ipadapter_image", rows=2, cols=6)
 
-        # IPAdapter Strength Slider
-        row = layout.row()
-        row.enabled = scene.use_ipadapter
-        row.prop(scene, "ipadapter_strength", text="Strength IPAdapter")
+            row = layout.row()
+            row.enabled = scene.use_ipadapter
+            # Button to open the file browser and load a new image
+            row.operator(
+                "image.open_new_ipadapter_image",
+                text="Open New IPAdapter Image",
+                icon="IMAGE_DATA",
+            )
+
+            # IPAdapter Strength Slider
+            row = layout.row()
+            row.enabled = scene.use_ipadapter
+            row.prop(scene, "ipadapter_strength", text="Strength IPAdapter")
 
 
 class OBJECT_OT_OpenNewIPAdapterImage(bpy.types.Operator):

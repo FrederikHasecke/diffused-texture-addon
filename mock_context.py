@@ -12,6 +12,7 @@ class MockScene:
         self.normal_controlnet_strength = 1.0
         self.sd_version = "sd15"
         self.checkpoint_path = "runwayml/stable-diffusion-v1-5"
+        self.dtype = "float16"
         self.canny_controlnet_path = "lllyasviel/sd-controlnet-canny"
         self.normal_controlnet_path = "lllyasviel/sd-controlnet-normal"
         self.depth_controlnet_path = "lllyasviel/control_v11f1p_sd15_depth"

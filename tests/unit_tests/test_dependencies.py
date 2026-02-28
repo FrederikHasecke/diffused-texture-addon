@@ -1,4 +1,5 @@
 def test_dependency_imports() -> None:
+    import OpenEXR
     import accelerate
     import cv2
     import diffusers

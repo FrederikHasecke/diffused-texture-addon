@@ -53,7 +53,18 @@ def img_sequential(
     if process_parameter.custom_sd_resolution:
         sd_resolution = int(process_parameter.custom_sd_resolution)
     else:
-        sd_resolution = 512 if process_parameter.sd_version == "sd15" else 1024
+        match process_parameter.sd_version:
+            case "sd15":
+                sd_resolution = 512
+            case "sdxl":
+                sd_resolution = 1024
+            case "qwen":
+                sd_resolution = 1328
+            case "flux":
+                sd_resolution = 1024
+            case _:
+                msg = "Unknown SD version: must be 'sd15', 'sdxl', 'qwen' or 'flux'"
+                raise ValueError(msg)
 
     # Assemble per-view processed/resized maps
     _, resized_list = assemble_multiview_list(

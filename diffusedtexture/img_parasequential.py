@@ -59,7 +59,18 @@ def img_parasequential(  # noqa: PLR0913
     if process_parameter.custom_sd_resolution:
         sd_tile_res = int(process_parameter.custom_sd_resolution)
     else:
-        sd_tile_res = 512 if process_parameter.sd_version == "sd15" else 1024
+        match process_parameter.sd_version:
+            case "sd15":
+                sd_tile_res = 512
+            case "sdxl":
+                sd_tile_res = 1024
+            case "qwen":
+                sd_tile_res = 1328
+            case "flux":
+                sd_tile_res = 1024
+            case _:
+                msg = "Unknown SD version: must be 'sd15', 'sdxl', 'qwen' or 'flux'"
+                raise ValueError(msg)
 
     render_res = int(process_parameter.render_resolution)
     tex_res = int(process_parameter.texture_resolution)
