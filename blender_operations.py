@@ -9,6 +9,9 @@ from numpy.typing import NDArray
 from .render_setup import (
     create_cameras_on_sphere,
     create_cameras_on_two_rings,
+    find_output_node_image_path,
+    get_output_node_directory,
+    set_output_node_directory,
     setup_render_settings,
 )
 from .utils import isolate_object
@@ -563,12 +566,15 @@ def render_views(
     output_nodes = setup_render_settings(context, context.scene.render_resolution)
 
     render_img_folders = {
-        "depth": output_nodes["depth"].base_path,
-        "normal": output_nodes["normal"].base_path,
-        "uv": output_nodes["uv"].base_path,
-        "position": output_nodes["position"].base_path,
+        "depth": get_output_node_directory(output_nodes["depth"]),
+        "normal": get_output_node_directory(output_nodes["normal"]),
+        "uv": get_output_node_directory(output_nodes["uv"]),
+        "position": get_output_node_directory(output_nodes["position"]),
         # Facing images are in the folder "facing" which is not rendered but created
-        "facing": str(Path(output_nodes["uv"].base_path).parent / "render_facing"),
+        "facing": str(
+            Path(get_output_node_directory(output_nodes["uv"])).parent
+            / "render_facing",
+        ),
     }
 
     # Create the facing images folder if it does not exist
@@ -577,21 +583,13 @@ def render_views(
     # Render for each camera
     for cam_idx, camera in enumerate(cameras):
         for output_node in output_nodes:
-            if cam_idx == 0:
-                new_path = (
-                    Path(output_nodes[output_node].base_path) / f"camera_{cam_idx:02d}"
-                )
-            else:
-                new_path = (
-                    Path(output_nodes[output_node].base_path).parent
-                    / f"camera_{cam_idx:02d}"
-                )
+            new_path = Path(render_img_folders[output_node]) / f"camera_{cam_idx:02d}"
 
             # Create the new path if it does not exist
             new_path.mkdir(parents=True, exist_ok=True)
 
             # Set the output path for the output node
-            output_nodes[output_node].base_path = str(new_path)
+            set_output_node_directory(output_nodes[output_node], new_path)
 
         context.scene.camera = camera
 
@@ -618,9 +616,9 @@ def save_normals_in_camera_coordinates(
     output_nodes: dict[str, bpy.types.CompositorNodeOutputFile],
     camera: bpy.types.Object,
 ) -> None:
-    image_path = Path(output_nodes["normal"].base_path) / (
-        str(output_nodes["normal"].file_slots[0].path)
-        + f"{bpy.context.scene.frame_current:04d}.exr"
+    image_path = find_output_node_image_path(
+        output_nodes["normal"],
+        bpy.context.scene.frame_current,
     )
 
     normal_ccs = create_normal_condition(
@@ -628,15 +626,9 @@ def save_normals_in_camera_coordinates(
         camera_obj=camera,
     )
 
-    # overwrite the normal image with the camera coordinates
-    normal_path = Path(output_nodes["normal"].base_path) / (
-        str(output_nodes["normal"].file_slots[0].path)
-        + f"{bpy.context.scene.frame_current:04d}.exr"
-    )
-
     save_numpy_to_exr(
         img_np=normal_ccs,
-        filepath=str(normal_path),
+        filepath=str(image_path),
         name="normal_camera_coordinates",
     )
 
@@ -645,24 +637,18 @@ def save_depth_condition(
     output_nodes: dict[str, bpy.types.CompositorNodeOutputFile],
 ) -> None:
     """Save the depth condition as an image as stable diffusion uses in Controlnet."""
-    image_path = Path(output_nodes["depth"].base_path) / (
-        str(output_nodes["depth"].file_slots[0].path)
-        + f"{bpy.context.scene.frame_current:04d}.exr"
+    image_path = find_output_node_image_path(
+        output_nodes["depth"],
+        bpy.context.scene.frame_current,
     )
 
     depth_sd = create_depth_condition(
         depth_image_path=str(image_path),
     )
 
-    # overwrite the normal image with the camera coordinates
-    depth_path = Path(output_nodes["depth"].base_path) / (
-        str(output_nodes["depth"].file_slots[0].path)
-        + f"{bpy.context.scene.frame_current:04d}.exr"
-    )
-
     save_numpy_to_exr(
         img_np=depth_sd,
-        filepath=str(depth_path),
+        filepath=str(image_path),
         name="depth_sd_like",
     )
 
@@ -675,10 +661,9 @@ def save_facing_images(
     """Save facing images for the camera."""
     frame_index = context.scene.frame_current
 
-    normal_path = (
-        Path(output_nodes["normal"].base_path).parent
-        / f"camera_{cam_idx:02d}"
-        / (str(output_nodes["normal"].file_slots[0].path) + f"{frame_index:04d}.exr")
+    normal_path = find_output_node_image_path(
+        output_nodes["normal"],
+        frame_index,
     )
 
     normal_array = load_img_to_numpy(str(normal_path))
@@ -690,7 +675,7 @@ def save_facing_images(
 
     new_folder_path = (
         Path(
-            str(Path(output_nodes["normal"].base_path).parent).replace(
+            str(Path(get_output_node_directory(output_nodes["normal"])).parent).replace(
                 "render_normal",
                 "render_facing",
             ),

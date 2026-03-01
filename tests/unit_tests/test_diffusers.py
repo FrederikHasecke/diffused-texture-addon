@@ -57,24 +57,26 @@ def test_create_pipeline_sdxl_inpaint():
     assert pipe is not None
 
 
-# def test_create_pipeline_qwen_image():
-#     """Test creating Qwen Image ControlNet pipeline."""
+def test_create_pipeline_qwen_image():
+    """Test creating Qwen Image ControlNet pipeline."""
 
-#     import torch
-#     from diffusers import QwenImageControlNetModel, QwenImageMultiControlNetModel, QwenImageControlNetPipeline
+    import torch
+    from diffusers import QwenImageControlNetModel, QwenImageMultiControlNetModel, QwenImageControlNetPipeline
 
-#     controlnet = QwenImageControlNetModel.from_pretrained(
-#         "InstantX/Qwen-Image-ControlNet-Union",
-#         torch_dtype=torch.float16,
-#     )
+    controlnet = QwenImageControlNetModel.from_pretrained(
+        "InstantX/Qwen-Image-ControlNet-Union",
+        torch_dtype=torch.float16,
+    )
     
-#     pipe = QwenImageControlNetPipeline.from_pretrained(
-#         "Qwen/Qwen-Image",
-#         controlnet=controlnet,
-#         use_safetensors=True,
-#         safety_checker=None,
-#         requires_safety_checker=False,
-#         torch_dtype=torch.bfloat16,
-#     )
-#     pipe.to("cuda")
-#     assert pipe is not None
+    pipe = QwenImageControlNetPipeline.from_pretrained(
+        "Qwen/Qwen-Image",
+        controlnet=controlnet,
+        use_safetensors=True,
+        safety_checker=None,
+        requires_safety_checker=False,
+        torch_dtype=torch.bfloat16,
+    )
+    pipe.to("cuda")
+    assert pipe is not None
+
+# TODO: create a flux  

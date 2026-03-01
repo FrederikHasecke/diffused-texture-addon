@@ -31,11 +31,11 @@ def _pick_device() -> str:
         return "cpu"
 
 
-def create_diffusion_pipeline(  # noqa: C901, PLR0912
+def create_diffusion_pipeline(  # noqa: C901, PLR0912, PLR0915
     process_parameter: ProcessParameter,
 ) -> Any:  # noqa: ANN401
     try:
-        import torch  # noqa: F401
+        import torch
         from diffusers import (
             StableDiffusionControlNetInpaintPipeline,
             StableDiffusionXLControlNetUnionInpaintPipeline,
@@ -55,16 +55,16 @@ def create_diffusion_pipeline(  # noqa: C901, PLR0912
 
     if process_parameter.sd_version == "sd15":
         pipe_cls = StableDiffusionControlNetInpaintPipeline
-        dtype = process_parameter.dtype if process_parameter.dtype else "float16"
+        dtype = process_parameter.dtype or "float16"
     elif process_parameter.sd_version == "sdxl":
         pipe_cls = StableDiffusionXLControlNetUnionInpaintPipeline
-        dtype = process_parameter.dtype if process_parameter.dtype else "float16"
+        dtype = process_parameter.dtype or "float16"
     elif process_parameter.sd_version == "flux":
         msg = "Flux model is not yet implemented."
         raise NotImplementedError(msg)
     elif process_parameter.sd_version == "qwen":
         pipe_cls = QwenImageControlNetPipeline
-        dtype = process_parameter.dtype if process_parameter.dtype else "bfloat16"
+        dtype = process_parameter.dtype or "bfloat16"
     else:
         msg = "Unknown SD version: must be 'sd15' or 'sdxl'"
         raise ValueError(msg)

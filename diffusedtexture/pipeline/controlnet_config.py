@@ -99,6 +99,7 @@ def build_controlnet_config(
         }
 
     if process_parameter.sd_version == "flux":
+        # TODO: Implement flux pipeline
         msg = "Flux model is not yet implemented."
         raise NotImplementedError(msg)
 

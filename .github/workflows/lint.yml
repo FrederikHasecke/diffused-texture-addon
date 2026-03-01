@@ -13,3 +13,21 @@ jobs:
         with:
           args: check . --output-format=github --config pyproject.toml
         continue-on-error: true
+
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "pytest>=9.0.2" "bpy>=5.0.1"
+      - name: Run unit compatibility tests
+        run: |
+          python -m pytest \
+            tests/unit_tests/test_bpy.py \
+            tests/unit_tests/test_render_setup_compat.py \
+            -q

@@ -169,7 +169,8 @@ class InstallDepsOperator(bpy.types.Operator):
             set_active_deps_target(target)
         except Exception as e:  # noqa: BLE001
             self.report(
-                {"ERROR"}, f"Installed, but failed to activate dependencies: {e}"
+                {"ERROR"},
+                f"Installed, but failed to activate dependencies: {e}",
             )
             return {"CANCELLED"}
         make_importable(target)

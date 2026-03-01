@@ -33,16 +33,40 @@ def _enable_addon() -> str:
     raise AssertionError(f"Could not enable addon. Errors: {error_text}")
 
 
-def _wait_until_finished(timeout_sec: int = 900) -> None:
+def _wait_until_finished(
+    output_path: Path,
+    existing_files: set[str],
+    timeout_sec: int = 900,
+) -> None:
     import bpy
 
     scene = bpy.context.scene
     start = time.time()
-    while bool(getattr(scene, "diffused_texture_operator_running", False)):
+
+    while True:
+        generated_files = {p.name for p in output_path.glob("output_texture_*.png")}
+        if generated_files - existing_files:
+            return
+
+        error_text = str(getattr(scene, "diffused_texture_operator_error", ""))
+        if error_text:
+            return
+
+        is_running = bool(getattr(scene, "diffused_texture_operator_running", False))
+        is_done = bool(getattr(scene, "diffused_texture_operator_done", False))
+        if is_done and not is_running:
+            return
+
         if time.time() - start > timeout_sec:
             raise TimeoutError(
                 f"Texture generation did not finish within {timeout_sec} seconds."
             )
+
+        try:
+            bpy.ops.wm.redraw_timer(type="DRAW_WIN_SWAP", iterations=1)
+        except RuntimeError:
+            pass
+
         time.sleep(1)
 
 
@@ -71,7 +95,7 @@ def test_run_parallel() -> None:
     if not obj.data.uv_layers:
         obj.data.uv_layers.new(name="UVMap")
 
-    output_path = Path(tempfile.gettempdir())
+    output_path = Path(tempfile.mkdtemp(prefix="diffused_texture_e2e_"))
     existing = {p.name for p in output_path.glob("output_texture_*.png")}
 
     scene = bpy.context.scene
@@ -85,7 +109,7 @@ def test_run_parallel() -> None:
     scene.num_cameras = "4"
     scene.texture_resolution = "512"
     scene.render_resolution = "1024"
-    scene.output_path = str(output_path)
+    scene.output_path = str(output_path) + "/"
     scene.my_mesh_object = obj.name
     scene.my_uv_map = obj.data.uv_layers.active.name
     scene.custom_sd_resolution = 64
@@ -93,7 +117,7 @@ def test_run_parallel() -> None:
     op_result = bpy.ops.object.generate_texture()
     assert "RUNNING_MODAL" in op_result or "FINISHED" in op_result
 
-    _wait_until_finished()
+    _wait_until_finished(output_path, existing, timeout_sec=30)
 
     error_text = str(getattr(scene, "diffused_texture_operator_error", ""))
     assert not error_text, f"Texture generation failed: {error_text}"
