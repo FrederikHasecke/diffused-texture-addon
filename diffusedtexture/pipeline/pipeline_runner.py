@@ -1,14 +1,44 @@
 from collections.abc import Callable
 
+import numpy as np
 from diffusers import (
     StableDiffusionControlNetInpaintPipeline,
     StableDiffusionXLControlNetUnionInpaintPipeline,
 )
+from numpy.typing import NDArray
 from PIL import Image
 
 from ...blender_operations import ProcessParameter
-from ...utils import image_to_numpy
 from .controlnet_config import build_controlnet_config
+
+
+def _to_pil_image(img: NDArray | Image.Image | None) -> Image.Image | None:
+    if img is None:
+        return None
+
+    if isinstance(img, Image.Image):
+        return img
+
+    arr = np.asarray(img)
+    if arr.ndim == 2:  # noqa: PLR2004
+        arr = np.repeat(arr[..., None], 3, axis=2)
+
+    if arr.ndim != 3:  # noqa: PLR2004
+        msg = "IPAdapter image must be a 2D or 3D array."
+        raise ValueError(msg)
+
+    if arr.shape[2] == 4:  # noqa: PLR2004
+        arr = arr[..., :3]
+
+    if arr.dtype != np.uint8:
+        max_value = float(np.max(arr)) if arr.size else 0.0
+        if max_value <= 1.0:
+            arr = np.clip(arr, 0.0, 1.0)
+            arr = (arr * 255).astype(np.uint8)
+        else:
+            arr = np.clip(arr, 0.0, 255.0).astype(np.uint8)
+
+    return Image.fromarray(arr)
 
 
 def run_pipeline(  # noqa: PLR0913
@@ -28,7 +58,6 @@ def run_pipeline(  # noqa: PLR0913
     # Lazy imports so the add-on can register without deps.
     try:
         import torch
-        from PIL import Image
     except ModuleNotFoundError:
         return None
 
@@ -55,7 +84,7 @@ def run_pipeline(  # noqa: PLR0913
             "mask_image": uv_mask,
             "control_image": control_images,
             "ip_adapter_image": (
-                Image.fromarray(image_to_numpy(process_parameter.ipadapter_image))
+                _to_pil_image(process_parameter.ipadapter_image)
                 if process_parameter.use_ipadapter
                 else None
             ),

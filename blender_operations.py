@@ -240,6 +240,10 @@ def extract_process_parameter_from_context(
                 },
             )
 
+    ipadapter_image = getattr(scene, "ipadapter_image", None)
+    if ipadapter_image is not None:
+        ipadapter_image = bpy_img_to_numpy(ipadapter_image)
+
     return ProcessParameter(
         my_mesh_object=getattr(scene, "my_mesh_object", ""),
         my_uv_map=getattr(scene, "my_uv_map", ""),
@@ -272,9 +276,9 @@ def extract_process_parameter_from_context(
         normal_controlnet_strength=getattr(scene, "normal_controlnet_strength", None),
         use_ipadapter=getattr(scene, "use_ipadapter", False),
         ipadapter_strength=getattr(scene, "ipadapter_strength", 0.0),
-        ipadapter_image=getattr(scene, "ipadapter_image", None),
+        ipadapter_image=ipadapter_image,
         num_loras=getattr(scene, "num_loras", 0),
-        lora_models=getattr(scene, "lora_models", []),
+        lora_models=lora_models,
     )
 
 
@@ -349,18 +353,13 @@ def load_img_to_numpy(img_path: str | Path) -> NDArray:
     Returns:
         np.ndarray: A NumPy array representation of the image.
     """
-    img_file_name = Path(img_path).name
-    if img_file_name in bpy.data.images:
-        bpy.data.images.remove(bpy.data.images[img_file_name])
-    bpy.data.images.load(str(img_path))
+    img_bpy = bpy.data.images.load(str(img_path), check_existing=False)
 
-    img_bpy = bpy.data.images.get(img_file_name)
-
-    if img_bpy is None:
-        msg = f"Image '{img_file_name}' could not be loaded into Blender."
-        raise FileNotFoundError(msg)
-
-    return bpy_img_to_numpy(img_bpy)
+    try:
+        return bpy_img_to_numpy(img_bpy)
+    finally:
+        if img_bpy.name in bpy.data.images:
+            bpy.data.images.remove(img_bpy)
 
 
 def bpy_img_to_numpy(img_bpy: bpy.types.Image) -> NDArray[np.float32]:

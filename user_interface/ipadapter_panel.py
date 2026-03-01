@@ -32,12 +32,19 @@ class OBJECT_PT_IPAdapterPanel(bpy.types.Panel):
             # IPAdapter Activation Checkbox
             layout.prop(scene, "use_ipadapter", text="Activate IPAdapter")
 
+            is_running = bool(
+                getattr(scene, "diffused_texture_operator_running", False),
+            )
+
             # IPAdapter Image Preview and Selection
             row = layout.row()
 
             # disable the IPAdapter image selection if the IPAdapter is not activated
-            row.enabled = scene.use_ipadapter
-            row.template_ID_preview(scene, "ipadapter_image", rows=2, cols=6)
+            row.enabled = scene.use_ipadapter and not is_running
+            if is_running:
+                row.prop(scene, "ipadapter_image", text="IPAdapter Image")
+            else:
+                row.template_ID_preview(scene, "ipadapter_image", rows=2, cols=6)
 
             row = layout.row()
             row.enabled = scene.use_ipadapter

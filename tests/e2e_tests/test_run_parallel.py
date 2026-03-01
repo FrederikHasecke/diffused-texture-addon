@@ -1,4 +1,5 @@
 import importlib
+import os
 import tempfile
 import time
 from pathlib import Path
@@ -8,6 +9,8 @@ ADDON_MODULE_CANDIDATES = (
     "diffused_texture_addon",
     "bl_ext.user_default.diffused_texture_addon",
 )
+
+E2E_TIMEOUT_SECONDS = int(os.getenv("DIFFUSEDTEXTURE_E2E_TIMEOUT", "180"))
 
 
 def _enable_addon() -> str:
@@ -70,8 +73,12 @@ def _wait_until_finished(
         time.sleep(1)
 
 
-def test_run_parallel() -> None:
-    """Test the parallel image-based texture generation end to end."""
+def _run_generation_mode(
+    operation_mode: str,
+    *,
+    subgrid_rows: int = 2,
+    subgrid_cols: int = 2,
+) -> None:
     try:
         import bpy
     except ImportError as exc:
@@ -104,7 +111,7 @@ def test_run_parallel() -> None:
     scene.denoise_strength = 1.0
     scene.num_inference_steps = 1
     scene.guidance_scale = 7.5
-    scene.operation_mode = "PARALLEL_IMG"
+    scene.operation_mode = operation_mode
     scene.mesh_complexity = "LOW"
     scene.num_cameras = "4"
     scene.texture_resolution = "512"
@@ -113,14 +120,35 @@ def test_run_parallel() -> None:
     scene.my_mesh_object = obj.name
     scene.my_uv_map = obj.data.uv_layers.active.name
     scene.custom_sd_resolution = 64
+    scene.subgrid_rows = subgrid_rows
+    scene.subgrid_cols = subgrid_cols
 
     op_result = bpy.ops.object.generate_texture()
     assert "RUNNING_MODAL" in op_result or "FINISHED" in op_result
 
-    _wait_until_finished(output_path, existing, timeout_sec=30)
+    _wait_until_finished(output_path, existing, timeout_sec=E2E_TIMEOUT_SECONDS)
 
     error_text = str(getattr(scene, "diffused_texture_operator_error", ""))
     assert not error_text, f"Texture generation failed: {error_text}"
 
     generated = {p.name for p in output_path.glob("output_texture_*.png")}
     assert generated - existing, "No output texture file was generated"
+
+
+def test_run_parallel() -> None:
+    """Test the parallel image-based texture generation end to end."""
+    _run_generation_mode("PARALLEL_IMG")
+
+
+def test_run_sequential() -> None:
+    """Test the sequential image-based texture generation end to end."""
+    _run_generation_mode("SEQUENTIAL_IMG")
+
+
+def test_run_para_sequential() -> None:
+    """Test the para-sequential image-based texture generation end to end."""
+    _run_generation_mode(
+        "PARA_SEQUENTIAL_IMG",
+        subgrid_rows=1,
+        subgrid_cols=2,
+    )
