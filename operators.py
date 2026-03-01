@@ -134,24 +134,34 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
         try:
             selected_obj_name = context.scene.my_mesh_object
             selected_obj = bpy.data.objects.get(selected_obj_name)
+            if selected_obj is None:
+                msg = f"Selected object '{selected_obj_name}' was not found."
+                raise ValueError(msg)
 
-            # Backup the scene and isolate the object
-            scene_backup = prepare_scene(selected_obj)
+            scene_backup = None
+            cameras = []
 
-            # Rendering progress (simulate with steps)
-            if context.scene.operation_mode != "UV":
-                # Render views and save to folders
-                wm.progress_update(5)
-                render_img_folders, cameras = render_views(context, selected_obj)
-                wm.progress_update(10)
-            else:
-                wm.progress_update(5)
-                render_img_folders, cameras = bake_uv_views(context, selected_obj)
-                wm.progress_update(10)
-            self.render_img_folders = render_img_folders
+            try:
+                # Backup the scene and isolate the object
+                scene_backup = prepare_scene(selected_obj)
 
-            # Restore the scene after rendering
-            restore_scene(scene_backup, cameras)
+                # Rendering progress (simulate with steps)
+                if context.scene.operation_mode != "UV":
+                    # Render views and save to folders
+                    wm.progress_update(5)
+                    render_img_folders, cameras = render_views(context, selected_obj)
+                    wm.progress_update(10)
+                else:
+                    wm.progress_update(5)
+                    render_img_folders, render_cameras = bake_uv_views(
+                        context, selected_obj
+                    )
+                    cameras = render_cameras or []
+                    wm.progress_update(10)
+                self.render_img_folders = render_img_folders
+            finally:
+                if scene_backup is not None:
+                    restore_scene(scene_backup, cameras)
 
             # Put the process parameter from context to a dataclass for thread safety
             process_parameter = extract_process_parameter_from_context(context)
