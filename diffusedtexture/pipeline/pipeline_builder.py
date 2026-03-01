@@ -113,10 +113,10 @@ def create_diffusion_pipeline(  # noqa: C901, PLR0912, PLR0915
     if process_parameter.num_loras > 0:
         for lora in process_parameter.lora_models:
             pipe.load_lora_weights(
-                str(Path(lora.path).parent),
-                weight_name=str(Path(lora.path).name),
+                str(Path(lora["path"]).parent),
+                weight_name=str(Path(lora["path"]).name),
             )
-            pipe.fuse_lora(lora_scale=lora.strength)
+            pipe.fuse_lora(lora_scale=lora["strength"])
 
     # IPAdapter
     if process_parameter.use_ipadapter:
