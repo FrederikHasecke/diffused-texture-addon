@@ -78,16 +78,7 @@ def run_texture_generation(  # noqa: PLR0913
         return_texture_bucket: Optional bucket to store the resulting texture.
         texture: Optional input texture.
     """
-    if process_parameter.operation_mode == "UV_PASS":
-        msg = "UV Pass mode is currently not implemented."
-        raise NotImplementedError(msg)
-        # output_texture: NDArray[np.uint8] = uv_pass(
-        #     baked_texture_dict=render_img_folders,  # noqa: ERA001
-        #     process_parameter=process_parameter,  # noqa: ERA001
-        #     progress_callback=progress_callback,  # noqa: ERA001
-        #     texture=texture,  # noqa: ERA001
-        # )  # noqa: ERA001, RUF100
-    elif process_parameter.operation_mode == "PARALLEL_IMG":
+    if process_parameter.operation_mode == "PARALLEL_IMG":
         output_texture = img_parallel(
             multiview_images=multiview_images,
             process_parameter=process_parameter,

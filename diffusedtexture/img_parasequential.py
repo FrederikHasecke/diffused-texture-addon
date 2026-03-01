@@ -26,7 +26,7 @@ from .process_operations import (
 )
 
 
-def img_parasequential(  # noqa: PLR0913
+def img_parasequential(  # noqa: C901, PLR0912, PLR0913, PLR0915
     multiview_images: dict[str, list[NDArray]],
     process_parameter: ProcessParameter,
     progress_callback: Callable,

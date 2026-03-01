@@ -240,7 +240,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                 else:
                     wm.progress_update(5)
                     render_img_folders, render_cameras = bake_uv_views(
-                        context, selected_obj
+                        context, selected_obj,
                     )
                     cameras = render_cameras or []
                     wm.progress_update(10)
@@ -321,7 +321,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
 
         return {"RUNNING_MODAL"}
 
-    def modal(  # noqa: C901, PLR0912
+    def modal(
         self,
         context: bpy.types.Context,
         event: bpy.types.Event,

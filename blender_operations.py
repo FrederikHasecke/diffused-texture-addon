@@ -37,7 +37,6 @@ class ProcessParameter:
         "PARALLEL_IMG",
         "SEQUENTIAL_IMG",
         "PARA_SEQUENTIAL_IMG",
-        # "UV_PASS",
     ]
     subgrid_rows: int
     subgrid_cols: int
@@ -526,7 +525,7 @@ def prepare_scene(obj: bpy.types.Object) -> dict[str, Any]:
     return backup_data
 
 
-def restore_scene(
+def restore_scene(  # noqa: C901, PLR0912
     backup_data: dict,
     cameras: list[bpy.types.Object] | None,
 ) -> None:

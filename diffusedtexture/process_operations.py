@@ -195,7 +195,7 @@ def inpaint_missing(
         weighted_tex_sum,
         denom,
         out=np.zeros_like(weighted_tex_sum),
-        where=denom > 1e-8,
+        where=denom > 1e-8,  # noqa: PLR2004
     )
 
     # make the unpainted mask 0-255 uint8

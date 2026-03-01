@@ -57,7 +57,7 @@ def register_addon() -> None:
     for cls in classes:
         try:
             bpy.utils.register_class(cls)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             rollback_errors = _rollback_registered_classes(registered_classes)
             msg = f"Failed to register class '{cls.__name__}'."
             if rollback_errors:
@@ -68,7 +68,7 @@ def register_addon() -> None:
 
     try:
         register_properties()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         rollback_errors: list[str] = []
         try:
             unregister_properties()
@@ -88,11 +88,13 @@ def unregister_addon() -> None:
     """Unregister all classes and properties in reverse registration order."""
     try:
         unregister_properties()
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError("Failed to unregister addon properties.") from exc
+    except Exception as exc:
+        msg = "Failed to unregister addon properties."
+        raise RuntimeError(msg) from exc
 
     for cls in reversed(classes):
         try:
             bpy.utils.unregister_class(cls)
-        except Exception as exc:  # noqa: BLE001
-            raise RuntimeError(f"Failed to unregister class '{cls.__name__}'.") from exc
+        except Exception as exc:
+            msg = f"Failed to unregister class '{cls.__name__}'."
+            raise RuntimeError(msg) from exc
