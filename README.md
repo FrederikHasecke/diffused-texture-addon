@@ -50,7 +50,7 @@ DiffusedTexture is a Blender add-on that uses Stable Diffusion to create texture
 ## Installation 
 
 1. Download the .zip file of the [latest release](https://github.com/FrederikHasecke/diffused-texture-addon/releases/latest)
-2. Install the `diffused_texture_addon-0.1.0.zip` file in Blender as an Add-On.
+2. Install the `diffused_texture_addon-0.2.0.zip` file in Blender as an Add-On.
     -  `Edit` -> `Preferences...` -> Sidebar `Add-ons` -> Top right corner dropdown menu -> `Install from Disk...`
 3. Install the dependencies by clicking the `Install Dependencies` button in the Add-On panel.
     - This will take a while as it installs all necessary packages, including PyTorch and diffusers.
