@@ -9,6 +9,9 @@ from numpy.typing import NDArray
 from .render_setup import (
     create_cameras_on_sphere,
     create_cameras_on_two_rings,
+    find_output_node_image_path,
+    get_output_node_directory,
+    set_output_node_directory,
     setup_render_settings,
 )
 from .utils import isolate_object
@@ -34,7 +37,6 @@ class ProcessParameter:
         "PARALLEL_IMG",
         "SEQUENTIAL_IMG",
         "PARA_SEQUENTIAL_IMG",
-        # "UV_PASS",
     ]
     subgrid_rows: int
     subgrid_cols: int
@@ -63,6 +65,7 @@ class ProcessParameter:
     # Advanced Settings
     sd_version: Literal["sd15", "sdxl"] | None
     checkpoint_path: str
+    dtype: Literal["float16", "bfloat16"] | None
     custom_sd_resolution: int
     controlnet_union_path: str | None
     union_controlnet_strength: float | None
@@ -236,6 +239,10 @@ def extract_process_parameter_from_context(
                 },
             )
 
+    ipadapter_image = getattr(scene, "ipadapter_image", None)
+    if ipadapter_image is not None:
+        ipadapter_image = bpy_img_to_numpy(ipadapter_image)
+
     return ProcessParameter(
         my_mesh_object=getattr(scene, "my_mesh_object", ""),
         my_uv_map=getattr(scene, "my_uv_map", ""),
@@ -256,6 +263,7 @@ def extract_process_parameter_from_context(
         input_texture=getattr(scene, "input_texture", None),
         sd_version=getattr(scene, "sd_version", None),
         checkpoint_path=getattr(scene, "checkpoint_path", ""),
+        dtype=getattr(scene, "dtype", None),
         custom_sd_resolution=getattr(scene, "custom_sd_resolution", 0),
         controlnet_union_path=getattr(scene, "controlnet_union_path", None),
         union_controlnet_strength=getattr(scene, "union_controlnet_strength", None),
@@ -267,9 +275,9 @@ def extract_process_parameter_from_context(
         normal_controlnet_strength=getattr(scene, "normal_controlnet_strength", None),
         use_ipadapter=getattr(scene, "use_ipadapter", False),
         ipadapter_strength=getattr(scene, "ipadapter_strength", 0.0),
-        ipadapter_image=getattr(scene, "ipadapter_image", None),
+        ipadapter_image=ipadapter_image,
         num_loras=getattr(scene, "num_loras", 0),
-        lora_models=getattr(scene, "lora_models", []),
+        lora_models=lora_models,
     )
 
 
@@ -344,18 +352,13 @@ def load_img_to_numpy(img_path: str | Path) -> NDArray:
     Returns:
         np.ndarray: A NumPy array representation of the image.
     """
-    img_file_name = Path(img_path).name
-    if img_file_name in bpy.data.images:
-        bpy.data.images.remove(bpy.data.images[img_file_name])
-    bpy.data.images.load(str(img_path))
+    img_bpy = bpy.data.images.load(str(img_path), check_existing=False)
 
-    img_bpy = bpy.data.images.get(img_file_name)
-
-    if img_bpy is None:
-        msg = f"Image '{img_file_name}' could not be loaded into Blender."
-        raise FileNotFoundError(msg)
-
-    return bpy_img_to_numpy(img_bpy)
+    try:
+        return bpy_img_to_numpy(img_bpy)
+    finally:
+        if img_bpy.name in bpy.data.images:
+            bpy.data.images.remove(img_bpy)
 
 
 def bpy_img_to_numpy(img_bpy: bpy.types.Image) -> NDArray[np.float32]:
@@ -460,12 +463,81 @@ def save_numpy_to_exr(
 
 def prepare_scene(obj: bpy.types.Object) -> dict[str, Any]:
     """Backup all other objects and isolate the target object to work with."""
+    original_object_visibility = {
+        scene_obj.name: {
+            "hide_viewport": scene_obj.hide_get(),
+            "hide_render": scene_obj.hide_render,
+        }
+        for scene_obj in bpy.data.objects
+    }
+
     backup_data = isolate_object(obj)
-    bpy.context.view_layer.objects.active = obj
+    backup_data["original_object_visibility"] = original_object_visibility
+    scene = bpy.context.scene
+    view_layer = bpy.context.view_layer
+
+    backup_data["original_scene_camera"] = getattr(scene, "camera", None)
+    backup_data["original_render_settings"] = {
+        "engine": getattr(scene.render, "engine", None),
+        "resolution_x": getattr(scene.render, "resolution_x", None),
+        "resolution_y": getattr(scene.render, "resolution_y", None),
+        "resolution_percentage": getattr(scene.render, "resolution_percentage", None),
+        "filepath": getattr(scene.render, "filepath", None),
+        "filter_size": getattr(scene.render, "filter_size", None),
+        "film_transparent": getattr(scene.render, "film_transparent", None),
+    }
+
+    image_settings = getattr(scene.render, "image_settings", None)
+    backup_data["original_image_settings"] = {
+        "file_format": (
+            getattr(image_settings, "file_format", None)
+            if image_settings is not None
+            else None
+        ),
+        "color_depth": (
+            getattr(image_settings, "color_depth", None)
+            if image_settings is not None
+            else None
+        ),
+    }
+
+    cycles_settings = getattr(scene, "cycles", None)
+    if cycles_settings is not None:
+        backup_data["original_cycles_settings"] = {
+            "samples": getattr(cycles_settings, "samples", None),
+            "use_denoising": getattr(cycles_settings, "use_denoising", None),
+            "use_light_tree": getattr(cycles_settings, "use_light_tree", None),
+            "max_bounces": getattr(cycles_settings, "max_bounces", None),
+            "diffuse_bounces": getattr(cycles_settings, "diffuse_bounces", None),
+            "glossy_bounces": getattr(cycles_settings, "glossy_bounces", None),
+            "transmission_bounces": getattr(
+                cycles_settings,
+                "transmission_bounces",
+                None,
+            ),
+            "volume_bounces": getattr(cycles_settings, "volume_bounces", None),
+            "transparent_max_bounces": getattr(
+                cycles_settings,
+                "transparent_max_bounces",
+                None,
+            ),
+        }
+
+    backup_data["original_view_layer_passes"] = {
+        "use_pass_z": getattr(view_layer, "use_pass_z", None),
+        "use_pass_normal": getattr(view_layer, "use_pass_normal", None),
+        "use_pass_uv": getattr(view_layer, "use_pass_uv", None),
+        "use_pass_position": getattr(view_layer, "use_pass_position", None),
+    }
+
+    view_layer.objects.active = obj
     return backup_data
 
 
-def restore_scene(backup_data: dict, cameras: list[bpy.types.Object]) -> None:
+def restore_scene(  # noqa: C901, PLR0912, PLR0915
+    backup_data: dict,
+    cameras: list[bpy.types.Object] | None,
+) -> None:
     """Restore the original Scene.
 
     Restore object transform (matrix_world if available), unhide others,
@@ -475,28 +547,81 @@ def restore_scene(backup_data: dict, cameras: list[bpy.types.Object]) -> None:
     obj = backup_data["target_object"]
 
     # Restore transform (matches isolate_object which edited matrix_world.translation)
-    if (
-        "original_matrix_world" in backup_data
-        and backup_data["original_matrix_world"] is not None
-    ):
-        obj.matrix_world = backup_data["original_matrix_world"].copy()
-    # Back-compat: if only location was stored
-    elif "original_location" in backup_data:
-        obj.location = backup_data["original_location"]
+    try:
+        if (
+            "original_matrix_world" in backup_data
+            and backup_data["original_matrix_world"] is not None
+        ):
+            obj.matrix_world = backup_data["original_matrix_world"].copy()
+        # Back-compat: if only location was stored
+        elif "original_location" in backup_data:
+            obj.location = backup_data["original_location"]
+    except ReferenceError:
+        pass
 
-    # Unhide objects we hid and re-enable render visibility
-    for o in backup_data.get("hidden_objects", []):
-        if o and o.name in bpy.data.objects:
-            o.hide_set(False)  # noqa: FBT003
-            o.hide_render = False
+    object_visibility = backup_data.get("original_object_visibility")
+    if isinstance(object_visibility, dict):
+        for object_name, visibility in object_visibility.items():
+            scene_obj = bpy.data.objects.get(object_name)
+            if scene_obj is None or not isinstance(visibility, dict):
+                continue
+
+            hide_viewport = visibility.get("hide_viewport")
+            if hide_viewport is not None:
+                scene_obj.hide_set(hide_viewport)
+
+            hide_render = visibility.get("hide_render")
+            if hide_render is not None:
+                scene_obj.hide_render = hide_render
+    else:
+        # Back-compat for backups created before visibility snapshots were added.
+        for o in backup_data.get("hidden_objects", []):
+            try:
+                object_name = o.name if o else None
+            except ReferenceError:
+                continue
+
+            if object_name and object_name in bpy.data.objects:
+                o.hide_set(False)  # noqa: FBT003
+                o.hide_render = False
+
+    scene = bpy.context.scene
+    view_layer = bpy.context.view_layer
+
+    if "original_scene_camera" in backup_data:
+        scene.camera = backup_data["original_scene_camera"]
+
+    render_settings = backup_data.get("original_render_settings", {})
+    for key, value in render_settings.items():
+        if value is not None and hasattr(scene.render, key):
+            setattr(scene.render, key, value)
+
+    image_settings = getattr(scene.render, "image_settings", None)
+    image_backup = backup_data.get("original_image_settings", {})
+    if image_settings is not None:
+        for key, value in image_backup.items():
+            if value is not None and hasattr(image_settings, key):
+                setattr(image_settings, key, value)
+
+    cycles_settings = getattr(scene, "cycles", None)
+    cycles_backup = backup_data.get("original_cycles_settings", {})
+    if cycles_settings is not None:
+        for key, value in cycles_backup.items():
+            if value is not None and hasattr(cycles_settings, key):
+                setattr(cycles_settings, key, value)
+
+    view_layer_passes = backup_data.get("original_view_layer_passes", {})
+    for key, value in view_layer_passes.items():
+        if value is not None and hasattr(view_layer, key):
+            setattr(view_layer, key, value)
 
     # Delete the temporary cameras used during processing
-    for cam in cameras:
+    for cam in cameras or []:
         if cam and cam.name in bpy.data.objects:
             bpy.data.objects.remove(cam, do_unlink=True)
 
     # Make sure depsgraph reflects the changes
-    bpy.context.view_layer.update()
+    view_layer.update()
 
 
 def bake_uv_views(
@@ -533,12 +658,16 @@ def render_views(
     Returns:
         dict: A dictionary containing the rendered image paths.
     """
+    original_camera = context.scene.camera
+
     # Set up cameras
     num_cameras = int(context.scene.num_cameras)
     max_size = max(obj.dimensions)
 
     # Set parameter
     num_cameras = int(context.scene.num_cameras)
+
+    cameras: list[bpy.types.Object] = []
 
     # Create cameras based on the number specified in the scene
     if num_cameras == 4:  # noqa: PLR2004
@@ -557,68 +686,73 @@ def render_views(
         msg = "Only 4, 9, or 16 cameras are supported."
         raise ValueError(msg)
 
-    # Set up render nodes
-    output_nodes = setup_render_settings(context, context.scene.render_resolution)
+    try:
+        # Set up render nodes
+        output_nodes = setup_render_settings(context, context.scene.render_resolution)
 
-    render_img_folders = {
-        "depth": output_nodes["depth"].base_path,
-        "normal": output_nodes["normal"].base_path,
-        "uv": output_nodes["uv"].base_path,
-        "position": output_nodes["position"].base_path,
-        # Facing images are in the folder "facing" which is not rendered but created
-        "facing": str(Path(output_nodes["uv"].base_path).parent / "render_facing"),
-    }
+        render_img_folders = {
+            "depth": get_output_node_directory(output_nodes["depth"]),
+            "normal": get_output_node_directory(output_nodes["normal"]),
+            "uv": get_output_node_directory(output_nodes["uv"]),
+            "position": get_output_node_directory(output_nodes["position"]),
+            # Facing images are in the folder "facing" which is not rendered but created
+            "facing": str(
+                Path(get_output_node_directory(output_nodes["uv"])).parent
+                / "render_facing",
+            ),
+        }
 
-    # Create the facing images folder if it does not exist
-    Path(render_img_folders["facing"]).mkdir(parents=True, exist_ok=True)
+        # Create the facing images folder if it does not exist
+        Path(render_img_folders["facing"]).mkdir(parents=True, exist_ok=True)
 
-    # Render for each camera
-    for cam_idx, camera in enumerate(cameras):
-        for output_node in output_nodes:
-            if cam_idx == 0:
+        # Render for each camera
+        for cam_idx, camera in enumerate(cameras):
+            for output_node in output_nodes:
                 new_path = (
-                    Path(output_nodes[output_node].base_path) / f"camera_{cam_idx:02d}"
-                )
-            else:
-                new_path = (
-                    Path(output_nodes[output_node].base_path).parent
-                    / f"camera_{cam_idx:02d}"
+                    Path(render_img_folders[output_node]) / f"camera_{cam_idx:02d}"
                 )
 
-            # Create the new path if it does not exist
-            new_path.mkdir(parents=True, exist_ok=True)
+                # Create the new path if it does not exist
+                new_path.mkdir(parents=True, exist_ok=True)
 
-            # Set the output path for the output node
-            output_nodes[output_node].base_path = str(new_path)
+                # Set the output path for the output node
+                set_output_node_directory(output_nodes[output_node], new_path)
 
-        context.scene.camera = camera
+            context.scene.camera = camera
 
-        # update the scene to reflect the camera change
-        bpy.context.view_layer.update()
+            # update the scene to reflect the camera change
+            bpy.context.view_layer.update()
 
-        bpy.ops.render.render(write_still=True)
+            bpy.ops.render.render(write_still=True)
 
-        save_normals_in_camera_coordinates(output_nodes=output_nodes, camera=camera)
+            save_normals_in_camera_coordinates(output_nodes=output_nodes, camera=camera)
 
-        save_depth_condition(output_nodes=output_nodes)
+            save_depth_condition(output_nodes=output_nodes)
 
-        # Create the facing images
-        save_facing_images(
-            output_nodes=output_nodes,
-            cam_idx=cam_idx,
-            context=context,
-        )
+            # Create the facing images
+            save_facing_images(
+                output_nodes=output_nodes,
+                cam_idx=cam_idx,
+                context=context,
+            )
 
-    return render_img_folders, cameras
+    except Exception:
+        context.scene.camera = original_camera
+        for cam in cameras:
+            if cam and cam.name in bpy.data.objects:
+                bpy.data.objects.remove(cam, do_unlink=True)
+        raise
+    else:
+        return render_img_folders, cameras
 
 
 def save_normals_in_camera_coordinates(
     output_nodes: dict[str, bpy.types.CompositorNodeOutputFile],
     camera: bpy.types.Object,
 ) -> None:
-    image_path = Path(output_nodes["normal"].base_path) / (
-        str(output_nodes["normal"].file_slots[0].path)
-        + f"{bpy.context.scene.frame_current:04d}.exr"
+    image_path = find_output_node_image_path(
+        output_nodes["normal"],
+        bpy.context.scene.frame_current,
     )
 
     normal_ccs = create_normal_condition(
@@ -626,15 +760,9 @@ def save_normals_in_camera_coordinates(
         camera_obj=camera,
     )
 
-    # overwrite the normal image with the camera coordinates
-    normal_path = Path(output_nodes["normal"].base_path) / (
-        str(output_nodes["normal"].file_slots[0].path)
-        + f"{bpy.context.scene.frame_current:04d}.exr"
-    )
-
     save_numpy_to_exr(
         img_np=normal_ccs,
-        filepath=str(normal_path),
+        filepath=str(image_path),
         name="normal_camera_coordinates",
     )
 
@@ -643,24 +771,18 @@ def save_depth_condition(
     output_nodes: dict[str, bpy.types.CompositorNodeOutputFile],
 ) -> None:
     """Save the depth condition as an image as stable diffusion uses in Controlnet."""
-    image_path = Path(output_nodes["depth"].base_path) / (
-        str(output_nodes["depth"].file_slots[0].path)
-        + f"{bpy.context.scene.frame_current:04d}.exr"
+    image_path = find_output_node_image_path(
+        output_nodes["depth"],
+        bpy.context.scene.frame_current,
     )
 
     depth_sd = create_depth_condition(
         depth_image_path=str(image_path),
     )
 
-    # overwrite the normal image with the camera coordinates
-    depth_path = Path(output_nodes["depth"].base_path) / (
-        str(output_nodes["depth"].file_slots[0].path)
-        + f"{bpy.context.scene.frame_current:04d}.exr"
-    )
-
     save_numpy_to_exr(
         img_np=depth_sd,
-        filepath=str(depth_path),
+        filepath=str(image_path),
         name="depth_sd_like",
     )
 
@@ -673,10 +795,9 @@ def save_facing_images(
     """Save facing images for the camera."""
     frame_index = context.scene.frame_current
 
-    normal_path = (
-        Path(output_nodes["normal"].base_path).parent
-        / f"camera_{cam_idx:02d}"
-        / (str(output_nodes["normal"].file_slots[0].path) + f"{frame_index:04d}.exr")
+    normal_path = find_output_node_image_path(
+        output_nodes["normal"],
+        frame_index,
     )
 
     normal_array = load_img_to_numpy(str(normal_path))
@@ -688,7 +809,7 @@ def save_facing_images(
 
     new_folder_path = (
         Path(
-            str(Path(output_nodes["normal"].base_path).parent).replace(
+            str(Path(get_output_node_directory(output_nodes["normal"])).parent).replace(
                 "render_normal",
                 "render_facing",
             ),

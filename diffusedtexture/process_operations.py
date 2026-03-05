@@ -8,6 +8,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ..blender_operations import ProcessParameter
+from ..model_support import get_default_sd_resolution
 
 if cv2 is not None:
     CV2_INTER_NEAREST = cv2.INTER_NEAREST
@@ -47,10 +48,10 @@ def process_uv_texture(  # noqa: PLR0913
 
     num_cameras = len(uv_images)
 
-    if process_parameter.custom_sd_resolution:
-        sd_resolution = int(process_parameter.custom_sd_resolution)
-    else:
-        sd_resolution = 512 if process_parameter.sd_version == "sd15" else 1024
+    sd_resolution = get_default_sd_resolution(
+        process_parameter.sd_version,
+        process_parameter.custom_sd_resolution,
+    )
 
     # Resize output_grid to render resolution
     output_grid = cv2.resize(
@@ -177,13 +178,14 @@ def inpaint_missing(
         * uv_texture_first_pass
     )
 
-    weighted_tex = np.sum(weighted_tex, axis=0) / np.stack(
-        (
-            np.sum(uv_texture_first_pass_weight, axis=0),
-            np.sum(uv_texture_first_pass_weight, axis=0),
-            np.sum(uv_texture_first_pass_weight, axis=0),
-        ),
-        axis=-1,
+    weight_sum = np.sum(uv_texture_first_pass_weight, axis=0)
+    denom = np.stack((weight_sum, weight_sum, weight_sum), axis=-1)
+    weighted_tex_sum = np.sum(weighted_tex, axis=0)
+    weighted_tex = np.divide(
+        weighted_tex_sum,
+        denom,
+        out=np.zeros_like(weighted_tex_sum),
+        where=denom > 1e-8,  # noqa: PLR2004
     )
 
     # make the unpainted mask 0-255 uint8
@@ -200,7 +202,7 @@ def inpaint_missing(
 
 
 def assemble_multiview_grid(
-    texture: NDArray[np.uint8] | None,
+    texture: NDArray[np.float32] | None,
     multiview_images: dict[str, list | NDArray],
     render_resolution: int = 2048,
     sd_resolution: int = 512,
@@ -208,8 +210,8 @@ def assemble_multiview_grid(
     """Assemble images from multiple views into a structured grid.
 
     Args:
-        texture (NDArray[np.uint8] | None): The optional prior texture to be used
-                                            for the input grid.
+        texture (NDArray[np.float32] | None): Optional prior texture in [0..1]
+                                            used for the input grid.
         multiview_images (dict[str, str]): Dictionary containing paths to multiview
                                             images.
         render_resolution (int, optional): Resolution for rendering each camera view
@@ -285,7 +287,7 @@ def assemble_multiview_grid(
 
 
 def assemble_multiview_subgrid(  # noqa: PLR0913
-    texture: NDArray[np.uint8] | None,
+    texture: NDArray[np.float32] | None,
     painted_area_texture: NDArray[np.uint8] | None,
     multiview_images: dict[str, list[NDArray]],
     render_resolution: int,
@@ -358,7 +360,11 @@ def assemble_multiview_subgrid(  # noqa: PLR0913
 
         # Painted Area
         grids["already_painted_grid"] = create_input_image_grid(
-            painted_area_texture,
+            (
+                painted_area_texture.astype(np.float32) / 255.0
+                if painted_area_texture is not None
+                else None
+            ),
             grids["uv_grid"],
             grids["content_grid"],
         )[:, :, 0]
@@ -396,7 +402,11 @@ def assemble_multiview_subgrid(  # noqa: PLR0913
 
         # Painted Area
         resized_grids["already_painted_grid"] = create_input_image_grid(
-            painted_area_texture,
+            (
+                painted_area_texture.astype(np.float32) / 255.0
+                if painted_area_texture is not None
+                else None
+            ),
             resized_grids["uv_grid"],
             resized_grids["content_grid"],
         )[:, :, 0]
@@ -423,7 +433,7 @@ def assemble_multiview_subgrid(  # noqa: PLR0913
 
 
 def assemble_multiview_list(
-    texture: NDArray[np.uint8] | None,
+    texture: NDArray[np.float32] | None,
     multiview_images: dict[str, list[NDArray]],
     sd_resolution: int = 512,
 ) -> tuple[dict[str, list[NDArray]], dict[str, list[NDArray]]]:

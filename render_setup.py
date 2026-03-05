@@ -4,6 +4,14 @@ from pathlib import Path
 import bpy
 import mathutils
 
+# Guard against bpy.context not being available in test environments.
+if not hasattr(bpy, "context"):
+
+    class _FakeContext:
+        pass
+
+    bpy.context = _FakeContext()
+
 
 def farthest_point_ordering(positions: list[mathutils.Vector]) -> list[int]:
     """Sample the order of farthest points.
@@ -263,55 +271,237 @@ def setup_output_nodes(
         dict[str, bpy.types.CompositorNodeOutputFile]: _description_
 
     """
-    # Ensure the scene uses nodes
-    context.scene.use_nodes = True
+    scene = context.scene
+
+    # Blender <5 uses scene.use_nodes + scene.node_tree.
+    if hasattr(scene, "node_tree"):
+        scene.use_nodes = True
+
+    # Blender 5+ uses render.use_compositing instead of scene.use_nodes.
+    if hasattr(scene.render, "use_compositing"):
+        scene.render.use_compositing = True
+
+    node_tree = get_scene_compositor_node_tree(scene)
 
     # Clear existing nodes
-    if context.scene.node_tree:
-        context.scene.node_tree.nodes.clear()
-
-    # Create render layers node
-    render_layers = context.scene.node_tree.nodes.new("CompositorNodeRLayers")
+    node_tree.nodes.clear()
 
     # Enable necessary passes
-    context.scene.view_layers["ViewLayer"].use_pass_z = True
-    context.scene.view_layers["ViewLayer"].use_pass_normal = True
-    context.scene.view_layers["ViewLayer"].use_pass_uv = True
-    context.scene.view_layers["ViewLayer"].use_pass_position = True
+    view_layer = context.view_layer
+    view_layer.use_pass_z = True
+    view_layer.use_pass_normal = True
+    view_layer.use_pass_uv = True
+    view_layer.use_pass_position = True
+
+    # Create render layers node after enabling passes so sockets exist.
+    render_layers = node_tree.nodes.new("CompositorNodeRLayers")
 
     # output path for the render
-    context.scene.render.filepath = context.scene.output_path + "RenderOutput/render_"
+    render_output_dir = Path(scene.output_path) / "RenderOutput"
+    render_output_dir.mkdir(parents=True, exist_ok=True)
+    scene.render.filepath = str(render_output_dir / "render_")
 
     # Create output nodes for each pass
     output_nodes = {}
 
     for name in ["Depth", "Normal", "UV", "Position"]:
-        output_nodes[name.lower()] = set_node_path(name, context, render_layers)
-        output_nodes[name.lower()].base_path = str(
-            Path(context.scene.output_path) / f"render_{name.lower()}",
-        )
-        Path(output_nodes[name.lower()].base_path).mkdir(parents=True, exist_ok=True)
+        output_nodes[name.lower()] = set_node_path(name, node_tree, render_layers)
+        output_dir = Path(scene.output_path) / f"render_{name.lower()}"
+        set_output_node_directory(output_nodes[name.lower()], output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
 
     return output_nodes
 
 
+def get_scene_compositor_node_tree(scene: bpy.types.Scene) -> bpy.types.NodeTree:
+    """Return the compositor node tree across Blender API versions."""
+    node_tree = getattr(scene, "node_tree", None)
+    if node_tree is not None:
+        return node_tree
+
+    if hasattr(scene, "compositing_node_group"):
+        node_tree = scene.compositing_node_group
+        if node_tree is None:
+            node_tree = bpy.data.node_groups.new(
+                f"{scene.name}_Compositor",
+                "CompositorNodeTree",
+            )
+            scene.compositing_node_group = node_tree
+        return node_tree
+
+    if hasattr(scene, "use_nodes"):
+        scene.use_nodes = True
+        node_tree = getattr(scene, "node_tree", None)
+        if node_tree is not None:
+            return node_tree
+
+    msg = "Unable to access scene compositor node tree."
+    raise AttributeError(msg)
+
+
+def set_output_node_directory(
+    output_node: bpy.types.CompositorNodeOutputFile,
+    output_dir: Path | str,
+) -> None:
+    """Set output directory across Blender compositor API versions."""
+    output_dir_str = str(output_dir)
+
+    if hasattr(output_node, "base_path"):
+        output_node.base_path = output_dir_str
+        return
+
+    if hasattr(output_node, "directory"):
+        output_node.directory = output_dir_str
+        return
+
+    msg = "Unable to set output node directory."
+    raise AttributeError(msg)
+
+
+def get_output_node_directory(
+    output_node: bpy.types.CompositorNodeOutputFile,
+) -> str:
+    """Return output directory across Blender compositor API versions."""
+    if hasattr(output_node, "base_path"):
+        return str(output_node.base_path)
+
+    if hasattr(output_node, "directory"):
+        return str(output_node.directory)
+
+    msg = "Unable to read output node directory."
+    raise AttributeError(msg)
+
+
+def get_output_node_file_prefix(
+    output_node: bpy.types.CompositorNodeOutputFile,
+) -> str:
+    """Return the configured output file prefix for this node."""
+    if hasattr(output_node, "file_slots") and len(output_node.file_slots) > 0:
+        return str(output_node.file_slots[0].path)
+
+    if (
+        hasattr(output_node, "file_output_items")
+        and len(output_node.file_output_items) > 0
+    ):
+        return str(output_node.file_output_items[0].name)
+
+    if hasattr(output_node, "file_name") and output_node.file_name:
+        return str(output_node.file_name)
+
+    return ""
+
+
+def find_output_node_image_path(
+    output_node: bpy.types.CompositorNodeOutputFile,
+    frame_index: int,
+) -> Path:
+    """Locate the rendered EXR path for a compositor output node."""
+    output_dir = Path(get_output_node_directory(output_node))
+    prefix = get_output_node_file_prefix(output_node)
+
+    if prefix:
+        direct_candidates = [
+            output_dir / f"{prefix}{frame_index:04d}.exr",
+            output_dir / f"{prefix}.exr",
+        ]
+        for path in direct_candidates:
+            if path.exists():
+                return path
+
+        pattern = f"{prefix}*.exr"
+    else:
+        pattern = "*.exr"
+
+    matches = sorted(output_dir.glob(pattern))
+    if matches:
+        return matches[0]
+
+    msg = f"No EXR output found in '{output_dir}' for node '{output_node.name}'."
+    raise FileNotFoundError(msg)
+
+
+def map_socket_type_to_file_output_item(socket_type: str) -> str:
+    """Map compositor socket type to NodeCompositorFileOutputItem enum."""
+    return {
+        "VALUE": "FLOAT",
+        "INT": "INT",
+        "BOOLEAN": "BOOLEAN",
+        "VECTOR": "VECTOR",
+        "RGBA": "RGBA",
+        "ROTATION": "ROTATION",
+        "MATRIX": "MATRIX",
+        "STRING": "STRING",
+        "MENU": "MENU",
+        "SHADER": "SHADER",
+        "OBJECT": "OBJECT",
+        "IMAGE": "IMAGE",
+        "GEOMETRY": "GEOMETRY",
+        "COLLECTION": "COLLECTION",
+        "TEXTURE": "TEXTURE",
+        "MATERIAL": "MATERIAL",
+        "BUNDLE": "BUNDLE",
+        "CLOSURE": "CLOSURE",
+    }.get(socket_type, "RGBA")
+
+
+def get_node_socket_by_name(
+    sockets: bpy.types.NodeOutputs | bpy.types.NodeInputs,
+    socket_name: str,
+) -> bpy.types.NodeSocket:
+    """Get a node socket by name with an iteration fallback."""
+    socket = sockets.get(socket_name)
+    if socket is not None:
+        return socket
+
+    for sock in sockets:
+        if sock.name == socket_name:
+            return sock
+
+    msg = f"Socket '{socket_name}' not found."
+    raise KeyError(msg)
+
+
 def set_node_path(
     name: str,
-    context: bpy.types.Context,
+    node_tree: bpy.types.NodeTree,
     render_layers: bpy.types.CompositorNodeRLayers,
 ) -> bpy.types.CompositorNodeOutputFile:
-    output_node = context.scene.node_tree.nodes.new("CompositorNodeOutputFile")
+    output_node = node_tree.nodes.new("CompositorNodeOutputFile")
     output_node.label = f"{name.lower()}_output"
     output_node.name = f"{name.lower()}_output"
-    output_node.base_path = ""  # Set the base path in the calling function if needed
-    output_node.file_slots[0].path = f"{name.lower()}_"
 
-    output_node.format.file_format = "OPEN_EXR"
+    render_socket = get_node_socket_by_name(render_layers.outputs, name)
+
+    if hasattr(output_node, "file_slots"):
+        output_node.base_path = ""
+        output_node.file_slots[0].path = f"{name.lower()}_"
+        input_socket = output_node.inputs[0]
+    elif hasattr(output_node, "file_output_items"):
+        output_node.file_output_items.clear()
+        socket_type = map_socket_type_to_file_output_item(render_socket.type)
+        item = output_node.file_output_items.new(socket_type, f"{name.lower()}_")
+        output_node.file_name = ""
+        try:
+            input_socket = get_node_socket_by_name(output_node.inputs, item.name)
+        except KeyError:
+            input_socket = output_node.inputs[0]
+    else:
+        msg = "Unsupported compositor output node API."
+        raise AttributeError(msg)
+
+    if hasattr(output_node.format, "media_type"):
+        output_node.format.media_type = "IMAGE"
+
+    try:
+        output_node.format.file_format = "OPEN_EXR"
+    except TypeError:
+        output_node.format.file_format = "OPEN_EXR_MULTILAYER"
+
     output_node.format.color_depth = "32"
     output_node.format.color_mode = "RGBA"
 
-    context.scene.node_tree.links.new(
-        render_layers.outputs[name],
-        output_node.inputs[0],
+    node_tree.links.new(
+        render_socket,
+        input_socket,
     )
     return output_node

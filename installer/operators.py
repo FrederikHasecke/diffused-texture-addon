@@ -7,14 +7,16 @@ from pathlib import Path
 import bpy
 
 from ..mock_context import MockScene
-from .cuda import normalize_choice, torch_index_url
+from .cuda import normalize_choice, resolve_torch_install, torch_index_url
 from .paths import (
     clean_pip_env,
     deps_target_dir,
     ensure_pip,
     make_importable,
+    new_deps_target_dir,
     read_pyproject_runtime_deps,
     run,
+    set_active_deps_target,
 )
 
 
@@ -77,6 +79,15 @@ class InstallDepsOperator(bpy.types.Operator):
     )
     bl_options = {"REGISTER", "INTERNAL"}
 
+    @staticmethod
+    def _sanity_imports(target: Path, env: dict[str, str]) -> tuple[int, str]:
+        path = str(target).replace("\\", "\\\\")
+        script = (
+            f"import site; site.addsitedir(r'{path}');"
+            "import accelerate, cv2, diffusers, PIL, safetensors, torch, transformers"
+        )
+        return run([sys.executable, "-c", script], env=env)
+
     def execute(self, context: bpy.types.Context) -> set[str]:  # noqa: ARG002
         """Execute the installation of dependencies."""
         if not bpy.app.online_access:
@@ -90,15 +101,18 @@ class InstallDepsOperator(bpy.types.Operator):
             ".".join(__package__.split(".")[:-1])
         ].preferences
         channel = normalize_choice(prefs.cuda_variant)
-        index_url, label = torch_index_url(
+        install_channel, torch_requirement, install_note = resolve_torch_install(
             channel,
+            platform=sys.platform,
+            blender_version=bpy.app.version,
+        )
+        index_url, label = torch_index_url(
+            install_channel,
         )
         ensure_pip()
 
-        target = deps_target_dir()
-        shutil.rmtree(target, ignore_errors=True)
-        target.mkdir(parents=True, exist_ok=True)
-        make_importable(target)
+        previous_target = deps_target_dir()
+        target = new_deps_target_dir()
 
         # 0) Resolve runtime deps directly from pyproject (must NOT include torch/bpy)
         addon_root = Path(__file__).resolve().parents[1]
@@ -134,30 +148,38 @@ class InstallDepsOperator(bpy.types.Operator):
                 "files.pythonhosted.org",
                 "--trusted-host",
                 "download.pytorch.org",
-                "torch",
+                torch_requirement,
                 *runtime_pkgs,
             ],
             env=env,
         )
 
         if rc != 0:
+            shutil.rmtree(target, ignore_errors=True)
             self.report({"ERROR"}, f"Dependency install failed.\n{out}")
             return {"CANCELLED"}
 
-        importlib.invalidate_caches()
-
-        # Minimal import sanity
-        try:
-            import accelerate  # noqa: F401
-            import cv2  # noqa: F401
-            import diffusers  # noqa: F401
-            import PIL  # noqa: F401
-            import safetensors  # noqa: F401
-            import torch  # noqa: F401
-            import transformers  # noqa: F401
-        except Exception as e:  # noqa: BLE001
-            self.report({"ERROR"}, f"Installed, but imports failing: {e}")
+        rc, out = self._sanity_imports(target, env)
+        if rc != 0:
+            shutil.rmtree(target, ignore_errors=True)
+            self.report({"ERROR"}, f"Installed, but imports failing:\n{out}")
             return {"CANCELLED"}
 
-        self.report({"INFO"}, f"Dependencies installed to {target} ({label}).")
+        try:
+            set_active_deps_target(target)
+        except Exception as e:  # noqa: BLE001
+            self.report(
+                {"ERROR"},
+                f"Installed, but failed to activate dependencies: {e}",
+            )
+            return {"CANCELLED"}
+        make_importable(target)
+        importlib.invalidate_caches()
+
+        msg = f"Dependencies installed to {target} ({label})."
+        if previous_target != target:
+            msg = f"{msg} Active environment updated."
+        if install_note:
+            msg = f"{msg} {install_note}"
+        self.report({"INFO"}, msg)
         return {"FINISHED"}

@@ -133,8 +133,16 @@ class OBJECT_PT_DiffusedTextureMainPanel(bpy.types.Panel):
 
         # Input Texture
         layout.label(text="Input Texture")
+        is_running = bool(
+            getattr(scene, "diffused_texture_operator_running", False),
+        )
+
         row = layout.row()
-        row.template_ID_preview(scene, "input_texture", rows=2, cols=6)
+        if is_running:
+            row.enabled = False
+            row.prop(scene, "input_texture", text="Input Texture")
+        else:
+            row.template_ID_preview(scene, "input_texture", rows=2, cols=6)
         layout.operator(
             "image.open_new_input_image",
             text="Open Input Texture",

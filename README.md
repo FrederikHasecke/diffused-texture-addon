@@ -1,13 +1,13 @@
 # DiffusedTexture: AI-Powered Texture Generation for Blender
 [![Latest Release](https://flat.badgen.net/github/release/FrederikHasecke/diffused-texture-addon/latest)](https://github.com/FrederikHasecke/diffused-texture-addon/releases/latest)
 [![Total Downloads](https://img.shields.io/github/downloads/FrederikHasecke/diffused-texture-addon/total?style=flat-square)](https://github.com/FrederikHasecke/diffused-texture-addon/releases/latest)
-![Python Version](https://img.shields.io/badge/Python-3.11-blue?style=flat-square)
 
-![Blender 4.2](https://img.shields.io/badge/Blender-4.2-blue?style=flat-square)![Blender 4.3](https://img.shields.io/badge/Blender-4.3-blue?style=flat-square)![Blender 4.4](https://img.shields.io/badge/Blender-4.4-blue?style=flat-square)![Blender 4.5+](https://img.shields.io/badge/Blender-4.5%2B-blue?style=flat-square)
+![Blender 4.2](https://img.shields.io/badge/Blender-4.2-blue?style=flat-square)![Blender 4.3](https://img.shields.io/badge/Blender-4.3-blue?style=flat-square)![Blender 4.4](https://img.shields.io/badge/Blender-4.4-blue?style=flat-square)![Blender 4.5](https://img.shields.io/badge/Blender-4.5-blue?style=flat-square)![Blender 5.0+](https://img.shields.io/badge/Blender-5.0%2B-blue?style=flat-square)
 
 [![Lint](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/lint.yml/badge.svg?branch=master)](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/lint.yml)
 [![Build](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/build.yml)
 [![Build](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/release.yml/badge.svg?branch=master)](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/release.yml)
+
 
 DiffusedTexture is a Blender add-on that uses Stable Diffusion to create textures directly on 3D meshes.
 
@@ -38,10 +38,19 @@ DiffusedTexture is a Blender add-on that uses Stable Diffusion to create texture
 - **LoRA Integration**: Uses LoRA conditioning for specific styles.
 - **IPAdapter Integration**: Fit specific styles or objects with images for enhanced flexibility and control.
 
+## Model Support Matrix
+
+| Model Key | UI Selectable | Pipeline Support | IPAdapter | Default SD Resolution | Status |
+| --- | --- | --- | --- | --- | --- |
+| `sd15` | Yes | Yes | Yes | 512 | Supported |
+| `sdxl` | Yes | Yes | Yes | 1024 | Supported |
+| `flux` | No | No | No | 1024 | Explicitly unsupported (fails fast with clear error) |
+| `qwen` | No | No | No | 1328 | Explicitly unsupported (fails fast with clear error) |
+
 ## Installation 
 
 1. Download the .zip file of the [latest release](https://github.com/FrederikHasecke/diffused-texture-addon/releases/latest)
-2. Install the `diffused_texture_addon-0.1.0.zip` file in Blender as an Add-On.
+2. Install the `diffused_texture_addon-0.2.0.zip` file in Blender as an Add-On.
     -  `Edit` -> `Preferences...` -> Sidebar `Add-ons` -> Top right corner dropdown menu -> `Install from Disk...`
 3. Install the dependencies by clicking the `Install Dependencies` button in the Add-On panel.
     - This will take a while as it installs all necessary packages, including PyTorch and diffusers.

@@ -4,6 +4,8 @@ from bpy.props import (
     StringProperty,
 )
 
+from ..model_support import MODEL_SUPPORT_MATRIX
+
 
 def register_controlnet_properties() -> None:
     """Register ControlNet Properties."""
@@ -11,7 +13,7 @@ def register_controlnet_properties() -> None:
         name="ControlNet Union Path",
         description="Path to ControlNet Union model (for SDXL)",
         subtype="FILE_PATH",
-        default="xinsir/controlnet-union-sdxl-1.0",
+        default=MODEL_SUPPORT_MATRIX["sdxl"]["controlnet_union_path"],
     )
 
     bpy.types.Scene.union_controlnet_strength = FloatProperty(
@@ -26,19 +28,19 @@ def register_controlnet_properties() -> None:
         name="Depth ControlNet Path",
         description="Path to depth ControlNet",
         subtype="FILE_PATH",
-        default="lllyasviel/control_v11f1p_sd15_depth",
+        default=MODEL_SUPPORT_MATRIX["sd15"]["depth_controlnet_path"],
     )
     bpy.types.Scene.canny_controlnet_path = StringProperty(
         name="Canny ControlNet Path",
         description="Path to canny ControlNet",
         subtype="FILE_PATH",
-        default="lllyasviel/sd-controlnet-canny",
+        default=MODEL_SUPPORT_MATRIX["sd15"]["canny_controlnet_path"],
     )
     bpy.types.Scene.normal_controlnet_path = StringProperty(
         name="Normal ControlNet Path",
         description="Path to normal ControlNet",
         subtype="FILE_PATH",
-        default="lllyasviel/sd-controlnet-normal",
+        default=MODEL_SUPPORT_MATRIX["sd15"]["normal_controlnet_path"],
     )
 
     bpy.types.Scene.depth_controlnet_strength = FloatProperty(

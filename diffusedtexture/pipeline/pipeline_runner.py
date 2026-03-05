@@ -1,17 +1,47 @@
 from collections.abc import Callable
 
+import numpy as np
 from diffusers import (
     StableDiffusionControlNetInpaintPipeline,
     StableDiffusionXLControlNetUnionInpaintPipeline,
 )
+from numpy.typing import NDArray
 from PIL import Image
 
 from ...blender_operations import ProcessParameter
-from ...utils import image_to_numpy
 from .controlnet_config import build_controlnet_config
 
 
-def run_pipeline(  # noqa: PLR0913
+def _to_pil_image(img: NDArray | Image.Image | None) -> Image.Image | None:
+    if img is None:
+        return None
+
+    if isinstance(img, Image.Image):
+        return img
+
+    arr = np.asarray(img)
+    if arr.ndim == 2:  # noqa: PLR2004
+        arr = np.repeat(arr[..., None], 3, axis=2)
+
+    if arr.ndim != 3:  # noqa: PLR2004
+        msg = "IPAdapter image must be a 2D or 3D array."
+        raise ValueError(msg)
+
+    if arr.shape[2] == 4:  # noqa: PLR2004
+        arr = arr[..., :3]
+
+    if arr.dtype != np.uint8:
+        max_value = float(np.max(arr)) if arr.size else 0.0
+        if max_value <= 1.0:
+            arr = np.clip(arr, 0.0, 1.0)
+            arr = (arr * 255).astype(np.uint8)
+        else:
+            arr = np.clip(arr, 0.0, 255.0).astype(np.uint8)
+
+    return Image.fromarray(arr)
+
+
+def run_pipeline(  # noqa: C901, PLR0913
     pipe: StableDiffusionControlNetInpaintPipeline
     | StableDiffusionXLControlNetUnionInpaintPipeline,
     process_parameter: ProcessParameter,
@@ -24,28 +54,30 @@ def run_pipeline(  # noqa: PLR0913
     strength: float = 1.0,
     guidance_scale: float = 7.5,
     num_inference_steps: int = 50,
-) -> Image.Image | None:
+) -> Image.Image:
     # Lazy imports so the add-on can register without deps.
     try:
         import torch
-        from PIL import Image
-    except ModuleNotFoundError:
-        return None
+    except ModuleNotFoundError as exc:
+        msg = (
+            "Python dependencies missing. Open Preferences > Add-ons > DiffusedTexture "
+            "> Install Python Dependencies, restart Blender, and try again."
+        )
+        raise RuntimeError(msg) from exc
+
+    if pipe is None:
+        msg = (
+            "Diffusion pipeline is not initialized. Ensure dependencies are "
+            "installed and "
+            "the selected model and ControlNet paths are valid."
+        )
+        raise RuntimeError(msg)
 
     config = build_controlnet_config(process_parameter)
     complexity = process_parameter.mesh_complexity
 
     image_map = {"depth": depth_img, "canny": canny_img, "normal": normal_img}
     control_images = [image_map[key] for key in config[complexity]["inputs"]]
-
-    if process_parameter.sd_version == "sdxl":
-        control_mode = []
-        if "depth" in config[complexity]["inputs"]:
-            control_mode.append(1)
-        if "canny" in config[complexity]["inputs"]:
-            control_mode.append(3)
-        if "normal" in config[complexity]["inputs"]:
-            control_mode.append(4)
 
     try:
         kwargs = {
@@ -55,7 +87,7 @@ def run_pipeline(  # noqa: PLR0913
             "mask_image": uv_mask,
             "control_image": control_images,
             "ip_adapter_image": (
-                Image.fromarray(image_to_numpy(process_parameter.ipadapter_image))
+                _to_pil_image(process_parameter.ipadapter_image)
                 if process_parameter.use_ipadapter
                 else None
             ),
@@ -67,6 +99,13 @@ def run_pipeline(  # noqa: PLR0913
         }
 
         if process_parameter.sd_version == "sdxl":
+            control_mode = []
+            if "depth" in config[complexity]["inputs"]:
+                control_mode.append(1)
+            if "canny" in config[complexity]["inputs"]:
+                control_mode.append(3)
+            if "normal" in config[complexity]["inputs"]:
+                control_mode.append(4)
             kwargs["control_mode"] = control_mode
 
         def pipe_progress_callback(
@@ -83,9 +122,26 @@ def run_pipeline(  # noqa: PLR0913
 
         kwargs["callback_on_step_end"] = pipe_progress_callback
 
-        return pipe.__call__(**kwargs).images[0]
+        output = pipe.__call__(**kwargs)
+        generated_images = getattr(output, "images", None)
+        if generated_images is None or len(generated_images) == 0:
+            msg = "Stable Diffusion inference produced no output images."
+            raise RuntimeError(msg)  # noqa: TRY301
+        return generated_images[0]
 
-    except torch.cuda.OutOfMemoryError:
+    except torch.cuda.OutOfMemoryError as exc:
         del pipe
         torch.cuda.empty_cache()
-        return None
+        msg = (
+            "Stable Diffusion ran out of GPU memory (CUDA OOM). Reduce render/SD "
+            "resolution, lower inference steps, or close other GPU-heavy apps and try "
+            "again."
+        )
+        raise RuntimeError(msg) from exc
+    except Exception as exc:
+        msg = (
+            "Stable Diffusion inference failed "
+            f"({type(exc).__name__}: {exc!s}). Check model paths and generation "
+            "settings, then try again."
+        )
+        raise RuntimeError(msg) from exc

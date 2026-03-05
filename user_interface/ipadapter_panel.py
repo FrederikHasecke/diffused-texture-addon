@@ -1,5 +1,7 @@
 import bpy
 
+from ..model_support import supports_ipadapter, unsupported_model_message
+
 
 class OBJECT_PT_IPAdapterPanel(bpy.types.Panel):
     """IpAdapter Panel.
@@ -17,37 +19,48 @@ class OBJECT_PT_IPAdapterPanel(bpy.types.Panel):
     bl_order = 2
 
     def draw(self, context: bpy.types.Context) -> None:
-        """Draw function.
-
-        Args:
-            context (bpy.types.Context): _description_
-        """
+        """Draw function."""
         layout = self.layout
         scene = context.scene
 
-        # IPAdapter Activation Checkbox
-        layout.prop(scene, "use_ipadapter", text="Activate IPAdapter")
+        if not supports_ipadapter(scene.sd_version):
+            layout.label(
+                text=unsupported_model_message(scene.sd_version),
+                icon="ERROR",
+            )
+            layout.enabled = False
 
-        # IPAdapter Image Preview and Selection
-        row = layout.row()
+        else:
+            # IPAdapter Activation Checkbox
+            layout.prop(scene, "use_ipadapter", text="Activate IPAdapter")
 
-        # disable the IPAdapter image selection if the IPAdapter is not activated
-        row.enabled = scene.use_ipadapter
-        row.template_ID_preview(scene, "ipadapter_image", rows=2, cols=6)
+            is_running = bool(
+                getattr(scene, "diffused_texture_operator_running", False),
+            )
 
-        row = layout.row()
-        row.enabled = scene.use_ipadapter
-        # Button to open the file browser and load a new image
-        row.operator(
-            "image.open_new_ipadapter_image",
-            text="Open New IPAdapter Image",
-            icon="IMAGE_DATA",
-        )
+            # IPAdapter Image Preview and Selection
+            row = layout.row()
 
-        # IPAdapter Strength Slider
-        row = layout.row()
-        row.enabled = scene.use_ipadapter
-        row.prop(scene, "ipadapter_strength", text="Strength IPAdapter")
+            # disable the IPAdapter image selection if the IPAdapter is not activated
+            row.enabled = scene.use_ipadapter and not is_running
+            if is_running:
+                row.prop(scene, "ipadapter_image", text="IPAdapter Image")
+            else:
+                row.template_ID_preview(scene, "ipadapter_image", rows=2, cols=6)
+
+            row = layout.row()
+            row.enabled = scene.use_ipadapter
+            # Button to open the file browser and load a new image
+            row.operator(
+                "image.open_new_ipadapter_image",
+                text="Open New IPAdapter Image",
+                icon="IMAGE_DATA",
+            )
+
+            # IPAdapter Strength Slider
+            row = layout.row()
+            row.enabled = scene.use_ipadapter
+            row.prop(scene, "ipadapter_strength", text="Strength IPAdapter")
 
 
 class OBJECT_OT_OpenNewIPAdapterImage(bpy.types.Operator):
