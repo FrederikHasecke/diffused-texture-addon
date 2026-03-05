@@ -534,7 +534,7 @@ def prepare_scene(obj: bpy.types.Object) -> dict[str, Any]:
     return backup_data
 
 
-def restore_scene(  # noqa: C901, PLR0912
+def restore_scene(  # noqa: C901, PLR0912, PLR0915
     backup_data: dict,
     cameras: list[bpy.types.Object] | None,
 ) -> None:
@@ -736,13 +736,14 @@ def render_views(
                 context=context,
             )
 
-        return render_img_folders, cameras
     except Exception:
         context.scene.camera = original_camera
         for cam in cameras:
             if cam and cam.name in bpy.data.objects:
                 bpy.data.objects.remove(cam, do_unlink=True)
         raise
+    else:
+        return render_img_folders, cameras
 
 
 def save_normals_in_camera_coordinates(

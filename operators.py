@@ -30,6 +30,11 @@ from .model_support import require_supported_sd_version
 from .texture_generation import load_multiview_images, run_texture_generation
 
 
+def _raise_selected_object_not_found(selected_obj_name: str) -> None:
+    msg = f"Selected object '{selected_obj_name}' was not found."
+    raise ValueError(msg)
+
+
 class OBJECT_OT_GenerateTexture(bpy.types.Operator):
     """Start texture generation in a background thread."""
 
@@ -164,7 +169,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
         except Exception as exc:  # noqa: BLE001
             mark_done(False, str(exc))  # noqa: FBT003
 
-    def execute(  # noqa: C901, PLR0915
+    def execute(  # noqa: C901, PLR0912, PLR0915
         self: "OBJECT_OT_GenerateTexture",
         context: bpy.types.Context,
     ) -> set[str]:
@@ -222,8 +227,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
             selected_obj_name = context.scene.my_mesh_object
             selected_obj = bpy.data.objects.get(selected_obj_name)
             if selected_obj is None:
-                msg = f"Selected object '{selected_obj_name}' was not found."
-                raise ValueError(msg)
+                _raise_selected_object_not_found(selected_obj_name)
 
             # Snapshot parameters early so unsupported models fail before rendering.
             process_parameter = extract_process_parameter_from_context(context)

@@ -30,7 +30,7 @@ def _pick_device() -> str:
         return "cpu"
 
 
-def create_diffusion_pipeline(  # noqa: C901, PLR0912, PLR0915
+def create_diffusion_pipeline(  # noqa: C901, PLR0912
     process_parameter: ProcessParameter,
 ) -> Any:  # noqa: ANN401
     try:
