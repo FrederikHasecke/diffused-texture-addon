@@ -1,14 +1,54 @@
-import os
+import importlib.abc
+import importlib.util
 import sys
+from pathlib import Path
+
 import pytest
 
-# Add the parent directory of the addon package to Python path
-# this ensures `import diffused_texture_addon` works; previously we
-# were adding the package directory itself which meant Python could not
-# locate a subdirectory of that name, causing ModuleNotFoundError.
-root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-package_parent = os.path.dirname(root_dir)
-sys.path.insert(0, package_parent)
+
+class _AddonModuleFinder(importlib.abc.MetaPathFinder):
+    def __init__(self, root_dir: Path) -> None:
+        self._root_dir = root_dir
+        self._module_name = "diffused_texture_addon"
+
+    def find_spec(self, fullname: str, path, target=None):
+        del path, target
+
+        if fullname == self._module_name:
+            return importlib.util.spec_from_file_location(
+                fullname,
+                self._root_dir / "__init__.py",
+                submodule_search_locations=[str(self._root_dir)],
+            )
+
+        prefix = f"{self._module_name}."
+        if not fullname.startswith(prefix):
+            return None
+
+        relative_parts = fullname[len(prefix) :].split(".")
+        module_path = self._root_dir.joinpath(*relative_parts)
+        package_init = module_path / "__init__.py"
+        if package_init.is_file():
+            return importlib.util.spec_from_file_location(
+                fullname,
+                package_init,
+                submodule_search_locations=[str(module_path)],
+            )
+
+        module_file = module_path.with_suffix(".py")
+        if module_file.is_file():
+            return importlib.util.spec_from_file_location(fullname, module_file)
+
+        return None
+
+
+def _install_addon_module_finder() -> None:
+    root_dir = Path(__file__).resolve().parents[1]
+    finder = _AddonModuleFinder(root_dir)
+    sys.meta_path.insert(0, finder)
+
+
+_install_addon_module_finder()
 
 
 def pytest_configure(config):
