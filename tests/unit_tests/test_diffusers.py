@@ -1,5 +1,13 @@
 import os
+
 import pytest
+
+pytestmark = [
+    pytest.mark.slow,
+    pytest.mark.gpu,
+    pytest.mark.network,
+]
+
 
 def test_create_pipeline_sd15_inpaint():
     """Test creating StableDiffusion 1.5 Inpaint pipeline with ControlNet."""
@@ -10,13 +18,13 @@ def test_create_pipeline_sd15_inpaint():
             ControlNetModel,
         )
     except ImportError:
-        pytest.skip("Required dependencies not available")
+        pytest.fail("Required dependencies not available")
 
     controlnet = ControlNetModel.from_pretrained(
         "lllyasviel/sd-controlnet-depth",
         torch_dtype=torch.float16,
     )
-    
+
     pipe = StableDiffusionControlNetInpaintPipeline.from_pretrained(
         "runwayml/stable-diffusion-v1-5",
         controlnet=controlnet,
@@ -38,13 +46,13 @@ def test_create_pipeline_sdxl_inpaint():
             ControlNetUnionModel,
         )
     except ImportError:
-        pytest.skip("Required dependencies not available")
+        pytest.fail("Required dependencies not available")
 
     controlnet = ControlNetUnionModel.from_pretrained(
         "xinsir/controlnet-union-sdxl-1.0",
         torch_dtype=torch.float16,
     )
-    
+
     pipe = StableDiffusionXLControlNetUnionInpaintPipeline.from_pretrained(
         "stabilityai/stable-diffusion-xl-base-1.0",
         controlnet=controlnet,
@@ -55,5 +63,3 @@ def test_create_pipeline_sdxl_inpaint():
     )
     pipe.to("cuda")
     assert pipe is not None
-
-

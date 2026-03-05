@@ -4,17 +4,16 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     try:
         from diffusers import (
-            QwenImageControlNetPipeline,
             StableDiffusionControlNetInpaintPipeline,
             StableDiffusionXLControlNetUnionInpaintPipeline,
         )
     except ModuleNotFoundError:
         StableDiffusionControlNetInpaintPipeline = None  # type: ignore[assignment]
         StableDiffusionXLControlNetUnionInpaintPipeline = None  # type: ignore[assignment]
-        QwenImageControlNetPipeline = None  # type: ignore[assignment]
 
 
 from ...blender_operations import ProcessParameter
+from ...model_support import require_supported_sd_version
 from .controlnet_config import build_controlnet_config
 
 
@@ -50,24 +49,19 @@ def create_diffusion_pipeline(  # noqa: C901, PLR0912, PLR0915
     ):
         return None
 
+    model_version = require_supported_sd_version(process_parameter.sd_version)
     config = build_controlnet_config(process_parameter)
     pipe_cls = None
 
-    if process_parameter.sd_version == "sd15":
+    if model_version == "sd15":
         pipe_cls = StableDiffusionControlNetInpaintPipeline
         dtype = process_parameter.dtype or "float16"
-    elif process_parameter.sd_version == "sdxl":
+    elif model_version == "sdxl":
         pipe_cls = StableDiffusionXLControlNetUnionInpaintPipeline
         dtype = process_parameter.dtype or "float16"
-    elif process_parameter.sd_version == "flux":
-        msg = "Flux model is not yet implemented."
-        raise NotImplementedError(msg)
-    elif process_parameter.sd_version == "qwen":
-        pipe_cls = QwenImageControlNetPipeline
-        dtype = process_parameter.dtype or "bfloat16"
     else:
-        msg = "Unknown SD version: must be 'sd15' or 'sdxl'"
-        raise ValueError(msg)
+        msg = f"Unexpected supported model: {model_version}"
+        raise RuntimeError(msg)
 
     controlnets = config[process_parameter.mesh_complexity]["controlnets"]
 
@@ -120,24 +114,18 @@ def create_diffusion_pipeline(  # noqa: C901, PLR0912, PLR0915
 
     # IPAdapter
     if process_parameter.use_ipadapter:
-        if process_parameter.sd_version == "sd15":
+        if model_version == "sd15":
             pipe.load_ip_adapter(
                 "h94/IP-Adapter",
                 subfolder="models",
                 weight_name="ip-adapter_sd15.bin",
             )
-        elif process_parameter.sd_version == "sdxl":
+        elif model_version == "sdxl":
             pipe.load_ip_adapter(
                 "h94/IP-Adapter",
                 subfolder="sdxl_models",
                 weight_name="ip-adapter_sdxl.bin",
             )
-        elif process_parameter.sd_version == "flux":
-            msg = "Flux model is not yet implemented."
-            raise NotImplementedError(msg)
-        elif process_parameter.sd_version == "qwen":
-            msg = "Qwen IPAdapter model is not yet implemented."
-            raise NotImplementedError(msg)
         pipe.set_ip_adapter_scale(process_parameter.ipadapter_strength)
 
     if device == "cpu":

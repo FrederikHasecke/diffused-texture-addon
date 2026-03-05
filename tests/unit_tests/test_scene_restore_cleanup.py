@@ -1,34 +1,69 @@
 import importlib
-import importlib.util
 import sys
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
-
-bpy = pytest.importorskip("bpy")
 
 
 def _load_addon_submodule(submodule: str):
     root = Path(__file__).resolve().parents[2]
     package_name = f"addon_under_test_{uuid4().hex}"
-    init_path = root / "__init__.py"
 
-    spec = importlib.util.spec_from_file_location(
-        package_name,
-        init_path,
-        submodule_search_locations=[str(root)],
-    )
-    if spec is None or spec.loader is None:
-        msg = "Failed to create module spec for addon package."
-        raise RuntimeError(msg)
+    package_module = ModuleType(package_name)
+    package_module.__path__ = [str(root)]
 
-    package_module = importlib.util.module_from_spec(spec)
-    sys.modules[package_name] = package_module
-    spec.loader.exec_module(package_module)
+    class _Vector:
+        def __init__(self, coords) -> None:
+            self.coords = tuple(coords)
 
-    return importlib.import_module(f"{package_name}.{submodule}")
+        def __sub__(self, other):
+            return _Vector(
+                a - b for a, b in zip(self.coords, other.coords, strict=False)
+            )
+
+        @property
+        def length(self) -> float:
+            return 0.0
+
+        def to_track_quat(self, *args):  # noqa: ANN002, ARG002
+            return SimpleNamespace(to_euler=lambda: (0.0, 0.0, 0.0))
+
+    mathutils = ModuleType("mathutils")
+    mathutils.Vector = _Vector
+
+    class _BpyTypes:
+        Operator = type("Operator", (), {})
+        Context = object
+        Scene = type("Scene", (), {})
+        Object = object
+        Camera = object
+        Image = object
+
+        def __getattr__(self, name: str):
+            del name
+            return object
+
+    bpy_module = ModuleType("bpy")
+    bpy_module.types = _BpyTypes()
+    bpy_module.context = SimpleNamespace()
+
+    texture_generation = ModuleType(f"{package_name}.texture_generation")
+    texture_generation.load_multiview_images = lambda *args, **kwargs: {}  # noqa: ARG005
+    texture_generation.run_texture_generation = lambda *args, **kwargs: None  # noqa: ARG005
+
+    modules = {
+        package_name: package_module,
+        "bpy": bpy_module,
+        "mathutils": mathutils,
+    }
+    if submodule == "operators":
+        modules[f"{package_name}.texture_generation"] = texture_generation
+
+    with patch.dict(sys.modules, modules):
+        return importlib.import_module(f"{package_name}.{submodule}")
 
 
 def test_execute_restores_scene_when_render_fails(
@@ -46,6 +81,12 @@ def test_execute_restores_scene_when_render_fails(
 
     monkeypatch.setattr(operators, "prepare_scene", lambda obj: scene_backup)
     monkeypatch.setattr(operators, "render_views", _raise_render_error)
+    monkeypatch.setattr(
+        operators,
+        "extract_process_parameter_from_context",
+        lambda context: SimpleNamespace(sd_version="sd15", output_path="C:/tmp"),
+    )
+    monkeypatch.setattr(operators, "require_supported_sd_version", lambda version: None)
     monkeypatch.setattr(
         operators,
         "restore_scene",
@@ -351,4 +392,171 @@ def test_restore_scene_restores_camera_and_render_state(
     assert view_layer.use_pass_uv is True
     assert view_layer.use_pass_position is True
     assert object_store.removed == [("TempRenderCam", True)]
+    assert updated["called"] is True
+
+
+def test_prepare_scene_snapshots_object_visibility(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    blender_operations = _load_addon_submodule("blender_operations")
+
+    class _VisibilityObject:
+        def __init__(
+            self,
+            name: str,
+            *,
+            hidden: bool,
+            hide_render: bool,
+        ) -> None:
+            self.name = name
+            self.hidden = hidden
+            self.hide_render = hide_render
+
+        def hide_get(self) -> bool:
+            return self.hidden
+
+        def hide_set(self, state: bool) -> None:  # noqa: FBT001
+            self.hidden = state
+
+    target_obj = _VisibilityObject(
+        "Target",
+        hidden=False,
+        hide_render=False,
+    )
+    render_hidden = _VisibilityObject(
+        "RenderHidden",
+        hidden=False,
+        hide_render=True,
+    )
+    viewport_hidden = _VisibilityObject(
+        "ViewportHidden",
+        hidden=True,
+        hide_render=False,
+    )
+
+    monkeypatch.setattr(
+        blender_operations,
+        "isolate_object",
+        lambda obj: {
+            "target_object": obj,
+            "hidden_objects": [],
+            "original_location": (0, 0, 0),
+        },
+    )
+
+    scene = SimpleNamespace(
+        camera="orig_camera",
+        render=SimpleNamespace(
+            engine="CYCLES",
+            resolution_x=1024,
+            resolution_y=1024,
+            resolution_percentage=100,
+            filepath="C:/tmp/output",
+            filter_size=1.5,
+            film_transparent=True,
+            image_settings=SimpleNamespace(file_format="PNG", color_depth="8"),
+        ),
+        cycles=None,
+    )
+    view_layer = SimpleNamespace(
+        use_pass_z=False,
+        use_pass_normal=False,
+        use_pass_uv=False,
+        use_pass_position=False,
+        objects=SimpleNamespace(active=None),
+    )
+
+    monkeypatch.setattr(
+        blender_operations,
+        "bpy",
+        SimpleNamespace(
+            context=SimpleNamespace(scene=scene, view_layer=view_layer),
+            data=SimpleNamespace(
+                objects=[target_obj, render_hidden, viewport_hidden],
+            ),
+        ),
+    )
+
+    backup_data = blender_operations.prepare_scene(target_obj)
+
+    assert backup_data["original_object_visibility"] == {
+        "Target": {"hide_viewport": False, "hide_render": False},
+        "RenderHidden": {"hide_viewport": False, "hide_render": True},
+        "ViewportHidden": {"hide_viewport": True, "hide_render": False},
+    }
+
+
+def test_restore_scene_restores_exact_visibility_and_skips_deleted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    blender_operations = _load_addon_submodule("blender_operations")
+
+    class _ObjectStore(dict):
+        def remove(self, obj, do_unlink: bool = True) -> None:  # noqa: FBT001, FBT002, ARG002
+            self.pop(obj.name, None)
+
+    class _VisibilityObject:
+        def __init__(
+            self,
+            name: str,
+            *,
+            hidden: bool,
+            hide_render: bool,
+        ) -> None:
+            self.name = name
+            self.hidden = hidden
+            self.hide_render = hide_render
+
+        def hide_get(self) -> bool:
+            return self.hidden
+
+        def hide_set(self, state: bool) -> None:  # noqa: FBT001
+            self.hidden = state
+
+    target_obj = SimpleNamespace(location=(99, 99, 99))
+    keep_hidden = _VisibilityObject("KeepHidden", hidden=False, hide_render=True)
+    keep_render_hidden = _VisibilityObject(
+        "KeepRenderHidden", hidden=True, hide_render=False
+    )
+
+    object_store = _ObjectStore(
+        {
+            keep_hidden.name: keep_hidden,
+            keep_render_hidden.name: keep_render_hidden,
+        },
+    )
+
+    updated = {"called": False}
+    view_layer = SimpleNamespace(update=lambda: updated.__setitem__("called", True))
+    scene = SimpleNamespace(
+        render=SimpleNamespace(image_settings=SimpleNamespace()),
+        cycles=None,
+    )
+
+    monkeypatch.setattr(
+        blender_operations,
+        "bpy",
+        SimpleNamespace(
+            context=SimpleNamespace(scene=scene, view_layer=view_layer),
+            data=SimpleNamespace(objects=object_store),
+        ),
+    )
+
+    backup_data = {
+        "target_object": target_obj,
+        "original_location": (1, 2, 3),
+        "original_object_visibility": {
+            "KeepHidden": {"hide_viewport": True, "hide_render": False},
+            "KeepRenderHidden": {"hide_viewport": False, "hide_render": True},
+            "DeletedObj": {"hide_viewport": False, "hide_render": False},
+        },
+    }
+
+    blender_operations.restore_scene(backup_data, cameras=[])
+
+    assert target_obj.location == (1, 2, 3)
+    assert keep_hidden.hide_get() is True
+    assert keep_hidden.hide_render is False
+    assert keep_render_hidden.hide_get() is False
+    assert keep_render_hidden.hide_render is True
     assert updated["called"] is True

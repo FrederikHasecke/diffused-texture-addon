@@ -4,6 +4,8 @@ import tempfile
 import time
 from pathlib import Path
 
+import pytest
+
 
 ADDON_MODULE_CANDIDATES = (
     "diffused_texture_addon",
@@ -11,6 +13,13 @@ ADDON_MODULE_CANDIDATES = (
 )
 
 E2E_TIMEOUT_SECONDS = int(os.getenv("DIFFUSEDTEXTURE_E2E_TIMEOUT", "180"))
+pytestmark = [
+    pytest.mark.e2e,
+    pytest.mark.slow,
+    pytest.mark.gpu,
+    pytest.mark.network,
+    pytest.mark.exclusive,
+]
 
 
 def _enable_addon() -> str:

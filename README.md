@@ -38,6 +38,15 @@ DiffusedTexture is a Blender add-on that uses Stable Diffusion to create texture
 - **LoRA Integration**: Uses LoRA conditioning for specific styles.
 - **IPAdapter Integration**: Fit specific styles or objects with images for enhanced flexibility and control.
 
+## Model Support Matrix
+
+| Model Key | UI Selectable | Pipeline Support | IPAdapter | Default SD Resolution | Status |
+| --- | --- | --- | --- | --- | --- |
+| `sd15` | Yes | Yes | Yes | 512 | Supported |
+| `sdxl` | Yes | Yes | Yes | 1024 | Supported |
+| `flux` | No | No | No | 1024 | Explicitly unsupported (fails fast with clear error) |
+| `qwen` | No | No | No | 1328 | Explicitly unsupported (fails fast with clear error) |
+
 ## Installation 
 
 1. Download the .zip file of the [latest release](https://github.com/FrederikHasecke/diffused-texture-addon/releases/latest)

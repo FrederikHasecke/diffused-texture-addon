@@ -26,6 +26,7 @@ from .blender_operations import (
     render_views,
     restore_scene,
 )
+from .model_support import require_supported_sd_version
 from .texture_generation import load_multiview_images, run_texture_generation
 
 
@@ -224,6 +225,11 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                 msg = f"Selected object '{selected_obj_name}' was not found."
                 raise ValueError(msg)
 
+            # Snapshot parameters early so unsupported models fail before rendering.
+            process_parameter = extract_process_parameter_from_context(context)
+            require_supported_sd_version(process_parameter.sd_version)
+            self._output_file = process_parameter.output_path
+
             scene_backup = None
             cameras = []
 
@@ -240,7 +246,8 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                 else:
                     wm.progress_update(5)
                     render_img_folders, render_cameras = bake_uv_views(
-                        context, selected_obj,
+                        context,
+                        selected_obj,
                     )
                     cameras = render_cameras or []
                     wm.progress_update(10)
@@ -248,11 +255,6 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
             finally:
                 if scene_backup is not None:
                     restore_scene(scene_backup, cameras)
-
-            # Put the process parameter from context to a dataclass for thread safety
-            process_parameter = extract_process_parameter_from_context(context)
-
-            self._output_file = process_parameter.output_path
 
             # if an input texture exists, turn it into an NDArray
             if context.scene.input_texture:

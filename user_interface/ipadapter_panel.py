@@ -1,5 +1,7 @@
 import bpy
 
+from ..model_support import supports_ipadapter, unsupported_model_message
+
 
 class OBJECT_PT_IPAdapterPanel(bpy.types.Panel):
     """IpAdapter Panel.
@@ -21,9 +23,9 @@ class OBJECT_PT_IPAdapterPanel(bpy.types.Panel):
         layout = self.layout
         scene = context.scene
 
-        if scene.sd_version not in {"sdxl", "sd15"}:
+        if not supports_ipadapter(scene.sd_version):
             layout.label(
-                text="IPAdapter is only implemented for SD 1.5 and SDXL models.",
+                text=unsupported_model_message(scene.sd_version),
                 icon="ERROR",
             )
             layout.enabled = False

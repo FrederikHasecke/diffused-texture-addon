@@ -12,7 +12,6 @@ jobs:
       - uses: astral-sh/ruff-action@v1
         with:
           args: check . --output-format=github --config pyproject.toml
-        continue-on-error: true
 
   tests:
     runs-on: ubuntu-latest
@@ -24,10 +23,11 @@ jobs:
       - name: Install test dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install "pytest>=9.0.2" "bpy>=5.0.1"
-      - name: Run unit compatibility tests
+          python -m pip install "pytest>=9.0.2" "pytest-xdist>=3.6.1" "bpy>=5.0.1" "numpy>=1.26,<2.0" "pillow==12.0.0"
+      - name: Run fast CI test gates
         run: |
           python -m pytest \
-            tests/unit_tests/test_bpy.py \
-            tests/unit_tests/test_render_setup_compat.py \
+            tests/unit_tests \
+            tests/integration_tests \
+            -m "not slow and not gpu and not network and not e2e" \
             -q

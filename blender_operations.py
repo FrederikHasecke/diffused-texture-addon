@@ -63,7 +63,7 @@ class ProcessParameter:
     input_texture: bpy.types.Image | NDArray | None
 
     # Advanced Settings
-    sd_version: Literal["sd15", "sdxl", "flux", "qwen"] | None
+    sd_version: Literal["sd15", "sdxl"] | None
     checkpoint_path: str
     dtype: Literal["float16", "bfloat16"] | None
     custom_sd_resolution: int
@@ -463,7 +463,16 @@ def save_numpy_to_exr(
 
 def prepare_scene(obj: bpy.types.Object) -> dict[str, Any]:
     """Backup all other objects and isolate the target object to work with."""
+    original_object_visibility = {
+        scene_obj.name: {
+            "hide_viewport": scene_obj.hide_get(),
+            "hide_render": scene_obj.hide_render,
+        }
+        for scene_obj in bpy.data.objects
+    }
+
     backup_data = isolate_object(obj)
+    backup_data["original_object_visibility"] = original_object_visibility
     scene = bpy.context.scene
     view_layer = bpy.context.view_layer
 
@@ -538,20 +547,43 @@ def restore_scene(  # noqa: C901, PLR0912
     obj = backup_data["target_object"]
 
     # Restore transform (matches isolate_object which edited matrix_world.translation)
-    if (
-        "original_matrix_world" in backup_data
-        and backup_data["original_matrix_world"] is not None
-    ):
-        obj.matrix_world = backup_data["original_matrix_world"].copy()
-    # Back-compat: if only location was stored
-    elif "original_location" in backup_data:
-        obj.location = backup_data["original_location"]
+    try:
+        if (
+            "original_matrix_world" in backup_data
+            and backup_data["original_matrix_world"] is not None
+        ):
+            obj.matrix_world = backup_data["original_matrix_world"].copy()
+        # Back-compat: if only location was stored
+        elif "original_location" in backup_data:
+            obj.location = backup_data["original_location"]
+    except ReferenceError:
+        pass
 
-    # Unhide objects we hid and re-enable render visibility
-    for o in backup_data.get("hidden_objects", []):
-        if o and o.name in bpy.data.objects:
-            o.hide_set(False)  # noqa: FBT003
-            o.hide_render = False
+    object_visibility = backup_data.get("original_object_visibility")
+    if isinstance(object_visibility, dict):
+        for object_name, visibility in object_visibility.items():
+            scene_obj = bpy.data.objects.get(object_name)
+            if scene_obj is None or not isinstance(visibility, dict):
+                continue
+
+            hide_viewport = visibility.get("hide_viewport")
+            if hide_viewport is not None:
+                scene_obj.hide_set(hide_viewport)
+
+            hide_render = visibility.get("hide_render")
+            if hide_render is not None:
+                scene_obj.hide_render = hide_render
+    else:
+        # Back-compat for backups created before visibility snapshots were added.
+        for o in backup_data.get("hidden_objects", []):
+            try:
+                object_name = o.name if o else None
+            except ReferenceError:
+                continue
+
+            if object_name and object_name in bpy.data.objects:
+                o.hide_set(False)  # noqa: FBT003
+                o.hide_render = False
 
     scene = bpy.context.scene
     view_layer = bpy.context.view_layer

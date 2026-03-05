@@ -1,5 +1,3 @@
-from enum import Enum
-
 import bpy
 from bpy.props import (  # type: ignore  # noqa: PGH003
     EnumProperty,
@@ -7,57 +5,31 @@ from bpy.props import (  # type: ignore  # noqa: PGH003
     StringProperty,
 )
 
-
-class stable_diffusion_paths(Enum):
-    """Default Setting for SD paths."""
-
-    sd15_ckpt = "runwayml/stable-diffusion-v1-5"
-    sd15_cn_canny = "lllyasviel/sd-controlnet-canny"
-    sd15_cn_normal = "lllyasviel/sd-controlnet-normal"
-    sd15_cn_depth = "lllyasviel/sd-controlnet-depth"
-
-    sdxl_ckpt = "stabilityai/stable-diffusion-xl-base-1.0"
-    sdxl_cn_union = "xinsir/controlnet-union-sdxl-1.0"
-
-    qwen_ckpt = "Qwen/Qwen-Image"
-    qwen_cn_union = "InstantX/Qwen-Image-ControlNet-Union"
-
-    flux_ckpt = "black-forest-labs/FLUX.1-Depth-dev"
-    flux_cn = "sayakpaul/FLUX.1-Depth-dev-nf4"
+from ..model_support import (
+    DEFAULT_SD_VERSION,
+    MODEL_SUPPORT_MATRIX,
+    get_default_model_paths,
+    get_sd_version_enum_items,
+    require_supported_sd_version,
+)
 
 
 def update_sd_paths(self: bpy.types.Scene, context: bpy.types.Context) -> None:  # noqa: ARG001
-    if context.scene.sd_version == "sd15":
-        context.scene.checkpoint_path = stable_diffusion_paths.sd15_ckpt.value
-        context.scene.canny_controlnet_path = stable_diffusion_paths.sd15_cn_canny.value
-        context.scene.normal_controlnet_path = (
-            stable_diffusion_paths.sd15_cn_normal.value
-        )
-        context.scene.depth_controlnet_path = stable_diffusion_paths.sd15_cn_depth.value
-    elif context.scene.sd_version == "sdxl":
-        context.scene.checkpoint_path = stable_diffusion_paths.sdxl_ckpt.value
-        context.scene.controlnet_union_path = stable_diffusion_paths.sdxl_cn_union.value
-    elif context.scene.sd_version == "flux":
-        context.scene.checkpoint_path = stable_diffusion_paths.flux_ckpt.value
-        context.scene.controlnet_union_path = stable_diffusion_paths.flux_cn.value
-    elif context.scene.sd_version == "qwen":
-        context.scene.checkpoint_path = stable_diffusion_paths.qwen_ckpt.value
-        context.scene.controlnet_union_path = stable_diffusion_paths.qwen_cn_union.value
-    else:
-        msg = "Invalid Stable Diffusion version selected."
-        context.scene.checkpoint_path = ""
-        raise ValueError(msg)
+    model_version = require_supported_sd_version(context.scene.sd_version)
+    defaults = get_default_model_paths(model_version)
+    context.scene.checkpoint_path = defaults["checkpoint_path"]
+    context.scene.controlnet_union_path = defaults["controlnet_union_path"]
+    context.scene.canny_controlnet_path = defaults["canny_controlnet_path"]
+    context.scene.normal_controlnet_path = defaults["normal_controlnet_path"]
+    context.scene.depth_controlnet_path = defaults["depth_controlnet_path"]
 
 
 def register_stable_diffusion_properties() -> None:
     bpy.types.Scene.sd_version = EnumProperty(
         name="Stable Diffusion Version",
-        description="Choose between SD 1.5 or SDXL",
-        items=[
-            ("sd15", "Stable Diffusion 1.5", ""),
-            ("sdxl", "Stable Diffusion XL", ""),
-        ],
-        default="sd15",
+        description="Choose a supported diffusion model",
+        items=get_sd_version_enum_items(),
+        default=DEFAULT_SD_VERSION,
         update=update_sd_paths,
     )
 
@@ -65,7 +37,7 @@ def register_stable_diffusion_properties() -> None:
         name="Checkpoint Path",
         description="Path to the base Stable Diffusion model",
         subtype="FILE_PATH",
-        default="runwayml/stable-diffusion-v1-5",
+        default=MODEL_SUPPORT_MATRIX[DEFAULT_SD_VERSION]["checkpoint_path"],
     )
 
     bpy.types.Scene.dtype = EnumProperty(
@@ -75,11 +47,15 @@ def register_stable_diffusion_properties() -> None:
             (
                 "float16",
                 "float16",
-                "Use float16 precision (most SD 1.5 and most SDXL models)",
+                "Use float16 precision",
             ),
-            ("bfloat16", "bfloat16", "Use bfloat16 precision (FLUX and Qwen models)"),
+            (
+                "bfloat16",
+                "bfloat16",
+                "Use bfloat16 precision (currently unused by supported models)",
+            ),
         ],
-        default="float16",
+        default=MODEL_SUPPORT_MATRIX[DEFAULT_SD_VERSION]["default_dtype"],
     )
 
     bpy.types.Scene.custom_sd_resolution = IntProperty(
@@ -91,6 +67,11 @@ def register_stable_diffusion_properties() -> None:
 
 
 def unregister_stable_diffusion_properties() -> None:
-    del bpy.types.Scene.sd_version
-    del bpy.types.Scene.checkpoint_path
-    del bpy.types.Scene.custom_sd_resolution
+    for prop_name in (
+        "sd_version",
+        "checkpoint_path",
+        "dtype",
+        "custom_sd_resolution",
+    ):
+        if hasattr(bpy.types.Scene, prop_name):
+            delattr(bpy.types.Scene, prop_name)

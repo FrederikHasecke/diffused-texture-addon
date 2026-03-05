@@ -3,9 +3,8 @@ from uuid import uuid4
 
 import pytest
 
-bpy = pytest.importorskip("bpy")
-render_setup = pytest.importorskip("render_setup")
-
+import bpy
+import render_setup
 find_output_node_image_path = render_setup.find_output_node_image_path
 get_output_node_directory = render_setup.get_output_node_directory
 get_output_node_file_prefix = render_setup.get_output_node_file_prefix

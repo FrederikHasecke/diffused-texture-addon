@@ -6,16 +6,6 @@ import numpy as np
 import pytest
 from PIL import Image as PILImage
 
-bpy = pytest.importorskip("bpy")
-blender_operations = pytest.importorskip(
-    "diffused_texture_addon.blender_operations",
-)
-
-extract_process_parameter_from_context = (
-    blender_operations.extract_process_parameter_from_context
-)
-load_img_to_numpy = blender_operations.load_img_to_numpy
-
 
 class _DummyImage:
     def __init__(self) -> None:
@@ -34,6 +24,12 @@ class _DummyImage:
 
 
 def test_extract_process_parameter_snapshots_thread_safe_data() -> None:
+    # import through the package so that relative imports inside
+    # `blender_operations` resolve correctly when running under pytest
+    from diffused_texture_addon.blender_operations import (
+        extract_process_parameter_from_context,
+    )
+
     scene = SimpleNamespace(
         num_loras=1,
         lora_models=[SimpleNamespace(path="style.safetensors", strength=0.75)],
@@ -60,6 +56,10 @@ def test_extract_process_parameter_snapshots_thread_safe_data() -> None:
 
 
 def test_load_img_to_numpy_releases_loaded_image(tmp_path: Path) -> None:
+    # same reasoning as above; use package import
+    import bpy
+    from diffused_texture_addon.blender_operations import load_img_to_numpy
+
     file_name = f"tmp_image_{uuid4().hex}.png"
     image_path = tmp_path / file_name
 

@@ -15,6 +15,7 @@ except ModuleNotFoundError:
 from numpy.typing import NDArray
 
 from ..blender_operations import ProcessParameter
+from ..model_support import get_default_sd_resolution
 from .pipeline.pipeline_builder import create_diffusion_pipeline
 from .pipeline.pipeline_runner import run_pipeline
 from .process_operations import _require_cv2, assemble_multiview_list
@@ -50,21 +51,10 @@ def img_sequential(
         Processed full-resolution texture.
     """
     _require_cv2()
-    if process_parameter.custom_sd_resolution:
-        sd_resolution = int(process_parameter.custom_sd_resolution)
-    else:
-        match process_parameter.sd_version:
-            case "sd15":
-                sd_resolution = 512
-            case "sdxl":
-                sd_resolution = 1024
-            case "qwen":
-                sd_resolution = 1328
-            case "flux":
-                sd_resolution = 1024
-            case _:
-                msg = "Unknown SD version: must be 'sd15', 'sdxl', 'qwen' or 'flux'"
-                raise ValueError(msg)
+    sd_resolution = get_default_sd_resolution(
+        process_parameter.sd_version,
+        process_parameter.custom_sd_resolution,
+    )
 
     # Assemble per-view processed/resized maps
     _, resized_list = assemble_multiview_list(

@@ -3,6 +3,15 @@
 ## Overview
 DiffusedTexture generates textures for 3D models by leveraging Stable Diffusion with ControlNets. The process involves generating viewpoints from multiple cameras, creating control images, and blending results into a cohesive texture. The workflow adapts to different modes: Text2Image, Image2Image Parallel, and Image2Image Sequential.
 
+## Model Support Matrix
+
+| Model Key | UI Selectable | Pipeline Support | IPAdapter | Status |
+| --- | --- | --- | --- | --- |
+| `sd15` | Yes | Yes | Yes | Supported |
+| `sdxl` | Yes | Yes | Yes | Supported |
+| `flux` | No | No | No | Explicitly unsupported (fails fast with clear error) |
+| `qwen` | No | No | No | Explicitly unsupported (fails fast with clear error) |
+
 ---
 
 ## Cameras

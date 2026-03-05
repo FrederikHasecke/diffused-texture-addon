@@ -7,7 +7,7 @@ def test_register_unregister_bare() -> None:
     try:
         import bpy
     except ImportError:
-        pytest.skip("bpy module not available")
+        pytest.fail("bpy module not available")
     
     # Clean file for deterministic tests
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -31,7 +31,7 @@ def test_register_unregister_bare_2() -> None:
     try:
         import bpy
     except ImportError:
-        pytest.skip("bpy module not available")
+        pytest.fail("bpy module not available")
     
     # Import the register module
     import diffused_texture_addon

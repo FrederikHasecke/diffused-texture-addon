@@ -16,6 +16,7 @@ except ModuleNotFoundError:
     Image = None
 
 from ..blender_operations import ProcessParameter
+from ..model_support import get_default_sd_resolution
 from .pipeline.pipeline_builder import create_diffusion_pipeline
 from .pipeline.pipeline_runner import run_pipeline
 from .process_operations import (
@@ -56,21 +57,10 @@ def img_parasequential(  # noqa: C901, PLR0912, PLR0913, PLR0915
                                                 C=3).
     """
     _require_cv2()
-    if process_parameter.custom_sd_resolution:
-        sd_tile_res = int(process_parameter.custom_sd_resolution)
-    else:
-        match process_parameter.sd_version:
-            case "sd15":
-                sd_tile_res = 512
-            case "sdxl":
-                sd_tile_res = 1024
-            case "qwen":
-                sd_tile_res = 1328
-            case "flux":
-                sd_tile_res = 1024
-            case _:
-                msg = "Unknown SD version: must be 'sd15', 'sdxl', 'qwen' or 'flux'"
-                raise ValueError(msg)
+    sd_tile_res = get_default_sd_resolution(
+        process_parameter.sd_version,
+        process_parameter.custom_sd_resolution,
+    )
 
     render_res = int(process_parameter.render_resolution)
     tex_res = int(process_parameter.texture_resolution)

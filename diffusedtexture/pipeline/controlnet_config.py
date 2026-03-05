@@ -9,21 +9,22 @@ try:
     from diffusers import (
         ControlNetModel,
         ControlNetUnionModel,
-        QwenImageMultiControlNetModel,
     )
 except ModuleNotFoundError:
     ControlNetModel = None
     ControlNetUnionModel = None
-    QwenImageMultiControlNetModel = None
 
 from ...blender_operations import ProcessParameter
+from ...model_support import require_supported_sd_version
 
 
 def build_controlnet_config(
     process_parameter: ProcessParameter,
 ) -> dict[str, dict[str, Any]]:
     """Return a controlnet configuration dictionary for a given scene."""
-    if process_parameter.sd_version == "sdxl":
+    model_version = require_supported_sd_version(process_parameter.sd_version)
+
+    if model_version == "sdxl":
         torch_dtype = torch.float16
         if process_parameter.dtype == "bfloat16":
             torch_dtype = torch.bfloat16
@@ -57,7 +58,7 @@ def build_controlnet_config(
             },
         }
 
-    if process_parameter.sd_version == "sd15":
+    if model_version == "sd15":
         torch_dtype = torch.float16
         if process_parameter.dtype == "bfloat16":
             torch_dtype = torch.bfloat16
@@ -98,49 +99,5 @@ def build_controlnet_config(
             },
         }
 
-    if process_parameter.sd_version == "flux":
-        # TODO: Implement flux pipeline
-        msg = "Flux model is not yet implemented."
-        raise NotImplementedError(msg)
-
-    if process_parameter.sd_version == "qwen":
-        torch_dtype = torch.bfloat16
-        if process_parameter.dtype == "float16":
-            torch_dtype = torch.float16
-
-        controlnet_model = QwenImageMultiControlNetModel.from_pretrained(
-            process_parameter.controlnet_union_path,
-            torch_dtype=torch_dtype,
-        )
-        scale = process_parameter.union_controlnet_strength
-        return {
-            "LOW": {
-                "controlnet_conditioning_scale": [
-                    process_parameter.depth_controlnet_strength,
-                ],
-                "controlnet": controlnet_model,
-                "inputs": ["depth"],
-            },
-            "MEDIUM": {
-                "controlnet_conditioning_scale": [
-                    process_parameter.depth_controlnet_strength,
-                    process_parameter.canny_controlnet_strength,
-                ],
-                "controlnet": controlnet_model,
-                "inputs": ["depth", "canny"],
-            },
-            "HIGH": {
-                "controlnet_conditioning_scale": [
-                    process_parameter.depth_controlnet_strength,
-                    process_parameter.canny_controlnet_strength,
-                    process_parameter.normal_controlnet_strength,
-                ],
-                "controlnet": controlnet_model,
-                "inputs": ["depth", "canny", "normal"],
-            },
-        }
-
-    msg = "Invalid Stable Diffusion version selected."
-    raise ValueError(
-        msg,
-    )
+    msg = f"Unexpected supported model: {model_version}"
+    raise RuntimeError(msg)

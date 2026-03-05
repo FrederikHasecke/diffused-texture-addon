@@ -2,6 +2,8 @@ import math
 
 import bpy
 
+from ..model_support import unsupported_model_message
+
 
 class OBJECT_PT_AdvancedPanel(bpy.types.Panel):
     """Advanced Settings Panel."""
@@ -49,9 +51,15 @@ class OBJECT_PT_AdvancedPanel(bpy.types.Panel):
 
         if context.scene.sd_version == "sdxl":
             self.panel_sdxl_controlnets(context=context, controlnet_panel=box)
-
-        else:
+        elif context.scene.sd_version == "sd15":
             self.panel_sd15_controlnets(context=context, controlnet_panel=box)
+        else:
+            box.label(
+                text="Unsupported model selected.",
+                icon="ERROR",
+            )
+            box.label(text=unsupported_model_message(context.scene.sd_version))
+            return
 
     def panel_sd15_controlnets(
         self,

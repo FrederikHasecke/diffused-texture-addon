@@ -4,6 +4,14 @@ from pathlib import Path
 import bpy
 import mathutils
 
+# Guard against bpy.context not being available in test environments.
+if not hasattr(bpy, "context"):
+
+    class _FakeContext:
+        pass
+
+    bpy.context = _FakeContext()
+
 
 def farthest_point_ordering(positions: list[mathutils.Vector]) -> list[int]:
     """Sample the order of farthest points.
