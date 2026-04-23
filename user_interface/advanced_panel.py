@@ -2,6 +2,10 @@ import math
 
 import bpy
 
+from ..controlnet_inputs import (
+    get_active_controlnet_inputs,
+    is_image_operation_mode,
+)
 from ..model_support import unsupported_model_message
 
 
@@ -40,9 +44,13 @@ class OBJECT_PT_AdvancedPanel(bpy.types.Panel):
         # especially for the parallel operation,
         # since the resolution will be multiplied by sqrt(num of cameras)
         if (
-            int(context.scene.custom_sd_resolution)
-            % math.sqrt(int(context.scene.num_cameras))
-            != 0
+            is_image_operation_mode(context.scene.operation_mode)
+            and int(context.scene.num_cameras) > 0
+            and (
+                int(context.scene.custom_sd_resolution)
+                % math.sqrt(int(context.scene.num_cameras))
+                != 0
+            )
         ):
             box.label(
                 text="Warning: Resolution needs to be divisible by sqrt(num_cameras).",
@@ -72,39 +80,42 @@ class OBJECT_PT_AdvancedPanel(bpy.types.Panel):
             context (bpy.types.Context): Blender Context
             controlnet_panel (bpy.types.Panel): Panel
         """
+        active_inputs = set(
+            get_active_controlnet_inputs(
+                context.scene.operation_mode,
+                context.scene.mesh_complexity,
+            ),
+        )
+
         # Add advanced settings
         controlnet_panel.label(text="ControlNet Checkpoints:")
-        controlnet_panel.prop(context.scene, "depth_controlnet_path", text="Depth Path")
-
-        # disable the canny_controlnet_path option
-        # if the mesh complexity is set to LOW
         row = controlnet_panel.row()
-        row.enabled = context.scene.mesh_complexity != "LOW"
+        row.enabled = "depth" in active_inputs
+        row.prop(context.scene, "depth_controlnet_path", text="Depth Path")
+
+        row = controlnet_panel.row()
+        row.enabled = "canny" in active_inputs
         row.prop(context.scene, "canny_controlnet_path", text="Canny Path")
 
-        # disable the normal_controlnet_path option
-        # if the mesh complexity is set to LOW or MID
         row = controlnet_panel.row()
-        row.enabled = context.scene.mesh_complexity == "HIGH"
+        row.enabled = "normal" in active_inputs
         row.prop(context.scene, "normal_controlnet_path", text="Normal Path")
 
         controlnet_panel.label(text="ControlNet Strengths:")
-        controlnet_panel.prop(
+        row = controlnet_panel.row()
+        row.enabled = "depth" in active_inputs
+        row.prop(
             context.scene,
             "depth_controlnet_strength",
             text="Depth Strength",
         )
 
-        # disable the canny_controlnet_strength option
-        # if the mesh complexity is set to LOW
         row = controlnet_panel.row()
-        row.enabled = context.scene.mesh_complexity != "LOW"
+        row.enabled = "canny" in active_inputs
         row.prop(context.scene, "canny_controlnet_strength", text="Canny Strength")
 
-        # disable the normal_controlnet_strength option
-        # if the mesh complexity is set to LOW or MID
         row = controlnet_panel.row()
-        row.enabled = context.scene.mesh_complexity == "HIGH"
+        row.enabled = "normal" in active_inputs
         row.prop(
             context.scene,
             "normal_controlnet_strength",

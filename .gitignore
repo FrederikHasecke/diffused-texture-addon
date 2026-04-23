@@ -135,3 +135,7 @@ GitHub.sublime-settings
 # Dont commit data by accident!
 *.exr
 *.blend
+
+# codex/opencode/claude
+.opencode
+.claude

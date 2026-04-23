@@ -6,6 +6,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import bpy
 import numpy as np
@@ -18,16 +19,23 @@ except ModuleNotFoundError:
 
 from .blender_operations import (
     ProcessParameter,
+    UVPassAssets,
     apply_texture,
-    bake_uv_views,
     bpy_img_to_numpy,
+    build_uv_pass_assets,
     extract_process_parameter_from_context,
     prepare_scene,
     render_views,
     restore_scene,
 )
+from .diagnostics import get_logger
+from .diffusedtexture.pipeline.pipeline_runner import TextureGenerationCancelledError
 from .model_support import require_supported_sd_version
+from .runtime_capability import get_runtime_capability
 from .texture_generation import load_multiview_images, run_texture_generation
+
+_logger = get_logger("operators")
+CANCELLED_BY_USER_MESSAGE = "Cancelled by user."
 
 
 def _raise_selected_object_not_found(selected_obj_name: str) -> None:
@@ -49,9 +57,30 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
     _start_time = None
     _last_progress = 0
     _progress = 0  # 0-100
+    _run_id = ""
+    _cancelled = False
 
-    def _finalize_generation(self, context: bpy.types.Context) -> set[str]:
+    def _finalize_generation(  # noqa: C901
+        self,
+        context: bpy.types.Context,
+    ) -> set[str]:
+        if self._cancelled:
+            _logger.info("Texture generation cancelled. run_id=%s", self._run_id)
+            self._set_scene_status(
+                context.scene,
+                running=False,
+                done=False,
+                error=CANCELLED_BY_USER_MESSAGE,
+            )
+            self.report({"INFO"}, "Texture generation cancelled.")
+            return {"CANCELLED"}
+
         if self._error:
+            _logger.error(
+                "Texture generation failed. run_id=%s error=%s",
+                self._run_id,
+                self._error,
+            )
             self._set_scene_status(
                 context.scene,
                 running=False,
@@ -103,6 +132,16 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
             str(output_path),
         )
 
+        duration = time.time() - self._start_time if self._start_time else 0.0
+        _logger.info(
+            (
+                "Texture generation completed successfully. run_id=%s output=%s "
+                "duration=%.2fs"
+            ),
+            self._run_id,
+            output_path,
+            duration,
+        )
         self.report({"INFO"}, "Texture saved successfully.")
 
         if self.render_img_folders is not None:
@@ -147,29 +186,55 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
         if hasattr(scene, "diffused_texture_operator_error"):
             scene.diffused_texture_operator_error = error
 
+    def _should_cancel(self, context: bpy.types.Context) -> bool:
+        return bool(
+            getattr(context.scene, "diffused_texture_operator_cancel_requested", False),
+        )
+
     def _run_texture_generation_thread(  # noqa: PLR0913
         self,
         process_parameter: ProcessParameter,
-        multiview_images: dict[str, list[NDArray[Any]]],
         progress_callback: Callable[[int], None],
-        mark_done: Callable[[bool, str | None], None],
-        return_texture: list[NDArray[np.uint8]],
+        should_cancel: Callable[[], bool],
+        mark_done: Callable[..., None],
+        generation_inputs: dict[str, list[NDArray[Any]]] | UVPassAssets | None = None,
+        return_texture: list[NDArray[np.uint8]] | None = None,
         input_texture: NDArray[np.float32] | None = None,
+        *,
+        multiview_images: dict[str, list[NDArray[Any]]] | None = None,
     ) -> None:
         """Thread wrapper that surfaces errors back to modal state."""
+        inputs = (
+            generation_inputs if generation_inputs is not None else multiview_images
+        )
+        if inputs is None:
+            inputs = {}
+        textures = return_texture if return_texture is not None else []
         try:
             run_texture_generation(
                 process_parameter,
-                multiview_images,
+                inputs,
                 progress_callback,
+                should_cancel,
                 mark_done,
-                return_texture,
+                textures,
                 input_texture,
             )
-        except Exception as exc:  # noqa: BLE001
-            mark_done(False, str(exc))  # noqa: FBT003
+        except TextureGenerationCancelledError:
+            mark_done(
+                success=False,
+                error=CANCELLED_BY_USER_MESSAGE,
+                cancelled=True,
+            )
+        except Exception as exc:
+            _logger.exception(
+                "Texture generation thread failed. run_id=%s mode=%s",
+                self._run_id,
+                process_parameter.operation_mode,
+            )
+            mark_done(success=False, error=str(exc))
 
-    def execute(  # noqa: C901, PLR0912, PLR0915
+    def execute(  # noqa: C901, PLR0911, PLR0912, PLR0915
         self: "OBJECT_OT_GenerateTexture",
         context: bpy.types.Context,
     ) -> set[str]:
@@ -204,13 +269,17 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
             self.report({"WARNING"}, "Texture generation is already running.")
             return {"CANCELLED"}
 
+        self._run_id = uuid4().hex[:8]
         self._done = False
         self._error = None
         self._progress = 0
         self._start_time = time.time()
+        self._cancelled = False
         self._return_texture = []
         self._output_file = None
         self.render_img_folders = None
+        if hasattr(context.scene, "diffused_texture_operator_cancel_requested"):
+            context.scene.diffused_texture_operator_cancel_requested = False
         self._set_scene_status(
             context.scene,
             running=True,
@@ -220,8 +289,10 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
 
         # Start progress bar for the whole process
         wm = context.window_manager
-        wm.progress_begin(0, 100)
-        context.window.cursor_set("WAIT")
+        is_background = getattr(getattr(bpy, "app", None), "background", False)
+        if not is_background:
+            wm.progress_begin(0, 100)
+            context.window.cursor_set("WAIT")
 
         try:
             selected_obj_name = context.scene.my_mesh_object
@@ -232,7 +303,32 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
             # Snapshot parameters early so unsupported models fail before rendering.
             process_parameter = extract_process_parameter_from_context(context)
             require_supported_sd_version(process_parameter.sd_version)
+            runtime_capability = get_runtime_capability(context)
+            if not runtime_capability.can_generate:
+                self._set_scene_status(
+                    context.scene,
+                    running=False,
+                    done=False,
+                    error=runtime_capability.message,
+                )
+                self.report({"ERROR"}, runtime_capability.message)
+                return {"CANCELLED"}
             self._output_file = process_parameter.output_path
+            _logger.info(
+                (
+                    "Starting texture generation. run_id=%s mode=%s object=%s "
+                    "output=%s runtime=%s"
+                ),
+                self._run_id,
+                getattr(
+                    process_parameter,
+                    "operation_mode",
+                    getattr(context.scene, "operation_mode", "unknown"),
+                ),
+                selected_obj_name,
+                process_parameter.output_path,
+                runtime_capability.message,
+            )
 
             scene_backup = None
             cameras = []
@@ -241,21 +337,16 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                 # Backup the scene and isolate the object
                 scene_backup = prepare_scene(selected_obj)
 
-                # Rendering progress (simulate with steps)
-                if context.scene.operation_mode != "UV":
-                    # Render views and save to folders
+                if process_parameter.operation_mode == "UV_PASS":
                     wm.progress_update(5)
-                    render_img_folders, cameras = render_views(context, selected_obj)
+                    generation_inputs = build_uv_pass_assets(context, selected_obj)
                     wm.progress_update(10)
                 else:
                     wm.progress_update(5)
-                    render_img_folders, render_cameras = bake_uv_views(
-                        context,
-                        selected_obj,
-                    )
-                    cameras = render_cameras or []
+                    render_img_folders, cameras = render_views(context, selected_obj)
+                    generation_inputs = load_multiview_images(render_img_folders)
                     wm.progress_update(10)
-                self.render_img_folders = render_img_folders
+                    self.render_img_folders = render_img_folders
             finally:
                 if scene_backup is not None:
                     restore_scene(scene_backup, cameras)
@@ -266,14 +357,23 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
             else:
                 input_texture = None
 
-            # Preload all render outputs on the main thread.
-            multiview_images = load_multiview_images(render_img_folders)
-
             wm.progress_update(15)
 
-            def mark_done(success: bool = True, error: str | None = None) -> None:  # noqa: FBT001, FBT002
+            if self._should_cancel(context):
+                self._cancelled = True
+                return self._finalize_generation(context)
+
+            def mark_done(
+                *,
+                success: bool = True,
+                error: str | None = None,
+                cancelled: bool = False,
+            ) -> None:
                 self._done = True
-                if not success:
+                self._cancelled = cancelled
+                if cancelled:
+                    self._error = None
+                elif not success:
                     self._error = error or "Texture generation failed."
                 elif error:
                     self._error = error
@@ -287,9 +387,10 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                 target=self._run_texture_generation_thread,
                 args=(
                     process_parameter,
-                    multiview_images,
                     progress_callback,
+                    lambda: self._should_cancel(context),
                     mark_done,
+                    generation_inputs,
                     self._return_texture,
                     input_texture,
                 ),
@@ -297,25 +398,33 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
             )
             self._thread.start()
 
-            if bpy.app.background:
+            if is_background:
                 while self._thread.is_alive():
+                    if self._should_cancel(context):
+                        self._cancelled = True
                     time.sleep(0.1)
 
                 if not self._done:
                     self._error = "Texture generation thread exited unexpectedly."
                     self._done = True
+                    _logger.error(
+                        "Texture generation thread exited unexpectedly. run_id=%s",
+                        self._run_id,
+                    )
 
-                wm.progress_update(100)
-                wm.progress_end()
-                context.window.cursor_set("DEFAULT")
                 return self._finalize_generation(context)
 
             self._timer = wm.event_timer_add(0.5, window=context.window)
             wm.modal_handler_add(self)
 
-        except Exception as e:  # noqa: BLE001
-            wm.progress_end()
-            context.window.cursor_set("DEFAULT")
+        except Exception as e:
+            _logger.exception(
+                "Texture generation setup failed. run_id=%s",
+                self._run_id,
+            )
+            if not is_background:
+                wm.progress_end()
+                context.window.cursor_set("DEFAULT")
             self._set_scene_status(
                 context.scene,
                 running=False,
@@ -338,6 +447,9 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
             # Update progress bar from thread progress
             wm.progress_update(self._progress)
 
+            if self._should_cancel(context):
+                self._cancelled = True
+
             if (
                 self._thread is not None
                 and not self._thread.is_alive()
@@ -345,6 +457,13 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
             ):
                 self._error = "Texture generation thread exited unexpectedly."
                 self._done = True
+                _logger.error(
+                    (
+                        "Texture generation thread exited unexpectedly before "
+                        "completion. run_id=%s"
+                    ),
+                    self._run_id,
+                )
 
             if self._done:
                 if self._timer is not None:
@@ -355,3 +474,21 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                 return self._finalize_generation(context)
 
         return {"PASS_THROUGH"}
+
+
+class OBJECT_OT_CancelTextureGeneration(bpy.types.Operator):
+    """Request cancellation of a running texture generation job."""
+
+    bl_idname = "object.cancel_texture_generation"
+    bl_label = "Cancel Texture Generation"
+
+    def execute(self, context: bpy.types.Context) -> set[str]:
+        """Request cancellation for the current generation job."""
+        if not getattr(context.scene, "diffused_texture_operator_running", False):
+            self.report({"WARNING"}, "No texture generation is running.")
+            return {"CANCELLED"}
+
+        if hasattr(context.scene, "diffused_texture_operator_cancel_requested"):
+            context.scene.diffused_texture_operator_cancel_requested = True
+        self.report({"INFO"}, "Cancelling texture generation...")
+        return {"FINISHED"}

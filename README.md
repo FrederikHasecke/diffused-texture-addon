@@ -2,11 +2,18 @@
 [![Latest Release](https://flat.badgen.net/github/release/FrederikHasecke/diffused-texture-addon/latest)](https://github.com/FrederikHasecke/diffused-texture-addon/releases/latest)
 [![Total Downloads](https://img.shields.io/github/downloads/FrederikHasecke/diffused-texture-addon/total?style=flat-square)](https://github.com/FrederikHasecke/diffused-texture-addon/releases/latest)
 
-![Blender 4.2](https://img.shields.io/badge/Blender-4.2-blue?style=flat-square)![Blender 4.3](https://img.shields.io/badge/Blender-4.3-blue?style=flat-square)![Blender 4.4](https://img.shields.io/badge/Blender-4.4-blue?style=flat-square)![Blender 4.5](https://img.shields.io/badge/Blender-4.5-blue?style=flat-square)![Blender 5.0+](https://img.shields.io/badge/Blender-5.0%2B-blue?style=flat-square)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-orange.svg)](https://www.python.org/downloads/release/python-311/)
+[![Blender 4.2](https://img.shields.io/badge/Blender-4.2-blue?style=flat-square)](https://download.blender.org/release/Blender4.2/)
+[![Blender 4.3](https://img.shields.io/badge/Blender-4.3-blue?style=flat-square)](https://download.blender.org/release/Blender4.3/)
+[![Blender 4.4](https://img.shields.io/badge/Blender-4.4-blue?style=flat-square)](https://download.blender.org/release/Blender4.4/)
+[![Blender 4.5](https://img.shields.io/badge/Blender-4.5-blue?style=flat-square)](https://download.blender.org/release/Blender4.5/)
+[![Blender 5.0](https://img.shields.io/badge/Blender-5.0-blue?style=flat-square)](https://download.blender.org/release/Blender5.0/)
+
+[![Python 3.13](https://img.shields.io/badge/python-3.13-orange.svg)](https://www.python.org/downloads/release/python-313/)
+[![Blender 5.1+](https://img.shields.io/badge/Blender-5.1%2B-blue?style=flat-square)](https://www.blender.org/download/)
 
 [![Lint](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/lint.yml/badge.svg?branch=master)](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/lint.yml)
-[![Build](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/build.yml)
-[![Build](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/release.yml/badge.svg?branch=master)](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/release.yml)
+[![Release](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/release-please.yml/badge.svg?branch=master)](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/release-please.yml)
 
 
 DiffusedTexture is a Blender add-on that uses Stable Diffusion to create textures directly on 3D meshes.
@@ -19,9 +26,11 @@ DiffusedTexture is a Blender add-on that uses Stable Diffusion to create texture
   - [Examples](#examples)
   - [Features](#features)
   - [Installation](#installation)
+  - [Platform Runtime Notes](#platform-runtime-notes)
   - [Usage](#usage)
     - [Additional Options](#additional-options)
   - [Troubleshooting](#troubleshooting)
+  - [Development](#development)
   - [**Acknowledgements**](#acknowledgements)
 
 ## Examples
@@ -38,22 +47,14 @@ DiffusedTexture is a Blender add-on that uses Stable Diffusion to create texture
 - **LoRA Integration**: Uses LoRA conditioning for specific styles.
 - **IPAdapter Integration**: Fit specific styles or objects with images for enhanced flexibility and control.
 
-## Model Support Matrix
-
-| Model Key | UI Selectable | Pipeline Support | IPAdapter | Default SD Resolution | Status |
-| --- | --- | --- | --- | --- | --- |
-| `sd15` | Yes | Yes | Yes | 512 | Supported |
-| `sdxl` | Yes | Yes | Yes | 1024 | Supported |
-| `flux` | No | No | No | 1024 | Explicitly unsupported (fails fast with clear error) |
-| `qwen` | No | No | No | 1328 | Explicitly unsupported (fails fast with clear error) |
-
 ## Installation 
 
 1. Download the .zip file of the [latest release](https://github.com/FrederikHasecke/diffused-texture-addon/releases/latest)
-2. Install the `diffused_texture_addon-0.2.0.zip` file in Blender as an Add-On.
+2. Install the downloaded `diffused_texture_addon-<version>.zip` file in Blender as an Add-On.
     -  `Edit` -> `Preferences...` -> Sidebar `Add-ons` -> Top right corner dropdown menu -> `Install from Disk...`
 3. Install the dependencies by clicking the `Install Dependencies` button in the Add-On panel.
     - This will take a while as it installs all necessary packages, including PyTorch and diffusers.
+    - The `Dependency backend` setting chooses which PyTorch wheels to install for the diffusion stack. It does not by itself guarantee that Blender can use the same backend for the Cycles render pass.
     ![Installation](https://github.com/FrederikHasecke/diffused-texture-addon/blob/master/images/install.png)
 
 4. **RESTART BLENDER!** This is important to ensure all packages are correctly loaded.
@@ -63,6 +64,14 @@ DiffusedTexture is a Blender add-on that uses Stable Diffusion to create texture
     - You can also run the add-on without downloading the models, but it will take longer to generate textures as they will be downloaded on-the-fly.
     - The models will be stored in the specified `HuggingFace Cache Path` or the default cache path.
 
+
+## Platform Runtime Notes
+
+- DiffusedTexture now reports two separate platform decisions:
+  - **Dependency backend**: which PyTorch wheels are installed for diffusion (`cpu`, CUDA, ROCm, or auto-detect).
+  - **Runtime capability**: which Cycles render backend Blender can actually use for the render pass, plus which diffusion device PyTorch/diffusers can use at runtime.
+- For Cycles renders, the add-on prefers `OPTIX`, `CUDA`, `HIP`, `ONEAPI`, and `METAL`, then falls back to `CPU` when no GPU backend is usable.
+- This means a machine can install a non-NVIDIA diffusion backend and still render through Cycles on CPU if that is the only render path Blender exposes locally.
 
 
 ## Usage
@@ -100,7 +109,17 @@ DiffusedTexture is a Blender add-on that uses Stable Diffusion to create texture
 - **Out of GPU Memory**:
   - Reduce camera count.
   - Close other GPU-intensive applications.
+- **Platform Confusion**: Check the `Current Runtime Capability` box in the add-on preferences. It shows the installed diffusion backend, the active Cycles render path, and whether texture generation is currently ready.
 - **Crashes**: Restart Blender or your PC if crashes persist.
+
+## Development
+
+- Default local dev environment: Python `3.13` with Blender `5.1+`, installed via `uv sync`.
+- The local `uv` configuration overrides the published `bpy` NumPy cap so the dev environment aligns with the CY2026 NumPy `2.3.x` lane.
+- Legacy Blender `<5.1` / Python `3.11` compatibility is still covered by the installer matrix tests.
+- Commit and hook setup: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Testing workflow and local check commands: [documentation/TESTING.md](documentation/TESTING.md)
+- Release automation and bootstrap instructions: [documentation/RELEASING.md](documentation/RELEASING.md)
 
 
 ## **Acknowledgements**

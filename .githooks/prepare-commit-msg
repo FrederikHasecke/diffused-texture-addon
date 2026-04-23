@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+
+exec "$(dirname "$0")/run-hook-helper" prepare-commit-msg "$@"

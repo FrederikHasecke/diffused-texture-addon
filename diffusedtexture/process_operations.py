@@ -1,4 +1,5 @@
 import math
+from collections.abc import Mapping, Sequence
 
 try:
     import cv2
@@ -20,6 +21,11 @@ else:
     CV2_INTER_LINEAR = 1
     CV2_INTER_LANCZOS4 = 4
 
+ALPHA_BLUR_MIN_DIM = 3
+ALPHA_BLUR_SMALL_KERNEL = 3
+ALPHA_BLUR_LARGE_KERNEL = 5
+ALPHA_CHANNEL_NDIM = 2
+
 
 def _require_cv2() -> None:
     try:
@@ -35,6 +41,43 @@ def _require_cv2() -> None:
         raise RuntimeError(msg)
 
 
+def smooth_alpha_map(alpha_map: NDArray[np.float32]) -> NDArray[np.float32]:
+    """Feather an alpha map without expanding beyond covered texels."""
+    _require_cv2()
+
+    alpha_map = np.clip(alpha_map.astype(np.float32), 0.0, 1.0)
+    min_dim = min(alpha_map.shape[:2])
+    if min_dim < ALPHA_BLUR_MIN_DIM:
+        return alpha_map
+
+    kernel_size = (
+        ALPHA_BLUR_LARGE_KERNEL
+        if min_dim >= ALPHA_BLUR_LARGE_KERNEL
+        else ALPHA_BLUR_SMALL_KERNEL
+    )
+    return np.clip(
+        cv2.GaussianBlur(alpha_map, (kernel_size, kernel_size), 0),
+        0.0,
+        1.0,
+    ).astype(np.float32)
+
+
+def blend_texture_with_alpha(
+    base_texture: NDArray[np.uint8],
+    overlay_texture: NDArray[np.uint8],
+    alpha_map: NDArray[np.float32],
+) -> NDArray[np.uint8]:
+    """Blend two textures using a per-texel alpha map."""
+    alpha = np.clip(alpha_map.astype(np.float32), 0.0, 1.0)
+    if alpha.ndim == ALPHA_CHANNEL_NDIM:
+        alpha = alpha[..., None]
+
+    blended = overlay_texture.astype(np.float32) * alpha + base_texture.astype(
+        np.float32,
+    ) * (1.0 - alpha)
+    return np.clip(np.rint(blended), 0, 255).astype(np.uint8)
+
+
 def process_uv_texture(  # noqa: PLR0913
     process_parameter: ProcessParameter,
     uv_images: list[NDArray],
@@ -42,11 +85,16 @@ def process_uv_texture(  # noqa: PLR0913
     output_grid: NDArray,
     target_resolution: int = 512,
     render_resolution: int = 2048,
-    facing_percentile: float = 1.0,
+    facing_percentile: float = 0.5,
+    grid_cols: int | None = None,
 ) -> tuple[NDArray[np.uint8], NDArray[np.uint8]]:
     _require_cv2()
 
     num_cameras = len(uv_images)
+
+    # Determine grid layout: use explicit cols if provided, otherwise assume square
+    if grid_cols is None:
+        grid_cols = int(math.sqrt(num_cameras))
 
     sd_resolution = get_default_sd_resolution(
         process_parameter.sd_version,
@@ -70,8 +118,8 @@ def process_uv_texture(  # noqa: PLR0913
     resized_tiles = []
     for cam_index in range(num_cameras):
         # Calculate the position in the grid
-        row = int((cam_index // int(math.sqrt(num_cameras))) * render_resolution)
-        col = int((cam_index % int(math.sqrt(num_cameras))) * render_resolution)
+        row = int((cam_index // grid_cols) * render_resolution)
+        col = int((cam_index % grid_cols) * render_resolution)
 
         output_chunk = output_grid[
             row : row + render_resolution,
@@ -94,8 +142,8 @@ def process_uv_texture(  # noqa: PLR0913
 
     for cam_index in range(num_cameras):
         # Calculate the position in the grid
-        row = int((cam_index // int(math.sqrt(num_cameras))) * render_resolution)
-        col = int((cam_index % int(math.sqrt(num_cameras))) * render_resolution)
+        row = int((cam_index // grid_cols) * render_resolution)
+        col = int((cam_index % grid_cols) * render_resolution)
 
         # load the uv image
         uv_image = uv_images[cam_index]
@@ -203,7 +251,7 @@ def inpaint_missing(
 
 def assemble_multiview_grid(
     texture: NDArray[np.float32] | None,
-    multiview_images: dict[str, list | NDArray],
+    multiview_images: Mapping[str, Sequence[NDArray]],
     render_resolution: int = 2048,
     sd_resolution: int = 512,
 ) -> tuple[dict[str, NDArray], dict[str, NDArray]]:
@@ -511,7 +559,11 @@ def assemble_multiview_list(
             resize_shape,
             interpolation=CV2_INTER_NEAREST,
         )
-        uv_small = cv2.resize(uv_img, resize_shape, interpolation=CV2_INTER_LINEAR)
+        uv_small = cv2.resize(
+            uv_img,
+            resize_shape,
+            interpolation=CV2_INTER_LINEAR,
+        ).astype(np.float32)
 
         content_small = create_content_mask(uv_small)
         input_small = create_input_image_grid(texture, uv_small, content_small)
@@ -594,7 +646,9 @@ def create_content_mask(uv_img: NDArray[np.float32]) -> NDArray[np.uint8]:
     _require_cv2()
     content_mask = np.zeros(uv_img.shape[:2], dtype=np.uint8)
     content_mask[np.sum(uv_img[..., :2], axis=-1) > 0] = 255
-    return cv2.dilate(content_mask, np.ones((10, 10), np.uint8), iterations=3)
+    return cv2.dilate(content_mask, np.ones((10, 10), np.uint8), iterations=3).astype(
+        np.uint8,
+    )
 
 
 def resize_grids(

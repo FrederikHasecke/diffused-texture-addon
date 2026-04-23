@@ -4,6 +4,7 @@ except ModuleNotFoundError:
     cv2 = None
 
 from collections.abc import Callable
+from typing import cast
 
 import numpy as np
 
@@ -17,8 +18,22 @@ from numpy.typing import NDArray
 from ..blender_operations import ProcessParameter
 from ..model_support import get_default_sd_resolution
 from .pipeline.pipeline_builder import create_diffusion_pipeline
-from .pipeline.pipeline_runner import run_pipeline
-from .process_operations import _require_cv2, assemble_multiview_list
+
+try:
+    from .pipeline.pipeline_runner import TextureGenerationCancelledError, run_pipeline
+except ImportError:
+    from .pipeline.pipeline_runner import run_pipeline
+
+    class TextureGenerationCancelledError(RuntimeError):
+        """Fallback cancellation error for tests with a stubbed runner."""
+
+
+from .process_operations import (
+    _require_cv2,
+    assemble_multiview_list,
+    blend_texture_with_alpha,
+    smooth_alpha_map,
+)
 
 if cv2 is not None:
     CV2_INTER_NEAREST = cv2.INTER_NEAREST
@@ -30,20 +45,24 @@ else:
     CV2_INTER_LINEAR = 1
     CV2_INTER_LANCZOS4 = 4
 
+ALPHA_PAINT_THRESHOLD = 1e-3
 
-def img_sequential(
+
+def img_sequential(  # noqa: PLR0913
     multiview_images: dict[str, list[NDArray]],
     process_parameter: ProcessParameter,
     progress_callback: Callable,
+    should_cancel: Callable[[], bool] = lambda: False,
     texture: NDArray[np.float32] | None = None,
     facing_percentile: float = 0.5,
-) -> NDArray[np.float32]:
+) -> NDArray[np.uint8]:
     """Process multiview images sequentially view-by-view with diffusion pipeline.
 
     Args:
         multiview_images: Dict of multiview input images per view.
         process_parameter: Processing parameters.
         progress_callback: Function to track progress.
+        should_cancel: Returns True when generation should stop.
         texture: Optional texture to project.
         facing_percentile: Float value for facing percentile.
 
@@ -85,6 +104,10 @@ def img_sequential(
         else 255 * np.ones_like(resized_list["input"][0], dtype=np.uint8)
     )
     for i in range(n_views):
+        if should_cancel():
+            msg = "Cancelled by user."
+            raise TextureGenerationCancelledError(msg)
+
         arr_in = resized_list["input"][i]
         arr_content = resized_list["content"][i]
         arr_uv = resized_list["uv"][i]
@@ -93,9 +116,10 @@ def img_sequential(
             input_img = Image.fromarray(arr_in.astype(np.uint8))
             mask_img = Image.fromarray(arr_content)
         else:
+            current_unpainted_mask = cast("NDArray[np.uint8]", unpainted_mask)
             input_img, _ = create_new_view_input(
                 previous_texture,
-                unpainted_mask,
+                current_unpainted_mask,
                 arr_in,
                 arr_uv,
             )
@@ -116,10 +140,15 @@ def img_sequential(
             normal_img=Image.fromarray(resized_list["normal"][i]),
             depth_img=Image.fromarray(resized_list["depth"][i]),
             progress_callback=sub_progress_callback,
+            should_cancel=should_cancel,
             strength=process_parameter.denoise_strength,
             guidance_scale=process_parameter.guidance_scale,
             num_inference_steps=process_parameter.num_inference_steps,
         )
+
+        if should_cancel():
+            msg = "Cancelled by user."
+            raise TextureGenerationCancelledError(msg)
 
         # Project the current result back to the texture
         previous_texture, unpainted_mask = project_view_to_texture(
@@ -142,7 +171,7 @@ def img_sequential(
             flags=cv2.INPAINT_TELEA,
         )
 
-    return previous_texture
+    return cast("NDArray[np.uint8]", previous_texture)
 
 
 def project_view_to_texture(  # noqa: PLR0913
@@ -151,9 +180,9 @@ def project_view_to_texture(  # noqa: PLR0913
     facing_view: NDArray[np.uint8],
     texture_resolution: int,
     texture: NDArray[np.uint8],
-    unpainted_mask: NDArray[np.uint8] = None,
+    unpainted_mask: NDArray[np.uint8] | None = None,
     facing_percentile: float = 0.5,
-) -> NDArray[np.uint8]:
+) -> tuple[NDArray[np.uint8], NDArray[np.uint8] | None]:
     """Project the output of the diffusion model back onto the texture."""
     sd_array = np.array(sd_result)
     sd_array = sd_array[..., :3]  # Ensure we only take RGB channels
@@ -204,32 +233,36 @@ def project_view_to_texture(  # noqa: PLR0913
         new_texture[facing_scaled > 0] = texture_scaled[facing_scaled > 0]
         facing_texture[facing_scaled > 0] = facing_scaled[facing_scaled > 0]
 
-    # keep areas which are facing the camera
-    mask = facing_texture > (facing_percentile * 255)
+    alpha = (facing_texture.astype(np.float32) / 255.0) * (1.0 + facing_percentile)
+    alpha = np.clip(alpha - facing_percentile, 0.0, 1.0)
+    alpha = smooth_alpha_map(alpha)
+    alpha *= (facing_texture > 0).astype(np.float32)
 
-    new_texture[~mask] = 0
     if unpainted_mask is not None:
-        unpainted_mask[mask] = 0
+        unpainted_mask[alpha > ALPHA_PAINT_THRESHOLD] = 0
 
+    existing_texture = np.zeros_like(new_texture)
     if texture is not None:
         # Ensure texture is in the correct format, else resize it
         if texture.ndim == 3:  # noqa: PLR2004
             if texture.shape[2] == 4:  # noqa: PLR2004
                 texture = texture[..., :3]
             texture = cv2.resize(texture, (texture_resolution, texture_resolution))
-
-        # Blend the new texture with the existing texture
-        new_texture[~mask] = texture[..., :3][~mask]
+        existing_texture = texture[..., :3]
 
     # TODO(Frederik): Change the approach to stack all sequential textures
     # Inpaint missing areas on each and stack them together with the facing percentiles
     # as weighting.
 
-    return new_texture, unpainted_mask
+    return blend_texture_with_alpha(
+        existing_texture,
+        new_texture,
+        alpha,
+    ), unpainted_mask
 
 
 def create_new_view_input(
-    output_texture: NDArray[np.float32],
+    output_texture: NDArray[np.uint8],
     unpainted_mask: NDArray[np.uint8],
     input_view: NDArray[np.uint8],
     uv_view: NDArray[np.uint8],
@@ -238,11 +271,14 @@ def create_new_view_input(
     # get the uv coordinates from the uv_view
     uv_view = uv_view[..., :2]  # Ensure UVs are 2D
     h, w = input_view.shape[0], input_view.shape[1]
-    uv_view = uv_view * (w - 1) % w  # Scale UVs to input size
+    tex_h, tex_w = output_texture.shape[0], output_texture.shape[1]
 
-    # Clamp UVs to valid range
-    uv_y = np.clip(uv_view[..., 1].flatten().astype(int), 0, h - 1)
-    uv_x = np.clip(uv_view[..., 0].flatten().astype(int), 0, w - 1)
+    uv_scaled = np.empty_like(uv_view)
+    uv_scaled[..., 0] = uv_view[..., 0] * (tex_w - 1)
+    uv_scaled[..., 1] = uv_view[..., 1] * (tex_h - 1)
+
+    uv_y = ((tex_h - 1) - uv_scaled[..., 1].flatten().astype(int)) % tex_h
+    uv_x = uv_scaled[..., 0].flatten().astype(int) % tex_w
 
     # Project the output texture to the input view using UV coordinates
     view_from_texture = output_texture[uv_y, uv_x]

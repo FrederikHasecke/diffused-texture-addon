@@ -6,6 +6,7 @@ import bpy
 import numpy as np
 from numpy.typing import NDArray
 
+from .diagnostics import get_logger
 from .render_setup import (
     create_cameras_on_sphere,
     create_cameras_on_two_rings,
@@ -15,6 +16,26 @@ from .render_setup import (
     setup_render_settings,
 )
 from .utils import isolate_object
+
+_logger = get_logger("blender_operations")
+
+_MANAGED_MATERIAL_NAME_PREFIX = "GeneratedTextureMaterial"
+_MANAGED_MATERIAL_TAG = "diffused_texture_managed_material"
+_MANAGED_MATERIAL_OWNER = "diffused_texture_managed_material_owner"
+_MANAGED_NODE_ROLE = "diffused_texture_managed_node_role"
+_TEXTURE_NODE_ROLE = "texture"
+_BSDF_NODE_ROLE = "bsdf"
+_OUTPUT_NODE_ROLE = "output"
+
+
+@dataclass
+class UVPassAssets:
+    """Assets baked in UV space for the dedicated UV generation mode."""
+
+    normal_map: NDArray[np.float32]
+    position_map: NDArray[np.float32]
+    uv_layout: NDArray[np.float32]
+    surface_mask: NDArray[np.uint8]
 
 
 @dataclass
@@ -37,6 +58,7 @@ class ProcessParameter:
         "PARALLEL_IMG",
         "SEQUENTIAL_IMG",
         "PARA_SEQUENTIAL_IMG",
+        "UV_PASS",
     ]
     subgrid_rows: int
     subgrid_cols: int
@@ -111,29 +133,154 @@ def apply_texture_to_object(obj: bpy.types.Object, output_path: Path | str) -> N
         obj (bpy.types.Object): The Blender object to apply the texture to.
         output_path (Path): The path to the texture file.
     """
-    # Load the texture image
-    img = bpy.data.images.load(str(output_path))
+    if obj is None or obj.type != "MESH":
+        msg = "Input object must be a mesh."
+        raise ValueError(msg)
 
-    # Create a new material if the object does not have one
-    if not obj.data.materials:
-        mat = bpy.data.materials.new(name="GeneratedTextureMaterial")
-        obj.data.materials.append(mat)
-    else:
-        mat = obj.data.materials[0]
-
-    # Enable 'Use Nodes' for the material
-    mat.use_nodes = True
-    nodes = mat.node_tree.nodes
-
-    # Create an image texture node
-    tex_image_node = nodes.new(type="ShaderNodeTexImage")
+    img = bpy.data.images.load(str(output_path), check_existing=True)
+    mat = _get_or_create_managed_material(obj)
+    tex_image_node = _ensure_managed_material_node_tree(mat)
     tex_image_node.image = img
+    _assign_managed_material_to_slots(obj, mat)
 
-    # Link the image texture node to the material output node
-    mat.node_tree.links.new(
-        tex_image_node.outputs["Color"],
-        mat.node_tree.nodes.get("Material Output").inputs["Surface"],
+
+def _managed_material_name(obj: bpy.types.Object) -> str:
+    return f"{_MANAGED_MATERIAL_NAME_PREFIX}_{obj.name}"
+
+
+def _mark_material_as_managed(
+    mat: bpy.types.Material,
+    obj: bpy.types.Object,
+) -> bpy.types.Material:
+    mat[_MANAGED_MATERIAL_TAG] = True
+    mat[_MANAGED_MATERIAL_OWNER] = obj.name
+    return mat
+
+
+def _is_managed_material_for_object(
+    mat: bpy.types.Material | None,
+    obj: bpy.types.Object,
+) -> bool:
+    if mat is None:
+        return False
+    return bool(mat.get(_MANAGED_MATERIAL_TAG)) and (
+        mat.get(_MANAGED_MATERIAL_OWNER) == obj.name
     )
+
+
+def _find_managed_material(obj: bpy.types.Object) -> bpy.types.Material | None:
+    for mat in obj.data.materials:
+        if _is_managed_material_for_object(mat, obj):
+            return mat
+
+    for mat in bpy.data.materials:
+        if _is_managed_material_for_object(mat, obj):
+            return mat
+
+    return None
+
+
+def _get_or_create_managed_material(obj: bpy.types.Object) -> bpy.types.Material:
+    mat = _find_managed_material(obj)
+    if mat is None:
+        mat = bpy.data.materials.new(name=_managed_material_name(obj))
+    return _mark_material_as_managed(mat, obj)
+
+
+def _clear_links(links: bpy.types.bpy_prop_collection) -> None:
+    for link in list(links):
+        links.remove(link)
+
+
+def _ensure_managed_node(
+    nodes: bpy.types.Nodes,
+    node_type: str,
+    *,
+    role: str,
+    name: str,
+    location: tuple[int, int],
+) -> bpy.types.Node:
+    matches = [node for node in nodes if node.get(_MANAGED_NODE_ROLE) == role]
+    valid_matches = [node for node in matches if node.bl_idname == node_type]
+
+    for node in matches:
+        if node not in valid_matches:
+            nodes.remove(node)
+
+    if valid_matches:
+        primary = valid_matches[0]
+        for duplicate in valid_matches[1:]:
+            nodes.remove(duplicate)
+    else:
+        primary = nodes.new(type=node_type)
+
+    primary[_MANAGED_NODE_ROLE] = role
+    primary.name = name
+    primary.label = name
+    primary.location = location
+    return primary
+
+
+def _ensure_managed_material_node_tree(
+    mat: bpy.types.Material,
+) -> bpy.types.ShaderNodeTexImage:
+    mat.use_nodes = True
+    node_tree = mat.node_tree
+    if node_tree is None:
+        msg = "Managed material must have a node tree."
+        raise RuntimeError(msg)
+
+    nodes = node_tree.nodes
+    links = node_tree.links
+
+    if not any(node.get(_MANAGED_NODE_ROLE) for node in nodes):
+        nodes.clear()
+
+    tex_image_node = _ensure_managed_node(
+        nodes,
+        "ShaderNodeTexImage",
+        role=_TEXTURE_NODE_ROLE,
+        name="DiffusedTexture_Texture",
+        location=(-400, 0),
+    )
+    principled_node = _ensure_managed_node(
+        nodes,
+        "ShaderNodeBsdfPrincipled",
+        role=_BSDF_NODE_ROLE,
+        name="DiffusedTexture_Principled",
+        location=(-80, 0),
+    )
+    output_node = _ensure_managed_node(
+        nodes,
+        "ShaderNodeOutputMaterial",
+        role=_OUTPUT_NODE_ROLE,
+        name="DiffusedTexture_Output",
+        location=(220, 0),
+    )
+
+    _clear_links(links)
+    links.new(
+        tex_image_node.outputs["Color"],
+        principled_node.inputs["Base Color"],
+    )
+    links.new(
+        principled_node.outputs["BSDF"],
+        output_node.inputs["Surface"],
+    )
+
+    return tex_image_node
+
+
+def _assign_managed_material_to_slots(
+    obj: bpy.types.Object,
+    mat: bpy.types.Material,
+) -> None:
+    if not obj.data.materials:
+        obj.data.materials.append(mat)
+        return
+
+    for index in range(len(obj.data.materials)):
+        obj.data.materials[index] = mat
 
 
 def blendercs_to_ccs(
@@ -168,19 +315,27 @@ def create_depth_condition(
     # Replace large invalid values with NaN
     depth_array[depth_array >= invalid_depth] = np.nan
 
+    # If all values are invalid, return a zero image
+    if np.all(np.isnan(depth_array)):
+        return np.zeros_like(depth_array, dtype=np.float32)[..., np.newaxis]
+
     # Invert the depth values so that closer objects have higher values
     depth_array = np.nanmax(depth_array) - depth_array
 
     # Normalize the depth array to range [0, 1]
     depth_array -= np.nanmin(depth_array)
-    depth_array /= np.nanmax(depth_array)
+    depth_range = np.nanmax(depth_array)
+    if depth_range > 0:
+        depth_array /= depth_range
 
     # Add a small margin to the background
     depth_array += 10 / 255.0  # Approximately 0.039
 
     # normalize
     depth_array[np.isnan(depth_array)] = 0
-    depth_array /= np.nanmax(depth_array)
+    max_val = np.nanmax(depth_array)
+    if max_val > 0:
+        depth_array /= max_val
     depth_array = np.clip(depth_array, 0, 1)
 
     return depth_array.astype(np.float32)[..., np.newaxis]  # Add channel dimension
@@ -341,6 +496,52 @@ def create_similar_angle_image(
     similar_angle_image[np.isnan(similar_angle_image)] = 0
 
     return similar_angle_image.astype(np.float32)
+
+
+def export_uv_layout(
+    obj: bpy.types.Object,
+    export_path: str | Path,
+    uv_map_name: str | None = None,
+    size: tuple[int, int] = (1024, 1024),
+) -> None:
+    """Export the UV layout for the given mesh object."""
+    if obj is None or obj.type != "MESH":
+        msg = "Input object must be a mesh."
+        raise ValueError(msg)
+
+    bpy.context.view_layer.objects.active = obj
+    if obj.mode != "OBJECT":
+        bpy.ops.object.mode_set(mode="OBJECT")
+
+    uv_layers = obj.data.uv_layers
+    if not uv_layers:
+        msg = f"No UV maps found for object {obj.name}."
+        raise ValueError(msg)
+
+    if uv_map_name:
+        uv_layer = uv_layers.get(uv_map_name)
+        if uv_layer is None:
+            msg = f"UV map {uv_map_name} not found on object {obj.name}."
+            raise ValueError(msg)
+        uv_layers.active = uv_layer
+    elif uv_layers.active is None:
+        msg = f"No active UV map found for object {obj.name}."
+        raise ValueError(msg)
+
+    bpy.ops.uv.export_layout(
+        filepath=str(export_path),
+        size=size,
+        opacity=1.0,
+        export_all=False,
+    )
+
+
+def _surface_mask_from_uv_layout(uv_layout: NDArray[np.float32]) -> NDArray[np.uint8]:
+    if uv_layout.ndim != 3 or uv_layout.shape[2] < 4:  # noqa: PLR2004
+        msg = "UV layout image must be RGBA."
+        raise ValueError(msg)
+
+    return (uv_layout[..., 3] > 0).astype(np.uint8) * 255
 
 
 def load_img_to_numpy(img_path: str | Path) -> NDArray:
@@ -530,6 +731,14 @@ def prepare_scene(obj: bpy.types.Object) -> dict[str, Any]:
         "use_pass_position": getattr(view_layer, "use_pass_position", None),
     }
 
+    # Snapshot compositor state
+    backup_data["original_use_nodes"] = getattr(scene, "use_nodes", None)
+    backup_data["original_use_compositing"] = getattr(
+        scene.render,
+        "use_compositing",
+        None,
+    )
+
     view_layer.objects.active = obj
     return backup_data
 
@@ -557,7 +766,13 @@ def restore_scene(  # noqa: C901, PLR0912, PLR0915
         elif "original_location" in backup_data:
             obj.location = backup_data["original_location"]
     except ReferenceError:
-        pass
+        _logger.debug(
+            (
+                "Skipping transform restore because the target object reference is "
+                "no longer valid."
+            ),
+            exc_info=True,
+        )
 
     object_visibility = backup_data.get("original_object_visibility")
     if isinstance(object_visibility, dict):
@@ -615,6 +830,39 @@ def restore_scene(  # noqa: C901, PLR0912, PLR0915
         if value is not None and hasattr(view_layer, key):
             setattr(view_layer, key, value)
 
+    # Restore compositor state
+    original_use_nodes = backup_data.get("original_use_nodes")
+    if original_use_nodes is not None and hasattr(scene, "use_nodes"):
+        scene.use_nodes = original_use_nodes
+
+    original_use_compositing = backup_data.get("original_use_compositing")
+    if original_use_compositing is not None and hasattr(
+        scene.render,
+        "use_compositing",
+    ):
+        scene.render.use_compositing = original_use_compositing
+
+    # Remove compositor output nodes created during rendering
+    try:
+        from .render_setup import get_scene_compositor_node_tree
+
+        node_tree = get_scene_compositor_node_tree(scene)
+        addon_node_names = {
+            "depth_output",
+            "normal_output",
+            "uv_output",
+            "position_output",
+            "DiffusedTexture_RenderLayers",
+        }
+        for node in list(node_tree.nodes):
+            if node.name in addon_node_names:
+                node_tree.nodes.remove(node)
+    except Exception:  # noqa: BLE001
+        _logger.debug(
+            "Failed to clean up compositor nodes during scene restore.",
+            exc_info=True,
+        )
+
     # Delete the temporary cameras used during processing
     for cam in cameras or []:
         if cam and cam.name in bpy.data.objects:
@@ -624,22 +872,54 @@ def restore_scene(  # noqa: C901, PLR0912, PLR0915
     view_layer.update()
 
 
-def bake_uv_views(
+def _activate_selected_uv_map(
     context: bpy.types.Context,
     obj: bpy.types.Object,
-) -> tuple[dict, None]:
-    return {
-        "normal": bake_geometry_channel_to_array(
+) -> None:
+    uv_map_name = getattr(context.scene, "my_uv_map", "")
+    if uv_map_name and obj.data.uv_layers.get(uv_map_name):
+        obj.data.uv_layers.active = obj.data.uv_layers[uv_map_name]
+
+
+def build_uv_pass_assets(
+    context: bpy.types.Context,
+    obj: bpy.types.Object,
+) -> UVPassAssets:
+    """Build UV-space assets for the dedicated UV generation path."""
+    texture_resolution = int(context.scene.texture_resolution)
+    _activate_selected_uv_map(context, obj)
+
+    uv_layout_path = (
+        Path(context.scene.output_path) / "RenderOutput" / "uv_mode_layout.png"
+    )
+    uv_layout_path.parent.mkdir(parents=True, exist_ok=True)
+
+    export_uv_layout(
+        obj,
+        uv_layout_path,
+        uv_map_name=getattr(context.scene, "my_uv_map", "") or None,
+        size=(texture_resolution, texture_resolution),
+    )
+
+    try:
+        uv_layout = load_img_to_numpy(uv_layout_path)
+    finally:
+        uv_layout_path.unlink(missing_ok=True)
+
+    return UVPassAssets(
+        normal_map=bake_geometry_channel_to_array(
             obj,
             "Normal",
-            resolution=int(context.scene.texture_resolution),
+            resolution=texture_resolution,
         ),
-        "position": bake_geometry_channel_to_array(
+        position_map=bake_geometry_channel_to_array(
             obj,
             "Position",
-            resolution=int(context.scene.texture_resolution),
+            resolution=texture_resolution,
         ),
-    }, None
+        uv_layout=uv_layout,
+        surface_mask=_surface_mask_from_uv_layout(uv_layout),
+    )
 
 
 def render_views(
@@ -687,6 +967,8 @@ def render_views(
         raise ValueError(msg)
 
     try:
+        _activate_selected_uv_map(context, obj)
+
         # Set up render nodes
         output_nodes = setup_render_settings(context, context.scene.render_resolution)
 
@@ -694,7 +976,6 @@ def render_views(
             "depth": get_output_node_directory(output_nodes["depth"]),
             "normal": get_output_node_directory(output_nodes["normal"]),
             "uv": get_output_node_directory(output_nodes["uv"]),
-            "position": get_output_node_directory(output_nodes["position"]),
             # Facing images are in the folder "facing" which is not rendered but created
             "facing": str(
                 Path(get_output_node_directory(output_nodes["uv"])).parent
@@ -737,6 +1018,7 @@ def render_views(
             )
 
     except Exception:
+        _logger.exception("Rendering views failed; cleaning up temporary cameras.")
         context.scene.camera = original_camera
         for cam in cameras:
             if cam and cam.name in bpy.data.objects:

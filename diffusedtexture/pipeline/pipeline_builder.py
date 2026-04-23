@@ -14,20 +14,8 @@ if TYPE_CHECKING:
 
 from ...blender_operations import ProcessParameter
 from ...model_support import require_supported_sd_version
-from .controlnet_config import build_controlnet_config
-
-
-def _pick_device() -> str:
-    try:
-        import torch  # local import
-
-        if hasattr(torch, "cuda") and torch.cuda.is_available():
-            return "cuda"
-        if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
-            return "mps"
-        return "cpu"  # noqa: TRY300
-    except Exception:  # noqa: BLE001
-        return "cpu"
+from ...runtime_capability import resolve_diffusion_device
+from .controlnet_config import load_controlnet_models
 
 
 def create_diffusion_pipeline(  # noqa: C901, PLR0912
@@ -50,7 +38,6 @@ def create_diffusion_pipeline(  # noqa: C901, PLR0912
         return None
 
     model_version = require_supported_sd_version(process_parameter.sd_version)
-    config = build_controlnet_config(process_parameter)
     pipe_cls = None
 
     if model_version == "sd15":
@@ -63,12 +50,12 @@ def create_diffusion_pipeline(  # noqa: C901, PLR0912
         msg = f"Unexpected supported model: {model_version}"
         raise RuntimeError(msg)
 
-    controlnets = config[process_parameter.mesh_complexity]["controlnets"]
+    controlnets = load_controlnet_models(process_parameter)
 
     # Build pipeline from checkpoint or Hub
     ckpt = str(process_parameter.checkpoint_path)
 
-    device = _pick_device()
+    device = resolve_diffusion_device(torch) or "cpu"
     torch_dtype = {
         "float16": torch.float16,
         "bfloat16": torch.bfloat16,

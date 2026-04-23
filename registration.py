@@ -6,7 +6,7 @@ and custom properties in the correct order.
 
 import bpy
 
-from .operators import OBJECT_OT_GenerateTexture
+from .operators import OBJECT_OT_CancelTextureGeneration, OBJECT_OT_GenerateTexture
 from .preferences import (
     DiffuseTexPreferences,
     InstallDepsOperator,
@@ -30,6 +30,7 @@ classes = [
     InstallDepsOperator,
     DiffuseTexPreferences,
     OBJECT_OT_GenerateTexture,
+    OBJECT_OT_CancelTextureGeneration,
     OBJECT_OT_SelectPipette,
     OBJECT_PT_DiffusedTextureMainPanel,
     OBJECT_OT_OpenNewInputImage,

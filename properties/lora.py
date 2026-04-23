@@ -1,5 +1,5 @@
 import bpy  # noqa: I001
-from bpy.props import StringProperty, FloatProperty, IntProperty, CollectionProperty  # type: ignore  # noqa: PGH003
+from bpy.props import StringProperty, FloatProperty, IntProperty, CollectionProperty
 
 
 class LoRAModel(bpy.types.PropertyGroup):

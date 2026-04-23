@@ -1,8 +1,32 @@
 import math
 from pathlib import Path
+from types import SimpleNamespace
 
 import bpy
 import mathutils
+
+try:
+    from . import runtime_capability as _runtime_capability
+except ImportError:
+    import runtime_capability as _runtime_capability
+
+
+def _fallback_configure_cycles_render_device(
+    context: bpy.types.Context,  # noqa: ARG001
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        cycles_backend=None,
+        scene_render_device=None,
+        can_render=True,
+        message="",
+    )
+
+
+configure_cycles_render_device = getattr(
+    _runtime_capability,
+    "configure_cycles_render_device",
+    _fallback_configure_cycles_render_device,
+)
 
 # Guard against bpy.context not being available in test environments.
 if not hasattr(bpy, "context"):
@@ -185,18 +209,7 @@ def create_cameras_on_sphere(
 
 def setup_cycles_setting(context: bpy.types.Context) -> None:
     # Enable Cycles (Eevee does not offer UV output)
-    context.scene.render.engine = "CYCLES"
-
-    # Attempt to enable GPU support with preference order: OPTIX, CUDA, OPENCL, CPU
-    preferences = bpy.context.preferences.addons["cycles"].preferences
-    try:
-        preferences.compute_device_type = "OPTIX"
-    except Exception:  # noqa: BLE001
-        try:
-            preferences.compute_device_type = "CUDA"
-        except Exception as e_cuda:
-            msg = "An NVIDIA GPU is required for this addon."
-            raise SystemError(msg) from e_cuda
+    configure_cycles_render_device(context)
 
     # Set rendering samples and noise threshold
     context.scene.cycles.samples = (
@@ -283,18 +296,27 @@ def setup_output_nodes(
 
     node_tree = get_scene_compositor_node_tree(scene)
 
-    # Clear existing nodes
-    node_tree.nodes.clear()
+    # Remove only addon-created nodes from any previous run (preserve user nodes)
+    addon_names = {
+        "depth_output",
+        "normal_output",
+        "uv_output",
+        "position_output",
+        "DiffusedTexture_RenderLayers",
+    }
+    for node in list(node_tree.nodes):
+        if node.name in addon_names:
+            node_tree.nodes.remove(node)
 
     # Enable necessary passes
     view_layer = context.view_layer
     view_layer.use_pass_z = True
     view_layer.use_pass_normal = True
     view_layer.use_pass_uv = True
-    view_layer.use_pass_position = True
 
     # Create render layers node after enabling passes so sockets exist.
     render_layers = node_tree.nodes.new("CompositorNodeRLayers")
+    render_layers.name = "DiffusedTexture_RenderLayers"
 
     # output path for the render
     render_output_dir = Path(scene.output_path) / "RenderOutput"
@@ -304,7 +326,7 @@ def setup_output_nodes(
     # Create output nodes for each pass
     output_nodes = {}
 
-    for name in ["Depth", "Normal", "UV", "Position"]:
+    for name in ["Depth", "Normal", "UV"]:
         output_nodes[name.lower()] = set_node_path(name, node_tree, render_layers)
         output_dir = Path(scene.output_path) / f"render_{name.lower()}"
         set_output_node_directory(output_nodes[name.lower()], output_dir)

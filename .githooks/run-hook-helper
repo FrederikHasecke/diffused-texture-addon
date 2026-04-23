@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+
+repo_root=$(git rev-parse --show-toplevel)
+script="$repo_root/scripts/commit_semver_helper.py"
+
+if command -v python3 >/dev/null 2>&1; then
+  exec python3 "$script" "$@"
+fi
+
+if command -v python >/dev/null 2>&1; then
+  exec python "$script" "$@"
+fi
+
+if command -v py >/dev/null 2>&1; then
+  exec py -3 "$script" "$@"
+fi
+
+printf '%s\n' 'Python 3 is required to run the shared Git hooks for this repository.' >&2
+exit 1

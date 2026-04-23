@@ -74,18 +74,26 @@ else:
 def register() -> None:
     """Register the add-on inside Blender."""
     global _MINIMAL_PREFS_ONLY  # noqa: PLW0603
+    from .diagnostics import get_logger, setup_logging
+
+    setup_logging()
+    logger = get_logger("addon")
+
     try:
         from .registration import register_addon
 
         register_addon()
         _MINIMAL_PREFS_ONLY = False
-        print("Full addon registration successful")  # noqa: T201
-    except Exception as e:  # noqa: BLE001
-        print(f"Full registration failed, falling back to minimal mode: {e!s}")  # noqa: T201
+        logger.info("Full addon registration successful.")
+    except Exception:
+        logger.exception(
+            "Full registration failed; falling back to minimal preferences mode.",
+        )
         from .preferences import register as register_prefs
 
         register_prefs()
         _MINIMAL_PREFS_ONLY = True
+        logger.warning("Registered minimal preferences mode after startup failure.")
 
 
 def unregister() -> None:

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "1026992d49b98544db79a54b528a6e68b087740b",
+  "packages": {
+    ".": {
+      "release-type": "python",
+      "package-name": "diffused_texture_addon",
+      "include-v-in-tag": true,
+      "changelog-path": "CHANGELOG.md",
+      "pull-request-title-pattern": "chore(master): release ${version}",
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "blender_manifest.toml",
+          "jsonpath": "$.version"
+        }
+      ],
+      "changelog-sections": [
+        {
+          "type": "feat",
+          "section": "Features"
+        },
+        {
+          "type": "fix",
+          "section": "Bug Fixes"
+        },
+        {
+          "type": "perf",
+          "section": "Performance Improvements"
+        },
+        {
+          "type": "docs",
+          "section": "Documentation",
+          "hidden": true
+        },
+        {
+          "type": "test",
+          "section": "Tests",
+          "hidden": true
+        },
+        {
+          "type": "refactor",
+          "section": "Refactoring",
+          "hidden": true
+        },
+        {
+          "type": "build",
+          "section": "Build System",
+          "hidden": true
+        },
+        {
+          "type": "ci",
+          "section": "CI",
+          "hidden": true
+        },
+        {
+          "type": "chore",
+          "section": "Chores",
+          "hidden": true
+        }
+      ]
+    }
+  }
+}

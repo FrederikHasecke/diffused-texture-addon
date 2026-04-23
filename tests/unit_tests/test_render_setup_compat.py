@@ -62,8 +62,11 @@ def test_output_node_directory_roundtrip(tmp_path: Path) -> None:
 
 
 def test_set_node_path_handles_uv_socket_name_lookup() -> None:
+    scene = bpy.context.scene
     view_layer = bpy.context.view_layer
+    old_engine = scene.render.engine
     old_use_pass_uv = view_layer.use_pass_uv
+    render_setup.setup_cycles_setting(bpy.context)
     view_layer.use_pass_uv = True
 
     node_tree = _new_compositor_node_tree()
@@ -81,9 +84,17 @@ def test_set_node_path_handles_uv_socket_name_lookup() -> None:
     finally:
         _cleanup_compositor_node_tree(node_tree)
         view_layer.use_pass_uv = old_use_pass_uv
+        scene.render.engine = old_engine
 
 
 def test_find_output_node_image_path_resolves_frame_file(tmp_path: Path) -> None:
+    scene = bpy.context.scene
+    view_layer = bpy.context.view_layer
+    old_engine = scene.render.engine
+    old_use_pass_z = view_layer.use_pass_z
+    render_setup.setup_cycles_setting(bpy.context)
+    view_layer.use_pass_z = True
+
     node_tree = _new_compositor_node_tree()
 
     try:
@@ -99,10 +110,13 @@ def test_find_output_node_image_path_resolves_frame_file(tmp_path: Path) -> None
         assert found == expected
     finally:
         _cleanup_compositor_node_tree(node_tree)
+        view_layer.use_pass_z = old_use_pass_z
+        scene.render.engine = old_engine
 
 
 def test_setup_output_nodes_returns_expected_passes(tmp_path: Path) -> None:
     scene = bpy.context.scene
+    old_engine = scene.render.engine
     created_property = False
 
     if not hasattr(bpy.types.Scene, "output_path"):
@@ -111,12 +125,14 @@ def test_setup_output_nodes_returns_expected_passes(tmp_path: Path) -> None:
 
     previous_output_path = scene.output_path
     scene.output_path = str(tmp_path) + "/"
+    render_setup.setup_cycles_setting(bpy.context)
 
     try:
         output_nodes = setup_output_nodes(bpy.context)
     finally:
         scene.output_path = previous_output_path
+        scene.render.engine = old_engine
         if created_property and hasattr(bpy.types.Scene, "output_path"):
             del bpy.types.Scene.output_path
 
-    assert sorted(output_nodes.keys()) == ["depth", "normal", "position", "uv"]
+    assert sorted(output_nodes.keys()) == ["depth", "normal", "uv"]

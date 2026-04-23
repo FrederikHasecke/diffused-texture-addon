@@ -9,7 +9,18 @@ from numpy.typing import NDArray
 from PIL import Image
 
 from ...blender_operations import ProcessParameter
-from .controlnet_config import build_controlnet_config
+from .controlnet_config import get_controlnet_static_config
+
+
+class TextureGenerationCancelledError(RuntimeError):
+    """Raised when the user cancels an in-flight generation."""
+
+    MESSAGE = "Cancelled by user."
+
+
+def _raise_generation_cancelled() -> None:
+    msg = TextureGenerationCancelledError.MESSAGE
+    raise TextureGenerationCancelledError(msg)
 
 
 def _to_pil_image(img: NDArray | Image.Image | None) -> Image.Image | None:
@@ -51,6 +62,7 @@ def run_pipeline(  # noqa: C901, PLR0913
     normal_img: Image.Image,
     depth_img: Image.Image,
     progress_callback: Callable,
+    should_cancel: Callable[[], bool],
     strength: float = 1.0,
     guidance_scale: float = 7.5,
     num_inference_steps: int = 50,
@@ -73,11 +85,10 @@ def run_pipeline(  # noqa: C901, PLR0913
         )
         raise RuntimeError(msg)
 
-    config = build_controlnet_config(process_parameter)
-    complexity = process_parameter.mesh_complexity
+    config = get_controlnet_static_config(process_parameter)
 
     image_map = {"depth": depth_img, "canny": canny_img, "normal": normal_img}
-    control_images = [image_map[key] for key in config[complexity]["inputs"]]
+    control_images = [image_map[key] for key in config["inputs"]]
 
     try:
         kwargs = {
@@ -92,21 +103,14 @@ def run_pipeline(  # noqa: C901, PLR0913
                 else None
             ),
             "num_images_per_prompt": 1,
-            "controlnet_conditioning_scale": config[complexity]["conditioning_scale"],
+            "controlnet_conditioning_scale": config["conditioning_scale"],
             "num_inference_steps": num_inference_steps,
             "strength": strength,
             "guidance_scale": guidance_scale,
         }
 
         if process_parameter.sd_version == "sdxl":
-            control_mode = []
-            if "depth" in config[complexity]["inputs"]:
-                control_mode.append(1)
-            if "canny" in config[complexity]["inputs"]:
-                control_mode.append(3)
-            if "normal" in config[complexity]["inputs"]:
-                control_mode.append(4)
-            kwargs["control_mode"] = control_mode
+            kwargs["control_mode"] = config["control_mode"]
 
         def pipe_progress_callback(
             pipe: StableDiffusionControlNetInpaintPipeline
@@ -118,11 +122,21 @@ def run_pipeline(  # noqa: C901, PLR0913
             progress = step_index / pipe.num_timesteps
             percent = int(100 * progress)
             progress_callback(percent)
+            if should_cancel():
+                pipe._interrupt = True  # noqa: SLF001
             return callback_kwargs if callback_kwargs is not None else {}
 
         kwargs["callback_on_step_end"] = pipe_progress_callback
 
+        if process_parameter.texture_seed > 0:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            kwargs["generator"] = torch.Generator(device).manual_seed(
+                process_parameter.texture_seed,
+            )
+
         output = pipe.__call__(**kwargs)
+        if should_cancel() or getattr(pipe, "_interrupt", False):
+            _raise_generation_cancelled()
         generated_images = getattr(output, "images", None)
         if generated_images is None or len(generated_images) == 0:
             msg = "Stable Diffusion inference produced no output images."
@@ -138,6 +152,8 @@ def run_pipeline(  # noqa: C901, PLR0913
             "again."
         )
         raise RuntimeError(msg) from exc
+    except TextureGenerationCancelledError:
+        raise
     except Exception as exc:
         msg = (
             "Stable Diffusion inference failed "

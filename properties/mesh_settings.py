@@ -1,5 +1,5 @@
 import bpy
-from bpy.props import (  # type: ignore  # noqa: PGH003
+from bpy.props import (
     EnumProperty,
     FloatProperty,
     IntProperty,
@@ -100,6 +100,7 @@ def register_mesh_properties() -> None:
             ("PARALLEL_IMG", "Parallel", "Run views in parallel"),
             ("SEQUENTIAL_IMG", "Sequential", "Run views one by one"),
             ("PARA_SEQUENTIAL_IMG", "Para-Sequential", "Run subsets parallel"),
+            ("UV_PASS", "UV Space", "Run a dedicated UV-space generation pass"),
         ],
         default="PARALLEL_IMG",
     )
@@ -150,4 +151,5 @@ def unregister_mesh_properties() -> None:
         "input_texture",
     ]
     for p in props:
-        delattr(bpy.types.Scene, p)
+        if hasattr(bpy.types.Scene, p):
+            delattr(bpy.types.Scene, p)

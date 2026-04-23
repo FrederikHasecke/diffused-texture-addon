@@ -161,3 +161,8 @@ def test_run_para_sequential() -> None:
         subgrid_rows=1,
         subgrid_cols=2,
     )
+
+
+def test_run_uv_space() -> None:
+    """Test the dedicated UV-space texture generation end to end."""
+    _run_generation_mode("UV_PASS")
