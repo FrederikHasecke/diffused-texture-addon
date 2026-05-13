@@ -436,6 +436,157 @@ def test_execute_uses_uv_pass_assets_and_skips_multiview_loading(
     assert args[4] is built_assets
 
 
+def test_execute_builds_uv_assets_for_image_mode_follow_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operators = _load_addon_submodule("operators")
+
+    selected_obj = object()
+    scene_backup = {"target_object": selected_obj}
+    restore_calls = []
+    render_img_folders = {"uv": "C:/tmp/render_uv"}
+    loaded_multiview = {"uv": [], "facing": []}
+    built_assets = operators.UVPassAssets(
+        normal_map=np.zeros((2, 2, 4), dtype=np.float32),
+        position_map=np.zeros((2, 2, 4), dtype=np.float32),
+        uv_layout=np.zeros((2, 2, 4), dtype=np.float32),
+        surface_mask=np.zeros((2, 2), dtype=np.uint8),
+    )
+    thread_state: dict[str, object] = {}
+
+    monkeypatch.setattr(operators, "prepare_scene", lambda obj: scene_backup)
+    monkeypatch.setattr(
+        operators,
+        "render_views",
+        lambda context, obj: (render_img_folders, []),  # noqa: ARG005
+    )
+    monkeypatch.setattr(
+        operators,
+        "load_multiview_images",
+        lambda folders: loaded_multiview if folders is render_img_folders else None,
+    )
+    monkeypatch.setattr(
+        operators,
+        "build_uv_pass_assets",
+        lambda context, obj: built_assets,  # noqa: ARG005
+    )
+    monkeypatch.setattr(
+        operators,
+        "extract_process_parameter_from_context",
+        lambda context: SimpleNamespace(
+            sd_version="sd15",
+            output_path="C:/tmp",
+            operation_mode="PARALLEL_IMG",
+        ),
+    )
+    monkeypatch.setattr(operators, "require_supported_sd_version", lambda version: None)
+    monkeypatch.setattr(
+        operators,
+        "get_runtime_capability",
+        lambda context: SimpleNamespace(can_generate=True, message="Generation ready."),
+    )
+    monkeypatch.setattr(
+        operators,
+        "restore_scene",
+        lambda backup, cameras: restore_calls.append((backup, cameras)),
+    )
+
+    class _FakeThread:
+        def __init__(self, target, args, daemon: bool) -> None:
+            thread_state["target"] = target
+            thread_state["args"] = args
+            thread_state["daemon"] = daemon
+
+        def start(self) -> None:
+            thread_state["started"] = True
+
+        def is_alive(self) -> bool:
+            return False
+
+    monkeypatch.setattr(operators.threading, "Thread", _FakeThread)
+    monkeypatch.setattr(
+        operators,
+        "bpy",
+        SimpleNamespace(
+            data=SimpleNamespace(
+                objects=SimpleNamespace(get=lambda name: selected_obj),
+            ),
+            app=SimpleNamespace(background=False),
+        ),
+    )
+
+    class _WindowManager:
+        def progress_begin(self, start: int, end: int) -> None:  # noqa: ARG002
+            return
+
+        def progress_update(self, value: int) -> None:  # noqa: ARG002
+            return
+
+        def progress_end(self) -> None:
+            return
+
+        def event_timer_add(self, interval: float, window=None):  # noqa: ARG002
+            return object()
+
+        def modal_handler_add(self, operator) -> None:  # noqa: ARG002
+            return
+
+    class _Window:
+        def cursor_set(self, value: str) -> None:  # noqa: ARG002
+            return
+
+    scene = SimpleNamespace(
+        my_mesh_object="Cube",
+        operation_mode="PARALLEL_IMG",
+        input_texture=None,
+        diffused_texture_operator_running=False,
+        diffused_texture_operator_done=False,
+        diffused_texture_operator_error="",
+        diffused_texture_operator_cancel_requested=False,
+    )
+    context = SimpleNamespace(
+        scene=scene,
+        window_manager=_WindowManager(),
+        window=_Window(),
+    )
+
+    class _FakeOperator:
+        def report(self, levels: set[str], message: str) -> None:  # noqa: ARG002
+            return
+
+        def _set_scene_status(
+            self,
+            scene_obj,
+            *,
+            running: bool,
+            done: bool,
+            error: str = "",
+        ) -> None:
+            scene_obj.diffused_texture_operator_running = running
+            scene_obj.diffused_texture_operator_done = done
+            scene_obj.diffused_texture_operator_error = error
+
+    operator = _FakeOperator()
+    operator._should_cancel = types.MethodType(  # type: ignore[attr-defined]
+        operators.OBJECT_OT_GenerateTexture._should_cancel,
+        operator,
+    )
+    operator._run_texture_generation_thread = types.MethodType(  # type: ignore[attr-defined]
+        operators.OBJECT_OT_GenerateTexture._run_texture_generation_thread,
+        operator,
+    )
+    result = operators.OBJECT_OT_GenerateTexture.execute(operator, context)
+
+    assert result == {"RUNNING_MODAL"}
+    assert restore_calls == [(scene_backup, [])]
+    assert operator.render_img_folders == render_img_folders
+    assert thread_state["started"] is True
+    args = thread_state["args"]
+    assert isinstance(args, tuple)
+    assert args[4] is loaded_multiview
+    assert args[7] is built_assets
+
+
 def test_cancel_operator_marks_scene_request(monkeypatch: pytest.MonkeyPatch) -> None:
     operators = _load_addon_submodule("operators")
 

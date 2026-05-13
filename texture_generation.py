@@ -10,6 +10,7 @@ from .diffusedtexture.img_parallel import img_parallel
 from .diffusedtexture.img_parasequential import img_parasequential
 from .diffusedtexture.img_sequential import img_sequential
 from .diffusedtexture.uv_pass import uv_pass
+from .diffusedtexture.uv_stitch_pass import uv_stitch_pass
 
 MultiviewImages = dict[str, list[NDArray[Any]]]
 
@@ -63,7 +64,7 @@ def load_multiview_images(
     return multiview_images
 
 
-def run_texture_generation(  # noqa: PLR0913
+def run_texture_generation(  # noqa: C901, PLR0913
     process_parameter: ProcessParameter,
     generation_inputs: MultiviewImages | UVPassAssets,
     progress_callback: Callable,
@@ -71,6 +72,7 @@ def run_texture_generation(  # noqa: PLR0913
     mark_done: Callable,
     return_texture_bucket: list,
     texture: NDArray[np.float32] | None = None,
+    uv_assets: UVPassAssets | None = None,
 ) -> None:
     """Run the texture generation in a separate thread.
 
@@ -82,6 +84,7 @@ def run_texture_generation(  # noqa: PLR0913
         mark_done: Function to call when the process is done.
         return_texture_bucket: Optional bucket to store the resulting texture.
         texture: Optional input texture.
+        uv_assets: Optional UV-space assets for automatic image-mode stitching.
     """
     if process_parameter.operation_mode == "UV_PASS":
         if not isinstance(generation_inputs, UVPassAssets):
@@ -100,11 +103,20 @@ def run_texture_generation(  # noqa: PLR0913
             raise TypeError(msg)
         multiview_images = generation_inputs
 
+        def base_progress_callback(percent: int) -> None:
+            if uv_assets is None:
+                progress_callback(percent)
+                return
+            progress_callback(int(percent * 0.75))
+
+        def stitch_progress_callback(percent: int) -> None:
+            progress_callback(75 + int(percent * 0.25))
+
         if process_parameter.operation_mode == "PARALLEL_IMG":
             output_texture = img_parallel(
                 multiview_images=multiview_images,
                 process_parameter=process_parameter,
-                progress_callback=progress_callback,
+                progress_callback=base_progress_callback,
                 should_cancel=should_cancel,
                 texture=texture,
             )
@@ -112,7 +124,7 @@ def run_texture_generation(  # noqa: PLR0913
             output_texture = img_sequential(
                 multiview_images=multiview_images,
                 process_parameter=process_parameter,
-                progress_callback=progress_callback,
+                progress_callback=base_progress_callback,
                 should_cancel=should_cancel,
                 texture=texture,
             )
@@ -120,7 +132,7 @@ def run_texture_generation(  # noqa: PLR0913
             output_texture = img_parasequential(
                 multiview_images=multiview_images,
                 process_parameter=process_parameter,
-                progress_callback=progress_callback,
+                progress_callback=base_progress_callback,
                 should_cancel=should_cancel,
                 texture=texture,
                 subgrid_rows=process_parameter.subgrid_rows,
@@ -129,6 +141,14 @@ def run_texture_generation(  # noqa: PLR0913
         else:
             msg = f"Unknown operation mode: {process_parameter.operation_mode}"
             raise ValueError(msg)
+
+        if uv_assets is not None:
+            output_texture = uv_stitch_pass(
+                texture=output_texture,
+                uv_assets=uv_assets,
+                multiview_images=multiview_images,
+            )
+            stitch_progress_callback(100)
 
     return_texture_bucket.append(output_texture)
 

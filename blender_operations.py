@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
@@ -7,6 +7,18 @@ import numpy as np
 from numpy.typing import NDArray
 
 from .diagnostics import get_logger
+from .diffusedtexture.uv_seams import (
+    UV_EPSILON,
+    SeamTopologyAssets,
+    UVSeamCandidate,
+    empty_float_array,
+    empty_int_array,
+    empty_yx_array,
+    normalize_uv_vector,
+)
+from .diffusedtexture.uv_seams import (
+    build_uv_seam_topology_assets as rasterize_uv_seam_topology_assets,
+)
 from .render_setup import (
     create_cameras_on_sphere,
     create_cameras_on_two_rings,
@@ -36,6 +48,13 @@ class UVPassAssets:
     position_map: NDArray[np.float32]
     uv_layout: NDArray[np.float32]
     surface_mask: NDArray[np.uint8]
+    seam_line_mask: NDArray[np.uint8] | None = None
+    seam_link_source_yx: NDArray[np.int32] = field(default_factory=empty_yx_array)
+    seam_link_target_yx: NDArray[np.int32] = field(default_factory=empty_yx_array)
+    seam_link_weight: NDArray[np.float32] = field(default_factory=empty_float_array)
+    seam_link_edge_id: NDArray[np.int32] = field(default_factory=empty_int_array)
+    seam_link_t: NDArray[np.float32] = field(default_factory=empty_float_array)
+    seam_unresolved_link_mask: NDArray[np.uint8] | None = None
 
 
 @dataclass
@@ -881,6 +900,190 @@ def _activate_selected_uv_map(
         obj.data.uv_layers.active = obj.data.uv_layers[uv_map_name]
 
 
+@dataclass(frozen=True)
+class _UVEdgeSide:
+    edge_index: int
+    vertex_start: int
+    vertex_end: int
+    uv_start: NDArray[np.float32]
+    uv_end: NDArray[np.float32]
+    interior_ref: NDArray[np.float32]
+
+
+def _uv_layer_vector(
+    uv_layer: bpy.types.MeshUVLoopLayer,
+    loop_index: int,
+) -> NDArray[np.float32]:
+    return np.array(uv_layer.data[loop_index].uv, dtype=np.float32)
+
+
+def _compute_uv_inward_direction(
+    uv_start: NDArray[np.float32],
+    uv_end: NDArray[np.float32],
+    interior_ref: NDArray[np.float32],
+) -> NDArray[np.float32]:
+    segment = uv_end - uv_start
+    if float(np.linalg.norm(segment)) <= UV_EPSILON:
+        return np.zeros(2, dtype=np.float32)
+
+    perp = normalize_uv_vector(np.array([-segment[1], segment[0]], dtype=np.float32))
+    midpoint = 0.5 * (uv_start + uv_end)
+    if float(np.dot(perp, interior_ref - midpoint)) < 0.0:
+        perp = -perp
+    return perp.astype(np.float32, copy=False)
+
+
+def _orient_edge_side_to_mesh_edge(
+    side: _UVEdgeSide,
+    edge_vertices: tuple[int, int],
+) -> tuple[NDArray[np.float32], NDArray[np.float32], NDArray[np.float32]] | None:
+    edge_start, edge_end = edge_vertices
+    if side.vertex_start == edge_start and side.vertex_end == edge_end:
+        uv_start = side.uv_start
+        uv_end = side.uv_end
+    elif side.vertex_start == edge_end and side.vertex_end == edge_start:
+        uv_start = side.uv_end
+        uv_end = side.uv_start
+    else:
+        return None
+
+    inward = _compute_uv_inward_direction(uv_start, uv_end, side.interior_ref)
+    if float(np.linalg.norm(inward)) <= UV_EPSILON:
+        return None
+    return uv_start, uv_end, inward
+
+
+def _edge_sides_are_uv_split(
+    first_start: NDArray[np.float32],
+    first_end: NDArray[np.float32],
+    second_start: NDArray[np.float32],
+    second_end: NDArray[np.float32],
+    texture_resolution: int,
+) -> bool:
+    uv_epsilon = 0.5 / float(max(texture_resolution - 1, 1))
+    endpoint_delta = max(
+        float(np.linalg.norm(first_start - second_start)),
+        float(np.linalg.norm(first_end - second_end)),
+    )
+    return endpoint_delta > uv_epsilon
+
+
+def _selected_uv_layer_name(
+    context: bpy.types.Context,
+    obj: bpy.types.Object,
+) -> str | None:
+    uv_map_name = getattr(context.scene, "my_uv_map", "") or None
+    if uv_map_name:
+        return str(uv_map_name)
+    active_uv = obj.data.uv_layers.active
+    return active_uv.name if active_uv is not None else None
+
+
+def _collect_uv_seam_candidates(  # noqa: C901
+    context: bpy.types.Context,
+    obj: bpy.types.Object,
+    texture_resolution: int,
+) -> list[UVSeamCandidate]:
+    depsgraph = context.evaluated_depsgraph_get()
+    obj_eval = obj.evaluated_get(depsgraph)
+    mesh = obj_eval.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
+
+    try:
+        if mesh is None or not mesh.uv_layers:
+            return []
+
+        uv_layer_name = _selected_uv_layer_name(context, obj)
+        uv_layer = mesh.uv_layers.get(uv_layer_name) if uv_layer_name else None
+        if uv_layer is None:
+            uv_layer = mesh.uv_layers.active
+        if uv_layer is None and len(mesh.uv_layers) > 0:
+            uv_layer = mesh.uv_layers[0]
+        if uv_layer is None:
+            return []
+
+        sides_by_edge: dict[int, list[_UVEdgeSide]] = {}
+        for polygon in mesh.polygons:
+            loop_indices = list(polygon.loop_indices)
+            loop_total = len(loop_indices)
+            if loop_total < 3:  # noqa: PLR2004
+                continue
+
+            for local_index, loop_index in enumerate(loop_indices):
+                next_loop_index = loop_indices[(local_index + 1) % loop_total]
+                prev_loop_index = loop_indices[local_index - 1]
+                after_next_loop_index = loop_indices[(local_index + 2) % loop_total]
+                loop = mesh.loops[loop_index]
+                next_loop = mesh.loops[next_loop_index]
+                uv_prev = _uv_layer_vector(uv_layer, prev_loop_index)
+                uv_next = _uv_layer_vector(uv_layer, after_next_loop_index)
+                side = _UVEdgeSide(
+                    edge_index=int(loop.edge_index),
+                    vertex_start=int(loop.vertex_index),
+                    vertex_end=int(next_loop.vertex_index),
+                    uv_start=_uv_layer_vector(uv_layer, loop_index),
+                    uv_end=_uv_layer_vector(uv_layer, next_loop_index),
+                    interior_ref=(0.5 * (uv_prev + uv_next)).astype(np.float32),
+                )
+                sides_by_edge.setdefault(side.edge_index, []).append(side)
+
+        candidates: list[UVSeamCandidate] = []
+        for edge_index, edge_sides in sides_by_edge.items():
+            if len(edge_sides) != 2:  # noqa: PLR2004
+                continue
+
+            mesh_edge = mesh.edges[edge_index]
+            edge_vertices = (int(mesh_edge.vertices[0]), int(mesh_edge.vertices[1]))
+            first = _orient_edge_side_to_mesh_edge(edge_sides[0], edge_vertices)
+            second = _orient_edge_side_to_mesh_edge(edge_sides[1], edge_vertices)
+            if first is None or second is None:
+                continue
+
+            first_start, first_end, first_inward = first
+            second_start, second_end, second_inward = second
+            if not _edge_sides_are_uv_split(
+                first_start,
+                first_end,
+                second_start,
+                second_end,
+                texture_resolution,
+            ):
+                continue
+
+            candidates.append(
+                UVSeamCandidate(
+                    edge_id=edge_index,
+                    uv_a_start=first_start.astype(np.float32, copy=False),
+                    uv_a_end=first_end.astype(np.float32, copy=False),
+                    uv_b_start=second_start.astype(np.float32, copy=False),
+                    uv_b_end=second_end.astype(np.float32, copy=False),
+                    inward_a=first_inward.astype(np.float32, copy=False),
+                    inward_b=second_inward.astype(np.float32, copy=False),
+                ),
+            )
+
+        return candidates
+    finally:
+        obj_eval.to_mesh_clear()
+
+
+def _build_uv_seam_topology_assets(
+    context: bpy.types.Context,
+    obj: bpy.types.Object,
+    surface_mask: NDArray[np.uint8],
+    texture_resolution: int,
+) -> SeamTopologyAssets:
+    try:
+        candidates = _collect_uv_seam_candidates(context, obj, texture_resolution)
+        return rasterize_uv_seam_topology_assets(
+            candidates,
+            surface_mask,
+            texture_resolution,
+        )
+    except Exception:  # noqa: BLE001
+        _logger.debug("Failed to build topology UV seam assets.", exc_info=True)
+        return rasterize_uv_seam_topology_assets([], surface_mask, texture_resolution)
+
+
 def build_uv_pass_assets(
     context: bpy.types.Context,
     obj: bpy.types.Object,
@@ -906,6 +1109,14 @@ def build_uv_pass_assets(
     finally:
         uv_layout_path.unlink(missing_ok=True)
 
+    surface_mask = _surface_mask_from_uv_layout(uv_layout)
+    seam_topology_assets = _build_uv_seam_topology_assets(
+        context,
+        obj,
+        surface_mask,
+        texture_resolution,
+    )
+
     return UVPassAssets(
         normal_map=bake_geometry_channel_to_array(
             obj,
@@ -918,7 +1129,14 @@ def build_uv_pass_assets(
             resolution=texture_resolution,
         ),
         uv_layout=uv_layout,
-        surface_mask=_surface_mask_from_uv_layout(uv_layout),
+        surface_mask=surface_mask,
+        seam_line_mask=seam_topology_assets.seam_line_mask,
+        seam_link_source_yx=seam_topology_assets.seam_link_source_yx,
+        seam_link_target_yx=seam_topology_assets.seam_link_target_yx,
+        seam_link_weight=seam_topology_assets.seam_link_weight,
+        seam_link_edge_id=seam_topology_assets.seam_link_edge_id,
+        seam_link_t=seam_topology_assets.seam_link_t,
+        seam_unresolved_link_mask=seam_topology_assets.seam_unresolved_link_mask,
     )
 
 

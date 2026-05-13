@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import numpy as np
 from PIL import Image
 
 bpy = pytest.importorskip("bpy")
@@ -46,6 +47,44 @@ def _create_mesh_object() -> bpy.types.Object:
     if obj is None:
         msg = "Expected an active mesh object"
         raise AssertionError(msg)
+    return obj
+
+
+def _create_two_quad_uv_seam_object() -> bpy.types.Object:
+    mesh = bpy.data.meshes.new("TwoQuadSeamMesh")
+    mesh.from_pydata(
+        [
+            (0.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0),
+            (2.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (1.0, 1.0, 0.0),
+            (2.0, 1.0, 0.0),
+        ],
+        [],
+        [
+            (0, 1, 4, 3),
+            (1, 2, 5, 4),
+        ],
+    )
+    mesh.update()
+    uv_layer = mesh.uv_layers.new(name="UVMap")
+    uv_values = [
+        (0.10, 0.10),
+        (0.40, 0.10),
+        (0.40, 0.90),
+        (0.10, 0.90),
+        (0.60, 0.10),
+        (0.90, 0.10),
+        (0.90, 0.90),
+        (0.60, 0.90),
+    ]
+    for loop_index, uv in enumerate(uv_values):
+        uv_layer.data[loop_index].uv = uv
+    obj = bpy.data.objects.new("TwoQuadSeam", mesh)
+    bpy.context.collection.objects.link(obj)
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
     return obj
 
 
@@ -93,6 +132,25 @@ def _material_signature(
         for link in material.node_tree.links
     )
     return material.use_nodes, node_types, links
+
+
+def test_build_uv_seam_topology_assets_extracts_known_mesh_seam() -> None:
+    obj = _create_two_quad_uv_seam_object()
+    surface_mask = np.full((32, 32), 255, dtype=np.uint8)
+
+    assets = blender_operations._build_uv_seam_topology_assets(
+        bpy.context,
+        obj,
+        surface_mask,
+        32,
+    )
+
+    assert np.any(assets.seam_line_mask)
+    assert len(assets.seam_link_source_yx) > 0
+    source_x = assets.seam_link_source_yx[:, 1]
+    target_x = assets.seam_link_target_yx[:, 1]
+    assert np.any(source_x < 16)
+    assert np.any(target_x > 16)
 
 
 def test_apply_texture_to_object_creates_managed_material(

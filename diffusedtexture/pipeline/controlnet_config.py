@@ -18,6 +18,13 @@ from ...blender_operations import ProcessParameter
 from ...controlnet_inputs import get_active_controlnet_inputs, get_sdxl_control_modes
 from ...model_support import require_supported_sd_version
 
+UV_CONTROLNET_STRENGTH_LIMITS = {
+    "depth": 0.5,
+    "canny": 0.3,
+    "normal": 0.55,
+}
+UV_UNION_CONTROLNET_STRENGTH_LIMIT = 0.65
+
 
 def _load_controlnet_runtime() -> tuple[Any, Any, Any]:
     try:
@@ -38,6 +45,12 @@ def _load_controlnet_runtime() -> tuple[Any, Any, Any]:
     return torch, ControlNetModel, ControlNetUnionModel
 
 
+def _limited_uv_strength(value: float | None, limit: float) -> float:
+    if value is None:
+        return limit
+    return min(float(value), limit)
+
+
 def get_controlnet_static_config(
     process_parameter: ProcessParameter,
 ) -> dict[str, Any]:
@@ -49,9 +62,15 @@ def get_controlnet_static_config(
     )
 
     if model_version == "sdxl":
+        conditioning_scale = process_parameter.union_controlnet_strength
+        if process_parameter.operation_mode == "UV_PASS":
+            conditioning_scale = _limited_uv_strength(
+                conditioning_scale,
+                UV_UNION_CONTROLNET_STRENGTH_LIMIT,
+            )
         return {
             "inputs": inputs,
-            "conditioning_scale": process_parameter.union_controlnet_strength,
+            "conditioning_scale": conditioning_scale,
             "control_mode": get_sdxl_control_modes(
                 process_parameter.operation_mode,
                 process_parameter.mesh_complexity,
@@ -64,6 +83,11 @@ def get_controlnet_static_config(
             "canny": process_parameter.canny_controlnet_strength,
             "normal": process_parameter.normal_controlnet_strength,
         }
+        if process_parameter.operation_mode == "UV_PASS":
+            strength_map = {
+                key: _limited_uv_strength(value, UV_CONTROLNET_STRENGTH_LIMITS[key])
+                for key, value in strength_map.items()
+            }
         return {
             "inputs": inputs,
             "conditioning_scale": [strength_map[key] for key in inputs],

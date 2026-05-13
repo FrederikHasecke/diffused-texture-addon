@@ -2,7 +2,7 @@ import importlib.util
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -272,6 +272,39 @@ def test_apply_position_seam_stitching_aligns_group_colors_without_touching_inte
     assert np.array_equal(stitched[5, 5], texture[5, 5])
 
 
+def test_apply_position_seam_stitching_prefers_topology_links() -> None:
+    uv_pass = _load_uv_pass_module()
+    position_map, normal_map, uv_layout, surface_mask = _synthetic_surface()
+    texture = np.full((64, 64, 3), 128, dtype=np.uint8)
+    texture[20, 10] = np.array([255, 0, 0], dtype=np.uint8)
+    texture[20, 45] = np.array([0, 0, 255], dtype=np.uint8)
+
+    position_map[20, 10, :3] = np.array([0.1, 0.2, 0.3], dtype=np.float32)
+    position_map[20, 45, :3] = np.array([0.9, 0.2, 0.3], dtype=np.float32)
+    normal_map[20, 45, :3] = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+    seam_line_mask = np.zeros_like(surface_mask)
+    seam_line_mask[20, 10] = 255
+    seam_line_mask[20, 45] = 255
+
+    stitched = uv_pass.apply_position_seam_stitching(
+        texture=texture,
+        position_map=position_map,
+        normal_map=normal_map,
+        uv_layout=uv_layout,
+        surface_mask=surface_mask,
+        seam_line_mask=seam_line_mask,
+        seam_link_source_yx=np.array([[20, 10], [20, 45]], dtype=np.int32),
+        seam_link_target_yx=np.array([[20, 45], [20, 10]], dtype=np.int32),
+    )
+
+    assert np.linalg.norm(
+        stitched[20, 10].astype(np.float32) - stitched[20, 45].astype(np.float32)
+    ) < np.linalg.norm(
+        texture[20, 10].astype(np.float32) - texture[20, 45].astype(np.float32)
+    )
+    assert np.array_equal(stitched[5, 5], texture[5, 5])
+
+
 def test_apply_position_seam_stitching_matches_texels_adjacent_to_uv_boundary() -> None:
     uv_pass = _load_uv_pass_module()
     position_map, normal_map, uv_layout, surface_mask = _synthetic_surface()
@@ -380,3 +413,109 @@ def test_canonicalize_uv_normal_map_is_invariant_to_global_rotation() -> None:
     assert np.allclose(canonical[valid_mask], rotated_canonical[valid_mask], atol=0.06)
     assert float(np.std(canonical[..., 0][valid_mask])) > 0.02
     assert float(np.std(canonical[..., 1][valid_mask])) > 0.02
+
+
+def test_chart_height_map_is_neutral_for_flat_charts() -> None:
+    uv_pass = _load_uv_pass_module()
+    position_map, normal_map, _uv_layout, surface_mask = _synthetic_surface()
+
+    height_map = uv_pass.build_chart_height_map(
+        normal_map=normal_map,
+        position_map=position_map,
+        surface_mask=surface_mask,
+    )
+
+    assert np.allclose(height_map[surface_mask > 0], 0.5)
+
+
+def test_chart_height_map_captures_curved_chart_shape() -> None:
+    uv_pass = _load_uv_pass_module()
+    position_map, normal_map, surface_mask = _synthetic_curved_chart()
+
+    height_map = uv_pass.build_chart_height_map(
+        normal_map=normal_map,
+        position_map=position_map,
+        surface_mask=surface_mask,
+    )
+
+    valid_height = height_map[surface_mask > 0]
+    assert float(np.min(valid_height)) >= 0.0
+    assert float(np.max(valid_height)) <= 1.0
+    assert float(np.std(valid_height)) > 0.05
+
+
+def test_uv_conditioning_canny_does_not_use_uv_layout_lines() -> None:
+    uv_pass = _load_uv_pass_module()
+    position_map, normal_map, uv_layout, surface_mask = _synthetic_surface()
+    uv_layout[:, 32, 0] = 0.0
+    texture = np.full((64, 64, 3), 0.5, dtype=np.float32)
+    uv_assets = uv_pass.UVPassAssets(
+        normal_map=normal_map,
+        position_map=position_map,
+        uv_layout=uv_layout,
+        surface_mask=surface_mask,
+    )
+
+    conditioning = uv_pass.build_uv_conditioning_inputs(
+        uv_assets=uv_assets,
+        process_parameter=SimpleNamespace(
+            texture_resolution="64",
+            sd_version="sd15",
+            custom_sd_resolution=64,
+            denoise_strength=1.0,
+        ),
+        texture=texture,
+    )
+
+    assert not np.any(conditioning.canny_image)
+
+
+def test_uv_conditioning_uses_depth_and_caps_refinement_strength() -> None:
+    uv_pass = _load_uv_pass_module()
+    position_map, normal_map, surface_mask = _synthetic_curved_chart()
+    uv_assets = uv_pass.UVPassAssets(
+        normal_map=normal_map,
+        position_map=position_map,
+        uv_layout=np.ones((64, 64, 4), dtype=np.float32),
+        surface_mask=surface_mask,
+    )
+
+    conditioning = uv_pass.build_uv_conditioning_inputs(
+        uv_assets=uv_assets,
+        process_parameter=SimpleNamespace(
+            texture_resolution="64",
+            sd_version="sd15",
+            custom_sd_resolution=32,
+            denoise_strength=1.0,
+        ),
+        texture=np.full((64, 64, 3), 0.5, dtype=np.float32),
+    )
+
+    assert conditioning.input_image.shape == (32, 32, 3)
+    assert conditioning.depth_image.shape == (32, 32, 3)
+    assert float(np.std(conditioning.depth_image[..., 0])) > 1.0
+    assert conditioning.denoise_strength == 0.45
+
+
+def test_uv_conditioning_allows_stronger_blank_generation() -> None:
+    uv_pass = _load_uv_pass_module()
+    position_map, normal_map, uv_layout, surface_mask = _synthetic_surface()
+    uv_assets = uv_pass.UVPassAssets(
+        normal_map=normal_map,
+        position_map=position_map,
+        uv_layout=uv_layout,
+        surface_mask=surface_mask,
+    )
+
+    conditioning = uv_pass.build_uv_conditioning_inputs(
+        uv_assets=uv_assets,
+        process_parameter=SimpleNamespace(
+            texture_resolution="64",
+            sd_version="sd15",
+            custom_sd_resolution=32,
+            denoise_strength=1.0,
+        ),
+        texture=None,
+    )
+
+    assert conditioning.denoise_strength == 0.9

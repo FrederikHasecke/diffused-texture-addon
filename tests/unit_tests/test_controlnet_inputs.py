@@ -28,9 +28,9 @@ def test_image_modes_keep_existing_controlnet_inputs(
 @pytest.mark.parametrize(
     ("mesh_complexity", "expected_inputs", "expected_sdxl_modes"),
     [
-        ("LOW", ["canny"], [3]),
-        ("MEDIUM", ["normal"], [4]),
-        ("HIGH", ["canny", "normal"], [3, 4]),
+        ("LOW", ["depth"], [1]),
+        ("MEDIUM", ["depth", "canny"], [1, 3]),
+        ("HIGH", ["depth", "canny", "normal"], [1, 3, 4]),
     ],
 )
 def test_uv_mode_uses_mode_specific_controlnet_inputs(

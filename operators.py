@@ -29,7 +29,6 @@ from .blender_operations import (
     restore_scene,
 )
 from .diagnostics import get_logger
-from .diffusedtexture.pipeline.pipeline_runner import TextureGenerationCancelledError
 from .model_support import require_supported_sd_version
 from .runtime_capability import get_runtime_capability
 from .texture_generation import load_multiview_images, run_texture_generation
@@ -41,6 +40,10 @@ CANCELLED_BY_USER_MESSAGE = "Cancelled by user."
 def _raise_selected_object_not_found(selected_obj_name: str) -> None:
     msg = f"Selected object '{selected_obj_name}' was not found."
     raise ValueError(msg)
+
+
+def _is_texture_generation_cancelled_error(exc: BaseException) -> bool:
+    return exc.__class__.__name__ == "TextureGenerationCancelledError"
 
 
 class OBJECT_OT_GenerateTexture(bpy.types.Operator):
@@ -200,6 +203,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
         generation_inputs: dict[str, list[NDArray[Any]]] | UVPassAssets | None = None,
         return_texture: list[NDArray[np.uint8]] | None = None,
         input_texture: NDArray[np.float32] | None = None,
+        uv_assets: UVPassAssets | None = None,
         *,
         multiview_images: dict[str, list[NDArray[Any]]] | None = None,
     ) -> None:
@@ -219,14 +223,17 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                 mark_done,
                 textures,
                 input_texture,
-            )
-        except TextureGenerationCancelledError:
-            mark_done(
-                success=False,
-                error=CANCELLED_BY_USER_MESSAGE,
-                cancelled=True,
+                uv_assets=uv_assets,
             )
         except Exception as exc:
+            if _is_texture_generation_cancelled_error(exc):
+                mark_done(
+                    success=False,
+                    error=CANCELLED_BY_USER_MESSAGE,
+                    cancelled=True,
+                )
+                return
+
             _logger.exception(
                 "Texture generation thread failed. run_id=%s mode=%s",
                 self._run_id,
@@ -332,12 +339,18 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
 
             scene_backup = None
             cameras = []
+            mode = getattr(
+                process_parameter,
+                "operation_mode",
+                getattr(context.scene, "operation_mode", "PARALLEL_IMG"),
+            )
+            uv_assets = None
 
             try:
                 # Backup the scene and isolate the object
                 scene_backup = prepare_scene(selected_obj)
 
-                if process_parameter.operation_mode == "UV_PASS":
+                if mode == "UV_PASS":
                     wm.progress_update(5)
                     generation_inputs = build_uv_pass_assets(context, selected_obj)
                     wm.progress_update(10)
@@ -345,6 +358,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                     wm.progress_update(5)
                     render_img_folders, cameras = render_views(context, selected_obj)
                     generation_inputs = load_multiview_images(render_img_folders)
+                    uv_assets = build_uv_pass_assets(context, selected_obj)
                     wm.progress_update(10)
                     self.render_img_folders = render_img_folders
             finally:
@@ -393,6 +407,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                     generation_inputs,
                     self._return_texture,
                     input_texture,
+                    uv_assets,
                 ),
                 daemon=True,
             )

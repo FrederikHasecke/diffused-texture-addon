@@ -132,3 +132,42 @@ def test_load_controlnet_models_raises_restart_guidance_when_runtime_missing() -
     assert "restart Blender" in str(exc_info.value)  # noqa: S101
     assert "Install Python Dependencies" in str(exc_info.value)  # noqa: S101
     assert isinstance(exc_info.value.__cause__, ModuleNotFoundError)  # noqa: S101
+
+
+def test_uv_mode_sd15_controlnet_strengths_are_limited() -> None:
+    controlnet_config = _load_controlnet_config()
+
+    config = controlnet_config.get_controlnet_static_config(
+        SimpleNamespace(
+            operation_mode="UV_PASS",
+            sd_version="sd15",
+            mesh_complexity="HIGH",
+            depth_controlnet_strength=1.0,
+            canny_controlnet_strength=0.9,
+            normal_controlnet_strength=0.9,
+        ),
+    )
+
+    assert config == {  # noqa: S101
+        "inputs": ["depth", "canny", "normal"],
+        "conditioning_scale": [0.5, 0.3, 0.55],
+    }
+
+
+def test_uv_mode_sdxl_union_strength_is_limited() -> None:
+    controlnet_config = _load_controlnet_config()
+
+    config = controlnet_config.get_controlnet_static_config(
+        SimpleNamespace(
+            operation_mode="UV_PASS",
+            sd_version="sdxl",
+            mesh_complexity="MEDIUM",
+            union_controlnet_strength=1.0,
+        ),
+    )
+
+    assert config == {  # noqa: S101
+        "inputs": ["depth", "canny"],
+        "conditioning_scale": 0.65,
+        "control_mode": [1, 3],
+    }

@@ -20,9 +20,9 @@ _IMAGE_MODE_INPUTS: dict[MeshComplexity, list[ControlInput]] = {
 }
 
 _UV_MODE_INPUTS: dict[MeshComplexity, list[ControlInput]] = {
-    "LOW": ["canny"],
-    "MEDIUM": ["normal"],
-    "HIGH": ["canny", "normal"],
+    "LOW": ["depth"],
+    "MEDIUM": ["depth", "canny"],
+    "HIGH": ["depth", "canny", "normal"],
 }
 
 _IMAGE_MODE_SDXL_CONTROL_MODES: dict[MeshComplexity, list[int]] = {
@@ -32,9 +32,9 @@ _IMAGE_MODE_SDXL_CONTROL_MODES: dict[MeshComplexity, list[int]] = {
 }
 
 _UV_MODE_SDXL_CONTROL_MODES: dict[MeshComplexity, list[int]] = {
-    "LOW": [3],
-    "MEDIUM": [4],
-    "HIGH": [3, 4],
+    "LOW": [1],
+    "MEDIUM": [1, 3],
+    "HIGH": [1, 3, 4],
 }
 
 

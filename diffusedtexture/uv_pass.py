@@ -1,4 +1,5 @@
 from collections.abc import Callable, Iterable
+from typing import NamedTuple, cast
 
 try:
     import cv2
@@ -31,12 +32,31 @@ from .process_operations import (
     blend_texture_with_alpha,
     smooth_alpha_map,
 )
+from .uv_seams import seam_link_components, seam_link_mask
 
 NORMAL_EPSILON = 1e-8
 UV_LAYOUT_BOUNDARY_THRESHOLD = 192
 SEAM_SEARCH_RADIUS = 1
 LOW_FREQUENCY_MIN_KERNEL = 3
 FALLBACK_AXIS_ALIGNMENT_LIMIT = 0.9
+UV_REFINEMENT_MAX_DENOISE_STRENGTH = 0.45
+UV_BLANK_MAX_DENOISE_STRENGTH = 0.9
+TEXTURE_CANNY_LOWER = 64
+TEXTURE_CANNY_UPPER = 128
+GEOMETRY_CANNY_LOWER = 48
+GEOMETRY_CANNY_UPPER = 96
+
+
+class UVConditioningInputs(NamedTuple):
+    """Model-resolution UV-space inputs for the diffusion pass."""
+
+    base_texture: NDArray[np.uint8]
+    input_image: NDArray[np.uint8]
+    edit_mask: NDArray[np.uint8]
+    canny_image: NDArray[np.uint8]
+    normal_image: NDArray[np.uint8]
+    depth_image: NDArray[np.uint8]
+    denoise_strength: float
 
 
 class _UnionFind:
@@ -216,6 +236,155 @@ def canonicalize_uv_normal_map(
     return encoded.astype(np.float32, copy=False)
 
 
+def _decode_controlnet_normal_vectors(
+    encoded_normal_map: NDArray[np.float32],
+) -> NDArray[np.float32]:
+    encoded = encoded_normal_map[..., :3].astype(np.float32)
+    if encoded.size == 0:
+        return encoded
+
+    if float(np.nanmax(encoded)) > 1.0:
+        encoded = encoded / 255.0
+
+    normal = np.empty_like(encoded, dtype=np.float32)
+    normal[..., 0] = (2.0 * encoded[..., 0]) - 1.0
+    normal[..., 1] = 1.0 - (2.0 * encoded[..., 1])
+    normal[..., 2] = 1.0 - (2.0 * encoded[..., 2])
+    return _normalize_vectors(normal)
+
+
+def build_chart_height_map(
+    normal_map: NDArray[np.float32],
+    position_map: NDArray[np.float32],
+    surface_mask: NDArray[np.uint8],
+) -> NDArray[np.float32]:
+    normals = _decode_baked_normal_vectors(normal_map)
+    position = position_map[..., :3].astype(np.float32)
+    valid_mask = (
+        (surface_mask > 0)
+        & np.all(np.isfinite(position), axis=-1)
+        & np.all(np.isfinite(normals), axis=-1)
+    )
+    height_map = np.full(surface_mask.shape, 0.5, dtype=np.float32)
+    if not np.any(valid_mask):
+        return height_map
+
+    num_labels, labels = cv2.connectedComponents(
+        valid_mask.astype(np.uint8),
+        connectivity=4,
+    )
+    for label in range(1, num_labels):
+        label_mask = labels == label
+        if not np.any(label_mask):
+            continue
+
+        _x_axis, _y_axis, z_axis = _build_chart_frame(label_mask, position, normals)
+        chart_height = (position[label_mask] @ z_axis).astype(np.float32)
+        chart_height -= float(np.median(chart_height))
+
+        height_scale = float(np.percentile(np.abs(chart_height), 95))
+        if height_scale <= 1e-6:  # noqa: PLR2004
+            height_map[label_mask] = 0.5
+            continue
+
+        height_map[label_mask] = np.clip(
+            0.5 + (0.5 * chart_height / height_scale),
+            0.0,
+            1.0,
+        )
+
+    return height_map.astype(np.float32, copy=False)
+
+
+def _surface_interior_mask(surface_mask: NDArray[np.uint8]) -> NDArray[np.uint8]:
+    surface = ((surface_mask > 0).astype(np.uint8) * 255).astype(np.uint8)
+    interior = cv2.erode(
+        surface,
+        np.ones((3, 3), dtype=np.uint8),
+        iterations=1,
+    )
+    if not np.any(interior):
+        return surface
+    return interior.astype(np.uint8, copy=False)
+
+
+def _to_grayscale_uint8(
+    image: NDArray[np.float32] | NDArray[np.uint8],
+) -> NDArray[np.uint8]:
+    arr = image
+    if arr.dtype != np.uint8:
+        arr = arr.astype(np.float32)
+        if arr.size and float(np.nanmax(arr)) <= 1.0:
+            arr = 255.0 * np.clip(arr, 0.0, 1.0)
+        arr = np.clip(arr, 0.0, 255.0).astype(np.uint8)
+
+    if arr.ndim == 2:  # noqa: PLR2004
+        return arr.astype(np.uint8, copy=False)
+
+    if arr.shape[2] == 1:
+        return arr[..., 0].astype(np.uint8, copy=False)
+
+    return cv2.cvtColor(arr[..., :3], cv2.COLOR_RGB2GRAY).astype(
+        np.uint8,
+        copy=False,
+    )
+
+
+def _canny_inside_surface(
+    gray_image: NDArray[np.uint8],
+    surface_mask: NDArray[np.uint8],
+    lower_threshold: int,
+    upper_threshold: int,
+) -> NDArray[np.uint8]:
+    interior_mask = _surface_interior_mask(surface_mask)
+    valid = interior_mask > 0
+    if not np.any(valid):
+        return np.zeros(gray_image.shape, dtype=np.uint8)
+
+    working = gray_image.copy()
+    working[~valid] = int(np.median(working[valid]))
+    working = cv2.GaussianBlur(working, (3, 3), 0)
+    edges = cv2.Canny(working, lower_threshold, upper_threshold)
+    edges[~valid] = 0
+    return edges.astype(np.uint8, copy=False)
+
+
+def _create_uv_feature_guidance(
+    texture: NDArray[np.uint8],
+    canonical_normal_map: NDArray[np.float32],
+    height_map: NDArray[np.float32],
+    surface_mask: NDArray[np.uint8],
+) -> NDArray[np.uint8]:
+    normal_uint8 = np.clip(np.rint(canonical_normal_map * 255.0), 0, 255).astype(
+        np.uint8,
+    )
+    height_uint8 = np.clip(np.rint(height_map * 255.0), 0, 255).astype(np.uint8)
+
+    texture_edges = _canny_inside_surface(
+        _to_grayscale_uint8(texture),
+        surface_mask,
+        TEXTURE_CANNY_LOWER,
+        TEXTURE_CANNY_UPPER,
+    )
+    normal_edges = _canny_inside_surface(
+        _to_grayscale_uint8(normal_uint8),
+        surface_mask,
+        GEOMETRY_CANNY_LOWER,
+        GEOMETRY_CANNY_UPPER,
+    )
+    height_edges = _canny_inside_surface(
+        height_uint8,
+        surface_mask,
+        GEOMETRY_CANNY_LOWER,
+        GEOMETRY_CANNY_UPPER,
+    )
+
+    combined = np.maximum(texture_edges, normal_edges)
+    combined = np.maximum(combined, height_edges)
+    combined[surface_mask == 0] = 0
+    return np.stack((combined, combined, combined), axis=-1)
+
+
 def _create_uv_edge_guidance(
     uv_layout: NDArray[np.float32],
     surface_mask: NDArray[np.uint8],
@@ -232,7 +401,7 @@ def _create_uv_edge_guidance(
 
 
 def _prepare_base_texture(
-    texture: NDArray[np.float32] | None,
+    texture: NDArray[np.float32] | NDArray[np.uint8] | None,
     texture_resolution: int,
 ) -> NDArray[np.uint8]:
     if texture is None:
@@ -252,6 +421,149 @@ def _prepare_base_texture(
         )
 
     return texture_rgb.astype(np.uint8, copy=False)
+
+
+def _fill_texture_outside_surface(
+    texture: NDArray[np.uint8],
+    surface_mask: NDArray[np.uint8],
+) -> NDArray[np.uint8]:
+    if not np.any(surface_mask > 0) or not np.any(surface_mask == 0):
+        return texture.copy()
+
+    outside_mask = ((surface_mask == 0).astype(np.uint8) * 255).astype(np.uint8)
+    return cv2.inpaint(
+        texture,
+        outside_mask,
+        inpaintRadius=3,
+        flags=cv2.INPAINT_TELEA,
+    ).astype(np.uint8, copy=False)
+
+
+def _fill_condition_map_outside_surface(
+    condition_map: NDArray[np.float32],
+    surface_mask: NDArray[np.uint8],
+) -> NDArray[np.float32]:
+    if not np.any(surface_mask > 0) or not np.any(surface_mask == 0):
+        return condition_map.copy()
+
+    condition_uint8 = np.clip(np.rint(condition_map * 255.0), 0, 255).astype(
+        np.uint8,
+    )
+    outside_mask = ((surface_mask == 0).astype(np.uint8) * 255).astype(np.uint8)
+    filled = cv2.inpaint(
+        condition_uint8,
+        outside_mask,
+        inpaintRadius=3,
+        flags=cv2.INPAINT_TELEA,
+    )
+    return (filled.astype(np.float32) / 255.0).astype(np.float32, copy=False)
+
+
+def _resize_controlnet_normal_map(
+    normal_map: NDArray[np.float32],
+    resize_shape: tuple[int, int],
+) -> NDArray[np.float32]:
+    resized = cv2.resize(
+        normal_map.astype(np.float32),
+        resize_shape,
+        interpolation=cv2.INTER_LINEAR,
+    ).astype(np.float32)
+    return _encode_controlnet_normal_map(_decode_controlnet_normal_vectors(resized))
+
+
+def _resolve_uv_denoise_strength(
+    process_parameter: ProcessParameter,
+    *,
+    has_input_texture: bool,
+) -> float:
+    requested = float(process_parameter.denoise_strength)
+    max_strength = (
+        UV_REFINEMENT_MAX_DENOISE_STRENGTH
+        if has_input_texture
+        else UV_BLANK_MAX_DENOISE_STRENGTH
+    )
+    return float(np.clip(requested, 0.0, max_strength))
+
+
+def build_uv_conditioning_inputs(
+    uv_assets: UVPassAssets,
+    process_parameter: ProcessParameter,
+    texture: NDArray[np.float32] | NDArray[np.uint8] | None = None,
+) -> UVConditioningInputs:
+    """Build model-resolution UV inputs without exposing atlas seams as features."""
+    _require_cv2()
+
+    texture_resolution = int(process_parameter.texture_resolution)
+    sd_resolution = get_default_sd_resolution(
+        process_parameter.sd_version,
+        process_parameter.custom_sd_resolution,
+    )
+    resize_shape = (sd_resolution, sd_resolution)
+
+    surface_mask = uv_assets.surface_mask.astype(np.uint8)
+    base_texture = _prepare_base_texture(texture, texture_resolution)
+    base_texture[surface_mask == 0] = 255
+    conditioning_texture = _fill_texture_outside_surface(base_texture, surface_mask)
+
+    normal_map = canonicalize_uv_normal_map(
+        normal_map=uv_assets.normal_map,
+        position_map=uv_assets.position_map,
+        surface_mask=surface_mask,
+    )
+    normal_map = _fill_condition_map_outside_surface(normal_map, surface_mask)
+    normal_map = _encode_controlnet_normal_map(
+        _decode_controlnet_normal_vectors(normal_map),
+    )
+    height_map = build_chart_height_map(
+        normal_map=uv_assets.normal_map,
+        position_map=uv_assets.position_map,
+        surface_mask=surface_mask,
+    )
+    height_map = _fill_condition_map_outside_surface(height_map, surface_mask)
+
+    input_small = cv2.resize(
+        conditioning_texture,
+        resize_shape,
+        interpolation=cv2.INTER_LANCZOS4,
+    ).astype(np.uint8, copy=False)
+    surface_small = cv2.resize(
+        surface_mask,
+        resize_shape,
+        interpolation=cv2.INTER_NEAREST,
+    ).astype(np.uint8, copy=False)
+    normal_small_float = _resize_controlnet_normal_map(normal_map, resize_shape)
+    normal_small = np.clip(
+        np.rint(normal_small_float * 255.0),
+        0,
+        255,
+    ).astype(np.uint8)
+    height_small = cv2.resize(
+        height_map,
+        resize_shape,
+        interpolation=cv2.INTER_LINEAR,
+    ).astype(np.float32)
+
+    canny_small = _create_uv_feature_guidance(
+        texture=input_small,
+        canonical_normal_map=normal_small_float,
+        height_map=height_small,
+        surface_mask=surface_small,
+    )
+    height_rgb = np.stack((height_small, height_small, height_small), axis=-1)
+    depth_small = np.clip(np.rint(height_rgb * 255.0), 0, 255).astype(np.uint8)
+
+    return UVConditioningInputs(
+        base_texture=base_texture,
+        input_image=input_small,
+        edit_mask=surface_small,
+        canny_image=canny_small,
+        normal_image=normal_small,
+        depth_image=depth_small,
+        denoise_strength=_resolve_uv_denoise_strength(
+            process_parameter,
+            has_input_texture=texture is not None,
+        ),
+    )
 
 
 def _make_seam_boundary_mask(
@@ -447,36 +759,127 @@ def find_position_seam_groups(  # noqa: C901, PLR0913
     return seam_groups
 
 
-def apply_position_seam_stitching(
-    texture: NDArray[np.uint8],
+def _seam_link_arrays_are_valid(
+    seam_link_source_yx: NDArray[np.int32] | None,
+    seam_link_target_yx: NDArray[np.int32] | None,
+) -> bool:
+    return (
+        seam_link_source_yx is not None
+        and seam_link_target_yx is not None
+        and seam_link_source_yx.ndim == 2  # noqa: PLR2004
+        and seam_link_target_yx.ndim == 2  # noqa: PLR2004
+        and seam_link_source_yx.shape[1:] == (2,)
+        and seam_link_target_yx.shape[1:] == (2,)
+        and len(seam_link_source_yx) == len(seam_link_target_yx)
+        and len(seam_link_source_yx) > 0
+    )
+
+
+def _topology_seam_groups(
+    seam_link_source_yx: NDArray[np.int32],
+    seam_link_target_yx: NDArray[np.int32],
+) -> list[NDArray[np.int32]]:
+    return seam_link_components(
+        seam_link_source_yx.astype(np.int32, copy=False),
+        seam_link_target_yx.astype(np.int32, copy=False),
+    )
+
+
+def _topology_seam_boundary(
+    surface_mask: NDArray[np.uint8],
+    seam_line_mask: NDArray[np.uint8] | None,
+    seam_link_source_yx: NDArray[np.int32],
+    seam_link_target_yx: NDArray[np.int32],
+) -> NDArray[np.uint8]:
+    link_mask = seam_link_mask(
+        seam_link_source_yx,
+        seam_link_target_yx,
+        surface_mask.shape,
+    )
+    if seam_line_mask is None:
+        seam_boundary = link_mask
+    else:
+        seam_boundary = np.maximum(seam_line_mask.astype(np.uint8), link_mask)
+    seam_boundary[surface_mask == 0] = 0
+    return seam_boundary.astype(np.uint8, copy=False)
+
+
+def _legacy_seam_groups_for_mask(
     position_map: NDArray[np.float32],
     normal_map: NDArray[np.float32],
-    uv_layout: NDArray[np.float32],
+    seam_mask: NDArray[np.uint8],
     surface_mask: NDArray[np.uint8],
-) -> NDArray[np.uint8]:
-    _require_cv2()
-
-    texture_resolution = int(texture.shape[0])
-    seam_boundary = _make_seam_boundary_mask(uv_layout, surface_mask)
+    texture_resolution: int,
+) -> list[NDArray[np.int32]]:
     seam_search_mask = _expand_seam_mask(
-        seam_boundary,
+        seam_mask,
         surface_mask,
         radius=SEAM_SEARCH_RADIUS,
     )
-    seam_blend_mask = _expand_seam_mask(
-        seam_boundary,
-        surface_mask,
-        radius=max(1, texture_resolution // 512),
-    )
-    seam_groups = find_position_seam_groups(
+    return find_position_seam_groups(
         position_map=position_map,
         normal_map=normal_map,
         seam_band=seam_search_mask,
         surface_mask=surface_mask,
         texture_resolution=texture_resolution,
     )
+
+
+def apply_position_seam_stitching(  # noqa: PLR0913
+    texture: NDArray[np.uint8],
+    position_map: NDArray[np.float32],
+    normal_map: NDArray[np.float32],
+    uv_layout: NDArray[np.float32],
+    surface_mask: NDArray[np.uint8],
+    seam_line_mask: NDArray[np.uint8] | None = None,
+    seam_link_source_yx: NDArray[np.int32] | None = None,
+    seam_link_target_yx: NDArray[np.int32] | None = None,
+    seam_unresolved_link_mask: NDArray[np.uint8] | None = None,
+) -> NDArray[np.uint8]:
+    _require_cv2()
+
+    texture_resolution = int(texture.shape[0])
+    if _seam_link_arrays_are_valid(seam_link_source_yx, seam_link_target_yx):
+        source_yx = cast("NDArray[np.int32]", seam_link_source_yx)
+        target_yx = cast("NDArray[np.int32]", seam_link_target_yx)
+        seam_boundary = _topology_seam_boundary(
+            surface_mask,
+            seam_line_mask,
+            source_yx,
+            target_yx,
+        )
+        seam_groups = _topology_seam_groups(
+            source_yx,
+            target_yx,
+        )
+        if seam_unresolved_link_mask is not None and np.any(seam_unresolved_link_mask):
+            seam_groups.extend(
+                _legacy_seam_groups_for_mask(
+                    position_map,
+                    normal_map,
+                    seam_unresolved_link_mask.astype(np.uint8),
+                    surface_mask,
+                    texture_resolution,
+                ),
+            )
+    else:
+        seam_boundary = _make_seam_boundary_mask(uv_layout, surface_mask)
+        seam_groups = _legacy_seam_groups_for_mask(
+            position_map,
+            normal_map,
+            seam_boundary,
+            surface_mask,
+            texture_resolution,
+        )
+
     if not seam_groups:
         return texture
+
+    seam_blend_mask = _expand_seam_mask(
+        seam_boundary,
+        surface_mask,
+        radius=max(1, texture_resolution // 512),
+    )
 
     low_frequency, high_frequency = _split_texture_frequencies(texture)
     anchor_mask = np.zeros(surface_mask.shape, dtype=np.float32)
@@ -552,39 +955,16 @@ def uv_pass(
         msg = "Pillow is not available."
         raise RuntimeError(msg)
 
-    texture_resolution = int(process_parameter.texture_resolution)
-    sd_resolution = get_default_sd_resolution(
-        process_parameter.sd_version,
-        process_parameter.custom_sd_resolution,
-    )
-
     surface_mask = uv_assets.surface_mask.astype(np.uint8)
-    mask = cv2.dilate(surface_mask, np.ones((3, 3), np.uint8), iterations=2)
-    canny = _create_uv_edge_guidance(uv_assets.uv_layout, surface_mask)
-    normal_map = canonicalize_uv_normal_map(
-        normal_map=uv_assets.normal_map,
-        position_map=uv_assets.position_map,
-        surface_mask=surface_mask,
+    texture_resolution = int(process_parameter.texture_resolution)
+    conditioning_inputs = build_uv_conditioning_inputs(
+        uv_assets=uv_assets,
+        process_parameter=process_parameter,
+        texture=texture,
     )
-    base_texture = _prepare_base_texture(texture, texture_resolution)
-    base_texture[surface_mask == 0] = 255
+    base_texture = conditioning_inputs.base_texture
 
     progress_callback(5)
-
-    resize_shape = (sd_resolution, sd_resolution)
-    input_small = cv2.resize(
-        base_texture,
-        resize_shape,
-        interpolation=cv2.INTER_LANCZOS4,
-    )
-    mask_small = cv2.resize(mask, resize_shape, interpolation=cv2.INTER_NEAREST)
-    canny_small = cv2.resize(canny, resize_shape, interpolation=cv2.INTER_NEAREST)
-    normal_small = cv2.resize(
-        (255.0 * normal_map).astype(np.uint8),
-        resize_shape,
-        interpolation=cv2.INTER_LINEAR,
-    )
-    depth_small = np.zeros_like(canny_small, dtype=np.uint8)
 
     progress_callback(10)
 
@@ -596,14 +976,14 @@ def uv_pass(
     output_image = run_pipeline(
         pipe=pipeline,
         process_parameter=process_parameter,
-        input_img=Image.fromarray(input_small),
-        uv_mask=Image.fromarray(mask_small),
-        canny_img=Image.fromarray(canny_small),
-        normal_img=Image.fromarray(normal_small),
-        depth_img=Image.fromarray(depth_small),
+        input_img=Image.fromarray(conditioning_inputs.input_image),
+        uv_mask=Image.fromarray(conditioning_inputs.edit_mask),
+        canny_img=Image.fromarray(conditioning_inputs.canny_image),
+        normal_img=Image.fromarray(conditioning_inputs.normal_image),
+        depth_img=Image.fromarray(conditioning_inputs.depth_image),
         progress_callback=progress_callback,
         should_cancel=should_cancel,
-        strength=process_parameter.denoise_strength,
+        strength=conditioning_inputs.denoise_strength,
         guidance_scale=process_parameter.guidance_scale or 7.5,
         num_inference_steps=process_parameter.num_inference_steps,
     )
@@ -625,6 +1005,14 @@ def uv_pass(
         normal_map=uv_assets.normal_map,
         uv_layout=uv_assets.uv_layout,
         surface_mask=surface_mask,
+        seam_line_mask=getattr(uv_assets, "seam_line_mask", None),
+        seam_link_source_yx=getattr(uv_assets, "seam_link_source_yx", None),
+        seam_link_target_yx=getattr(uv_assets, "seam_link_target_yx", None),
+        seam_unresolved_link_mask=getattr(
+            uv_assets,
+            "seam_unresolved_link_mask",
+            None,
+        ),
     )
     stitched[surface_mask == 0] = base_texture[surface_mask == 0]
     return stitched
