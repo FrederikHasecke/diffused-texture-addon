@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Shared Git hook helpers for Conventional Commits and semver guidance."""
 
 from __future__ import annotations
