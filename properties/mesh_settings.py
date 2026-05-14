@@ -100,7 +100,6 @@ def register_mesh_properties() -> None:
             ("PARALLEL_IMG", "Parallel", "Run views in parallel"),
             ("SEQUENTIAL_IMG", "Sequential", "Run views one by one"),
             ("PARA_SEQUENTIAL_IMG", "Para-Sequential", "Run subsets parallel"),
-            ("UV_PASS", "UV Space", "Run a dedicated UV-space generation pass"),
         ],
         default="PARALLEL_IMG",
     )

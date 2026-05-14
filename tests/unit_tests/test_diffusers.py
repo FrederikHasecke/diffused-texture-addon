@@ -2,11 +2,14 @@ import os
 
 import pytest
 
+from dotenv import load_dotenv
+
 pytestmark = [
     pytest.mark.slow,
     pytest.mark.gpu,
     pytest.mark.network,
 ]
+
 
 
 def test_create_pipeline_sd15_inpaint():
@@ -17,6 +20,12 @@ def test_create_pipeline_sd15_inpaint():
             StableDiffusionControlNetInpaintPipeline,
             ControlNetModel,
         )
+        # Set local hf cache path
+        load_dotenv()
+        hf_home = os.getenv('HF_HOME')
+        os.environ["HF_HOME"] = hf_home
+        
+
     except ImportError:
         pytest.fail("Required dependencies not available")
 
@@ -45,6 +54,10 @@ def test_create_pipeline_sdxl_inpaint():
             StableDiffusionXLControlNetUnionInpaintPipeline,
             ControlNetUnionModel,
         )
+        # Set local hf cache path
+        load_dotenv()
+        hf_home = os.getenv('HF_HOME')
+        os.environ["HF_HOME"] = hf_home
     except ImportError:
         pytest.fail("Required dependencies not available")
 

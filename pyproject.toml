@@ -7,25 +7,27 @@ requires-python = ">=3.11,<3.14,!=3.12.*"
 dependencies = [
     "numpy>=1.26,<2.0; python_version < '3.13'",
     "numpy>=2.3,<2.4; python_version >= '3.13'",
-    "pillow==12.0.0",
-    "opencv-python-headless==4.11.0.86",
-    "diffusers==0.36.0",
-    "transformers==4.56.2", # TODO(Frederik): https://github.com/huggingface/diffusers/issues/12436#issuecomment-3375629264
-    "accelerate==1.10.1",
-    "safetensors==0.7.0",
-    "peft==0.18.1",
+    "pillow==12.2.0",
+    "opencv-python-headless==4.11.0.86; python_version < '3.13'",
+    "opencv-python-headless>=4.13.0.92; python_version >= '3.13'",
+    "diffusers>=0.38",
+    "transformers>=5.8.1", # TODO(Frederik): https://github.com/huggingface/diffusers/issues/12436#issuecomment-3375629264
+    "accelerate>=1.13.0",
+    "safetensors>=0.8.0rc0",
+    "peft>=0.19.1",
 ]
 
 [dependency-groups]
 dev = [
   "torch",
   "bpy==5.1.0; python_version >= '3.13' and ((sys_platform == 'win32' and platform_machine == 'AMD64') or (sys_platform == 'linux' and platform_machine == 'x86_64'))",
-  "pytest>=9.0.2",
+  "pytest>=9.0.3",
   "pytest-xdist>=3.6.1",
   "pytest-mock>=3.15.1",
-  "coverage>=7.13.4",
-  "ruff==0.15.2",
+  "coverage>=7.14.0",
+  "ruff>=0.15.12",
   "ty",
+  "dotenv>=0.9.9",
 ]
 
 [tool.uv.sources]

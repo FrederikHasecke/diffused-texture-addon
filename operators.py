@@ -31,10 +31,21 @@ from .blender_operations import (
 from .diagnostics import get_logger
 from .model_support import require_supported_sd_version
 from .runtime_capability import get_runtime_capability
-from .texture_generation import load_multiview_images, run_texture_generation
 
 _logger = get_logger("operators")
 CANCELLED_BY_USER_MESSAGE = "Cancelled by user."
+
+
+def load_multiview_images(*args, **kwargs) -> object:  # noqa: ANN002, ANN003
+    from .texture_generation import load_multiview_images as _load_multiview_images
+
+    return _load_multiview_images(*args, **kwargs)
+
+
+def run_texture_generation(*args, **kwargs) -> object:  # noqa: ANN002, ANN003
+    from .texture_generation import run_texture_generation as _run_texture_generation
+
+    return _run_texture_generation(*args, **kwargs)
 
 
 def _raise_selected_object_not_found(selected_obj_name: str) -> None:
@@ -200,7 +211,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
         progress_callback: Callable[[int], None],
         should_cancel: Callable[[], bool],
         mark_done: Callable[..., None],
-        generation_inputs: dict[str, list[NDArray[Any]]] | UVPassAssets | None = None,
+        generation_inputs: dict[str, list[NDArray[Any]]] | None = None,
         return_texture: list[NDArray[np.uint8]] | None = None,
         input_texture: NDArray[np.float32] | None = None,
         uv_assets: UVPassAssets | None = None,
@@ -311,14 +322,23 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
             process_parameter = extract_process_parameter_from_context(context)
             require_supported_sd_version(process_parameter.sd_version)
             runtime_capability = get_runtime_capability(context)
-            if not runtime_capability.can_generate:
+            if not runtime_capability.diffusion_dependencies_importable:
+                error_message = (
+                    "Diffusion dependencies are not importable. "
+                    "Install Python Dependencies and restart Blender."
+                )
+                if runtime_capability.diffusion_environment_warning:
+                    error_message = (
+                        f"{error_message} "
+                        f"{runtime_capability.diffusion_environment_warning}"
+                    )
                 self._set_scene_status(
                     context.scene,
                     running=False,
                     done=False,
-                    error=runtime_capability.message,
+                    error=error_message,
                 )
-                self.report({"ERROR"}, runtime_capability.message)
+                self.report({"ERROR"}, error_message)
                 return {"CANCELLED"}
             self._output_file = process_parameter.output_path
             _logger.info(
@@ -339,28 +359,18 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
 
             scene_backup = None
             cameras = []
-            mode = getattr(
-                process_parameter,
-                "operation_mode",
-                getattr(context.scene, "operation_mode", "PARALLEL_IMG"),
-            )
             uv_assets = None
 
             try:
                 # Backup the scene and isolate the object
                 scene_backup = prepare_scene(selected_obj)
 
-                if mode == "UV_PASS":
-                    wm.progress_update(5)
-                    generation_inputs = build_uv_pass_assets(context, selected_obj)
-                    wm.progress_update(10)
-                else:
-                    wm.progress_update(5)
-                    render_img_folders, cameras = render_views(context, selected_obj)
-                    generation_inputs = load_multiview_images(render_img_folders)
-                    uv_assets = build_uv_pass_assets(context, selected_obj)
-                    wm.progress_update(10)
-                    self.render_img_folders = render_img_folders
+                wm.progress_update(5)
+                render_img_folders, cameras = render_views(context, selected_obj)
+                generation_inputs = load_multiview_images(render_img_folders)
+                uv_assets = build_uv_pass_assets(context, selected_obj)
+                wm.progress_update(10)
+                self.render_img_folders = render_img_folders
             finally:
                 if scene_backup is not None:
                     restore_scene(scene_backup, cameras)

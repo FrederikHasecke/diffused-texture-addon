@@ -17,58 +17,13 @@ Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 ======================= END GPL LICENSE BLOCK ========================
 """
 
-import site
-import sys
-from pathlib import Path
-
-import bpy
+from .installer.paths import activate_deps_import_path, deps_target_dir
 
 _MINIMAL_PREFS_ONLY = False  # set True if we fall back to registering only Preferences
-_ACTIVE_ENV_FILE = ".active"
-
-
-def _deps_root_dir() -> Path:
-    base = Path(bpy.utils.user_resource("SCRIPTS", path="", create=True))
-    return base / "modules" / "diffusedtexture_deps"
-
-
-def _latest_env_dir(root: Path) -> Path | None:
-    env_dirs = [p for p in root.glob("env_*") if p.is_dir()]
-    if not env_dirs:
-        return None
-    return max(env_dirs, key=lambda p: p.stat().st_mtime)
-
-
-def _has_legacy_flat_install(root: Path) -> bool:
-    markers = ("torch", "diffusers", "PIL", "cv2", "accelerate")
-    return any((root / name).exists() for name in markers)
-
-
-def _deps_target_dir() -> Path:
-    root = _deps_root_dir()
-    marker = root / _ACTIVE_ENV_FILE
-    if marker.exists():
-        try:
-            active_name = marker.read_text(encoding="utf-8").strip()
-        except OSError:
-            active_name = ""
-        if active_name:
-            candidate = root / active_name
-            if candidate.is_dir():
-                return candidate
-    if _has_legacy_flat_install(root):
-        return root
-    latest = _latest_env_dir(root)
-    return latest if latest is not None else root
 
 
 # Treat the deps dir as a site dir so .pth inside it (if any) are processed.
-deps = _deps_target_dir()
-if deps.exists():
-    site.addsitedir(str(deps))  # adds to sys.path (and processes any .pth)
-else:
-    # still add so later install in this path is immediately importable in-session
-    sys.path.insert(0, str(deps))
+activate_deps_import_path(deps_target_dir())
 
 
 def register() -> None:

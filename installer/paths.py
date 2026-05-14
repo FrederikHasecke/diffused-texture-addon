@@ -1,5 +1,6 @@
 import importlib
 import os
+import site
 import subprocess
 import sys
 import time
@@ -95,6 +96,41 @@ def set_active_deps_target(path: Path) -> None:
     tmp.replace(marker)
 
 
+def _path_key(value: str) -> str:
+    try:
+        return os.path.normcase(str(Path(value).resolve()))
+    except Exception:  # noqa: BLE001
+        return os.path.normcase(os.path.normpath(value))
+
+
+def _dedupe_sys_path_entries() -> None:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for entry in sys.path:
+        key = _path_key(entry)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(entry)
+    sys.path[:] = deduped
+
+
+def activate_deps_import_path(path: Path) -> None:
+    """Ensure the addon dependency directory takes precedence on sys.path."""
+    path_str = str(path)
+    if path.exists():
+        # Process as a site dir first so bundled .pth files are honored.
+        site.addsitedir(path_str)
+    else:
+        sys.path.append(path_str)
+
+    _dedupe_sys_path_entries()
+    target_key = _path_key(path_str)
+    sys.path[:] = [entry for entry in sys.path if _path_key(entry) != target_key]
+    sys.path.insert(0, path_str)
+    importlib.invalidate_caches()
+
+
 def _format_command(cmd: list[str]) -> str:
     return subprocess.list2cmdline(cmd)
 
@@ -186,11 +222,7 @@ def run_stream(
 
 
 def make_importable(path: Path) -> None:
-    path_str = str(path)
-    if path_str in sys.path:
-        sys.path.remove(path_str)
-    sys.path.insert(0, path_str)
-    importlib.invalidate_caches()
+    activate_deps_import_path(path)
 
 
 def clean_pip_env() -> dict[str, str]:

@@ -1,4 +1,6 @@
 from pathlib import Path
+import re
+import tomllib
 
 import pytest
 
@@ -10,6 +12,23 @@ from installer.runtime_matrix import (
     resolve_torch_install,
     torch_index_url,
 )
+
+_RUNTIME_DEPENDENCY_NAMES = {
+    "numpy",
+    "pillow",
+    "opencv-python-headless",
+    "diffusers",
+    "transformers",
+    "accelerate",
+    "safetensors",
+    "peft",
+}
+
+
+def _dependency_name(requirement: str) -> str:
+    match = re.match(r"^[A-Za-z0-9_.-]+", requirement.strip())
+    assert match is not None, f"Could not parse dependency requirement: {requirement!r}"
+    return match.group(0).lower()
 
 
 def test_expected_python_version_switches_at_blender_51() -> None:
@@ -92,3 +111,46 @@ def test_torch_index_url_maps_expected_channels() -> None:
         "https://download.pytorch.org/whl/rocm6.3",
         "PyTorch ROCm 6.3",
     )
+
+
+def test_runtime_constraints_match_pyproject_dependency_policy() -> None:
+    pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    dependencies = pyproject["project"]["dependencies"]
+
+    expected_by_lane: dict[tuple[int, int], set[str]] = {
+        (3, 11): set(),
+        (3, 13): set(),
+    }
+
+    for dependency in dependencies:
+        requirement, _, marker = dependency.partition(";")
+        dependency_name = _dependency_name(requirement)
+        if dependency_name not in _RUNTIME_DEPENDENCY_NAMES:
+            continue
+
+        cleaned_requirement = requirement.strip()
+        cleaned_marker = marker.strip()
+        if not cleaned_marker:
+            expected_by_lane[(3, 11)].add(cleaned_requirement)
+            expected_by_lane[(3, 13)].add(cleaned_requirement)
+            continue
+
+        if cleaned_marker == "python_version < '3.13'":
+            expected_by_lane[(3, 11)].add(cleaned_requirement)
+            continue
+
+        if cleaned_marker == "python_version >= '3.13'":
+            expected_by_lane[(3, 13)].add(cleaned_requirement)
+            continue
+
+        pytest.fail(
+            "Unexpected runtime dependency marker in pyproject.toml: "
+            f"{cleaned_marker!r} for {cleaned_requirement!r}"
+        )
+
+    spec_311 = resolve_runtime_spec(blender_version=(5, 0, 0), python_version=(3, 11))
+    spec_313 = resolve_runtime_spec(blender_version=(5, 1, 0), python_version=(3, 13))
+
+    assert set(spec_311.runtime_requirements) == expected_by_lane[(3, 11)]
+    assert set(spec_313.runtime_requirements) == expected_by_lane[(3, 13)]

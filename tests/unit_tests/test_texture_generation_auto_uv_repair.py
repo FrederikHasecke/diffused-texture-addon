@@ -10,6 +10,7 @@ from unittest.mock import patch
 from uuid import uuid4
 
 import numpy as np
+import pytest
 
 
 def _load_texture_generation_module(calls: dict[str, object]) -> ModuleType:
@@ -58,12 +59,6 @@ def _load_texture_generation_module(calls: dict[str, object]) -> ModuleType:
         dtype=np.uint8,
     )
 
-    uv_pass = ModuleType("diffused_texture_addon.diffusedtexture.uv_pass")
-    uv_pass.uv_pass = lambda **kwargs: calls.setdefault(
-        "uv_pass",
-        np.full((4, 4, 3), 32, dtype=np.uint8),
-    )
-
     uv_stitch_pass = ModuleType("diffused_texture_addon.diffusedtexture.uv_stitch_pass")
 
     def _uv_stitch_pass(**kwargs) -> np.ndarray:  # noqa: ANN003
@@ -83,7 +78,6 @@ def _load_texture_generation_module(calls: dict[str, object]) -> ModuleType:
             "diffused_texture_addon.diffusedtexture.img_parasequential": (
                 img_parasequential
             ),
-            "diffused_texture_addon.diffusedtexture.uv_pass": uv_pass,
             "diffused_texture_addon.diffusedtexture.uv_stitch_pass": uv_stitch_pass,
         },
     ):
@@ -159,23 +153,23 @@ def test_run_texture_generation_skips_auto_uv_stitch_without_uv_assets() -> None
     assert np.array_equal(return_bucket[0], np.full((4, 4, 3), 64, dtype=np.uint8))
 
 
-def test_run_texture_generation_keeps_uv_mode_single_stage() -> None:
+def test_run_texture_generation_rejects_disabled_uv_mode() -> None:
     calls: dict[str, object] = {}
     texture_generation = _load_texture_generation_module(calls)
     uv_assets = _build_uv_assets(texture_generation)
     return_bucket: list[np.ndarray] = []
 
-    texture_generation.run_texture_generation(
-        process_parameter=SimpleNamespace(operation_mode="UV_PASS"),
-        generation_inputs=uv_assets,
-        progress_callback=lambda _value: None,
-        should_cancel=lambda: False,
-        mark_done=lambda success=True: None,
-        return_texture_bucket=return_bucket,
-        texture=None,
-        uv_assets=uv_assets,
-    )
+    with pytest.raises(ValueError, match="UV_PASS"):
+        texture_generation.run_texture_generation(
+            process_parameter=SimpleNamespace(operation_mode="UV_PASS"),
+            generation_inputs={"uv": [], "facing": []},
+            progress_callback=lambda _value: None,
+            should_cancel=lambda: False,
+            mark_done=lambda success=True: None,
+            return_texture_bucket=return_bucket,
+            texture=None,
+            uv_assets=uv_assets,
+        )
 
-    assert "uv_repair_args" not in calls
     assert "uv_stitch_args" not in calls
-    assert np.array_equal(return_bucket[0], np.full((4, 4, 3), 32, dtype=np.uint8))
+    assert return_bucket == []

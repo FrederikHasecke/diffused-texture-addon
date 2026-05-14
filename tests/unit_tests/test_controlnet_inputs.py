@@ -26,22 +26,34 @@ def test_image_modes_keep_existing_controlnet_inputs(
 
 
 @pytest.mark.parametrize(
-    ("mesh_complexity", "expected_inputs", "expected_sdxl_modes"),
+    "operation_mode",
+    ["UV_PASS", "UNKNOWN_MODE"],
+)
+def test_unsupported_modes_raise_clear_errors(operation_mode: str) -> None:
+    with pytest.raises(ValueError, match="not supported"):
+        get_active_controlnet_inputs(operation_mode, "HIGH")
+
+    with pytest.raises(ValueError, match="not supported"):
+        get_sdxl_control_modes(operation_mode, "HIGH")
+
+
+@pytest.mark.parametrize(
+    ("mesh_complexity", "expected_sdxl_modes"),
     [
-        ("LOW", ["depth"], [1]),
-        ("MEDIUM", ["depth", "canny"], [1, 3]),
-        ("HIGH", ["depth", "canny", "normal"], [1, 3, 4]),
+        ("LOW", [1]),
+        ("MEDIUM", [1, 3]),
+        ("HIGH", [1, 3, 4]),
     ],
 )
-def test_uv_mode_uses_mode_specific_controlnet_inputs(
+def test_image_modes_keep_existing_sdxl_control_modes(
     mesh_complexity: str,
-    expected_inputs: list[str],
     expected_sdxl_modes: list[int],
 ) -> None:
-    assert get_active_controlnet_inputs("UV_PASS", mesh_complexity) == expected_inputs
-    assert get_sdxl_control_modes("UV_PASS", mesh_complexity) == expected_sdxl_modes
+    assert get_sdxl_control_modes("PARALLEL_IMG", mesh_complexity) == expected_sdxl_modes
 
 
-def test_uv_mode_is_not_treated_as_image_mode() -> None:
+def test_only_supported_image_modes_are_treated_as_image_modes() -> None:
     assert is_image_operation_mode("PARALLEL_IMG") is True
+    assert is_image_operation_mode("SEQUENTIAL_IMG") is True
+    assert is_image_operation_mode("PARA_SEQUENTIAL_IMG") is True
     assert is_image_operation_mode("UV_PASS") is False

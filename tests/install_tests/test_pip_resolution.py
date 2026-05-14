@@ -22,6 +22,14 @@ class _ResolverCase:
     abi: str
     channel: str
     expected_numpy_prefix: str
+    expected_torch_prefix: str
+    expected_torch_contains: str
+    expected_opencv_version: str
+    expected_diffusers_version: str
+    expected_transformers_version: str
+    expected_accelerate_version: str
+    expected_safetensors_version: str
+    expected_peft_version: str
 
 
 def _resolver_cases() -> list[_ResolverCase]:
@@ -33,6 +41,14 @@ def _resolver_cases() -> list[_ResolverCase]:
             abi="cp311",
             channel="cpu",
             expected_numpy_prefix="1.",
+            expected_torch_prefix="2.8.0+cpu",
+            expected_torch_contains="+cpu",
+            expected_opencv_version="4.11.0.86",
+            expected_diffusers_version="0.38.0",
+            expected_transformers_version="5.8.1",
+            expected_accelerate_version="1.13.0",
+            expected_safetensors_version="0.8.0rc0",
+            expected_peft_version="0.19.1",
         ),
         _ResolverCase(
             name="win-blender51-cpu",
@@ -41,6 +57,14 @@ def _resolver_cases() -> list[_ResolverCase]:
             abi="cp313",
             channel="cpu",
             expected_numpy_prefix="2.3.",
+            expected_torch_prefix="2.",
+            expected_torch_contains="+cpu",
+            expected_opencv_version="4.13.0.92",
+            expected_diffusers_version="0.38.0",
+            expected_transformers_version="5.8.1",
+            expected_accelerate_version="1.13.0",
+            expected_safetensors_version="0.8.0rc0",
+            expected_peft_version="0.19.1",
         ),
     ]
     if os.getenv("DIFFUSEDTEXTURE_FULL_RESOLUTION_MATRIX") == "1":
@@ -53,6 +77,14 @@ def _resolver_cases() -> list[_ResolverCase]:
                     abi="cp311",
                     channel="cu129",
                     expected_numpy_prefix="1.",
+                    expected_torch_prefix="2.8.0+cu129",
+                    expected_torch_contains="+cu129",
+                    expected_opencv_version="4.11.0.86",
+                    expected_diffusers_version="0.38.0",
+                    expected_transformers_version="5.8.1",
+                    expected_accelerate_version="1.13.0",
+                    expected_safetensors_version="0.8.0rc0",
+                    expected_peft_version="0.19.1",
                 ),
                 _ResolverCase(
                     name="win-blender51-cu130",
@@ -61,6 +93,14 @@ def _resolver_cases() -> list[_ResolverCase]:
                     abi="cp313",
                     channel="cu130",
                     expected_numpy_prefix="2.3.",
+                    expected_torch_prefix="2.",
+                    expected_torch_contains="+cu130",
+                    expected_opencv_version="4.13.0.92",
+                    expected_diffusers_version="0.38.0",
+                    expected_transformers_version="5.8.1",
+                    expected_accelerate_version="1.13.0",
+                    expected_safetensors_version="0.8.0rc0",
+                    expected_peft_version="0.19.1",
                 ),
             ]
         )
@@ -157,9 +197,11 @@ def test_runtime_dependencies_resolve_for_supported_windows_matrix(
     versions = _versions_by_name(report)
 
     assert versions["numpy"].startswith(case.expected_numpy_prefix)
-    assert "torch" in versions
-    assert versions["diffusers"] == "0.36.0"
-    assert versions["transformers"] == "4.56.2"
-    assert versions["accelerate"] == "1.10.1"
-    assert versions["peft"] == "0.18.1"
-    assert versions["safetensors"] == "0.7.0"
+    assert versions["torch"].startswith(case.expected_torch_prefix)
+    assert case.expected_torch_contains in versions["torch"]
+    assert versions["opencv-python-headless"] == case.expected_opencv_version
+    assert versions["diffusers"] == case.expected_diffusers_version
+    assert versions["transformers"] == case.expected_transformers_version
+    assert versions["accelerate"] == case.expected_accelerate_version
+    assert versions["safetensors"] == case.expected_safetensors_version
+    assert versions["peft"] == case.expected_peft_version

@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -5,6 +6,8 @@ from typing import Any, Literal
 import bpy
 import numpy as np
 from numpy.typing import NDArray
+from PIL import Image as PILImage
+from PIL import ImageDraw
 
 from .diagnostics import get_logger
 from .diffusedtexture.uv_seams import (
@@ -19,6 +22,7 @@ from .diffusedtexture.uv_seams import (
 from .diffusedtexture.uv_seams import (
     build_uv_seam_topology_assets as rasterize_uv_seam_topology_assets,
 )
+from .operation_mode import OperationMode, validate_operation_mode
 from .render_setup import (
     create_cameras_on_sphere,
     create_cameras_on_two_rings,
@@ -73,12 +77,7 @@ class ProcessParameter:
     guidance_scale: float | None
 
     # Texture Generation Settings
-    operation_mode: Literal[
-        "PARALLEL_IMG",
-        "SEQUENTIAL_IMG",
-        "PARA_SEQUENTIAL_IMG",
-        "UV_PASS",
-    ]
+    operation_mode: OperationMode
     subgrid_rows: int
     subgrid_cols: int
     mesh_complexity: Literal[
@@ -400,6 +399,9 @@ def extract_process_parameter_from_context(
     context: bpy.types.Context,
 ) -> ProcessParameter:
     scene = context.scene
+    operation_mode = validate_operation_mode(
+        getattr(scene, "operation_mode", "PARALLEL_IMG"),
+    )
 
     # extract LoRA models from the scene
     lora_models = []
@@ -425,7 +427,7 @@ def extract_process_parameter_from_context(
         denoise_strength=getattr(scene, "denoise_strength", 0.0),
         num_inference_steps=getattr(scene, "num_inference_steps", 50),
         guidance_scale=getattr(scene, "guidance_scale", None),
-        operation_mode=getattr(scene, "operation_mode", "PARALLEL_IMG"),
+        operation_mode=operation_mode,
         subgrid_rows=getattr(scene, "subgrid_rows", 2),
         subgrid_cols=getattr(scene, "subgrid_cols", 2),
         mesh_complexity=getattr(scene, "mesh_complexity", "MEDIUM"),
@@ -532,6 +534,36 @@ def export_uv_layout(
     if obj.mode != "OBJECT":
         bpy.ops.object.mode_set(mode="OBJECT")
 
+    _resolve_uv_layout_layer(obj, uv_map_name)
+    export_path = Path(export_path)
+    export_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if getattr(getattr(bpy, "app", None), "background", False):
+        if export_path.suffix.lower() != ".png":
+            msg = "Background UV layout export currently supports PNG output only."
+            raise ValueError(msg)
+        _save_uv_layout_png(
+            _rasterize_uv_layout_array(
+                obj,
+                uv_map_name=uv_map_name,
+                size=size,
+            ),
+            export_path,
+        )
+        return
+
+    bpy.ops.uv.export_layout(
+        filepath=str(export_path),
+        size=size,
+        opacity=1.0,
+        export_all=False,
+    )
+
+
+def _resolve_uv_layout_layer(
+    obj: bpy.types.Object,
+    uv_map_name: str | None = None,
+) -> bpy.types.MeshUVLoopLayer:
     uv_layers = obj.data.uv_layers
     if not uv_layers:
         msg = f"No UV maps found for object {obj.name}."
@@ -543,16 +575,69 @@ def export_uv_layout(
             msg = f"UV map {uv_map_name} not found on object {obj.name}."
             raise ValueError(msg)
         uv_layers.active = uv_layer
-    elif uv_layers.active is None:
+        return uv_layer
+
+    uv_layer = uv_layers.active
+    if uv_layer is None:
         msg = f"No active UV map found for object {obj.name}."
         raise ValueError(msg)
+    return uv_layer
 
-    bpy.ops.uv.export_layout(
-        filepath=str(export_path),
-        size=size,
-        opacity=1.0,
-        export_all=False,
+
+def _uv_to_layout_xy(
+    uv: Sequence[float],
+    width: int,
+    height: int,
+) -> tuple[float, float]:
+    return (
+        float(uv[0]) * float(max(width - 1, 1)),
+        (1.0 - float(uv[1])) * float(max(height - 1, 1)),
     )
+
+
+def _rasterize_uv_layout_array(
+    obj: bpy.types.Object,
+    uv_map_name: str | None = None,
+    size: tuple[int, int] = (1024, 1024),
+) -> NDArray[np.float32]:
+    width, height = size
+    uv_layer = _resolve_uv_layout_layer(obj, uv_map_name)
+    mesh = obj.data
+    image = PILImage.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+
+    polygons: list[list[tuple[float, float]]] = []
+    for polygon in mesh.polygons:
+        loop_indices = list(polygon.loop_indices)
+        if len(loop_indices) < 3:  # noqa: PLR2004
+            continue
+
+        points = [
+            _uv_to_layout_xy(uv_layer.data[loop_index].uv, width, height)
+            for loop_index in loop_indices
+        ]
+        polygons.append(points)
+        draw.polygon(points, fill=(255, 255, 255, 255))
+
+    for points in polygons:
+        draw.line(
+            [*points, points[0]],
+            fill=(0, 0, 0, 255),
+            width=1,
+        )
+
+    return (np.asarray(image, dtype=np.float32) / 255.0).astype(np.float32)
+
+
+def _save_uv_layout_png(
+    uv_layout: NDArray[np.float32],
+    export_path: str | Path,
+) -> None:
+    image = PILImage.fromarray(
+        np.clip(np.rint(uv_layout * 255.0), 0, 255).astype(np.uint8),
+        mode="RGBA",
+    )
+    image.save(Path(export_path))
 
 
 def _surface_mask_from_uv_layout(uv_layout: NDArray[np.float32]) -> NDArray[np.uint8]:

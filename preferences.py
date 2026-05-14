@@ -61,36 +61,66 @@ class DiffuseTexPreferences(bpy.types.AddonPreferences):
             icon="IMPORT",
         )
         status = deps.box()
-        status.label(text="Current Runtime Capability")
+        status.label(text="Runtime Capability")
         status.label(
-            text=f"Dependency backend: {runtime_capability.torch_install_channel}",
+            text=(
+                "Selected backend: "
+                f"{runtime_capability.selected_torch_choice} "
+                f"(installs {runtime_capability.torch_install_channel})"
+            ),
         )
-        if runtime_capability.scene_render_device == "CPU":
-            status.label(text="Cycles render: CPU")
-        elif runtime_capability.cycles_backend is not None:
+        status.label(
+            text=(
+                "Active deps env: "
+                f"{runtime_capability.active_deps_path or 'unavailable'}"
+            ),
+        )
+        if runtime_capability.cycles_ui_status == "gpu":
             status.label(
                 text=(
-                    "Cycles render: "
-                    f"{runtime_capability.cycles_backend} "
+                    "Cycles capability: "
+                    f"{runtime_capability.cycles_backend or 'GPU'} "
                     f"({runtime_capability.scene_render_device})"
                 ),
             )
+        elif runtime_capability.cycles_ui_status == "cpu":
+            status.label(text="Cycles capability: CPU")
         else:
-            status.label(text="Cycles render: unavailable")
+            status.label(
+                text=(
+                    "Cycles capability: inconclusive "
+                    "(resolved at render time)"
+                ),
+            )
+
+        torch_text = runtime_capability.torch_version or "unavailable"
+        if runtime_capability.torch_cuda_build:
+            torch_text = (
+                f"{torch_text}, "
+                f"CUDA build {runtime_capability.torch_cuda_build}"
+            )
+        status.label(text=f"Imported torch: {torch_text}")
         status.label(
             text=(
-                "Diffusion device: "
+                "Diffusion runtime: "
                 f"{runtime_capability.diffusion_device or 'unavailable'}"
             ),
         )
-        status.label(
-            text=(
-                "Generation ready."
-                if runtime_capability.can_generate
-                else runtime_capability.message
-            ),
-            icon="CHECKMARK" if runtime_capability.can_generate else "ERROR",
-        )
+        if runtime_capability.diffusion_environment_warning:
+            status.label(
+                text=runtime_capability.diffusion_environment_warning,
+                icon="ERROR",
+            )
+        elif runtime_capability.diffusion_dependencies_importable:
+            status.label(text="Diffusion dependencies importable.", icon="CHECKMARK")
+        else:
+            status.label(
+                text=(
+                    "Diffusion dependencies missing. "
+                    "Install Python Dependencies and restart Blender."
+                ),
+                icon="ERROR",
+            )
 
         mdl = layout.box()
         mdl.label(text="Models")

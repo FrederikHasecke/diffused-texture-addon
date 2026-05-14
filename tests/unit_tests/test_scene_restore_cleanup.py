@@ -57,6 +57,7 @@ def _load_addon_submodule(submodule: str):
     texture_generation.run_texture_generation = lambda *args, **kwargs: None  # noqa: ARG005
     runtime_capability = ModuleType(f"{package_name}.runtime_capability")
     runtime_capability.get_runtime_capability = lambda context: SimpleNamespace(  # noqa: ARG005
+        diffusion_dependencies_importable=True,
         can_generate=True,
         message="Generation ready.",
     )
@@ -192,7 +193,9 @@ def test_execute_blocks_before_render_when_runtime_capability_fails(
         operators,
         "get_runtime_capability",
         lambda context: SimpleNamespace(
+            diffusion_dependencies_importable=False,
             can_generate=False,
+            diffusion_environment_warning=None,
             message=(
                 "Dependency backend: rocm6.3. Cycles render: CPU. "
                 "Diffusion dependencies are not importable."
@@ -271,45 +274,146 @@ def test_execute_blocks_before_render_when_runtime_capability_fails(
     assert result == {"CANCELLED"}
     assert not render_called
     assert scene.diffused_texture_operator_error.startswith(
-        "Dependency backend: rocm6.3."
+        "Diffusion dependencies are not importable."
     )
     assert reported == [
         (
             {"ERROR"},
-            (
-                "Dependency backend: rocm6.3. Cycles render: CPU. "
-                "Diffusion dependencies are not importable."
-            ),
+            "Diffusion dependencies are not importable. Install Python Dependencies and restart Blender.",
         ),
     ]
 
 
-def test_execute_uses_uv_pass_assets_and_skips_multiview_loading(
+def test_execute_continues_when_cycles_status_is_inconclusive(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     operators = _load_addon_submodule("operators")
 
     selected_obj = object()
-    scene_backup = {"target_object": selected_obj}
-    restore_calls = []
-    built_assets = operators.UVPassAssets(
-        normal_map=np.zeros((2, 2, 4), dtype=np.float32),
-        position_map=np.zeros((2, 2, 4), dtype=np.float32),
-        uv_layout=np.zeros((2, 2, 4), dtype=np.float32),
-        surface_mask=np.zeros((2, 2), dtype=np.uint8),
-    )
-    thread_state: dict[str, object] = {}
+    render_called = False
 
-    monkeypatch.setattr(operators, "prepare_scene", lambda obj: scene_backup)
     monkeypatch.setattr(
         operators,
-        "build_uv_pass_assets",
-        lambda context, obj: built_assets,  # noqa: ARG005
+        "extract_process_parameter_from_context",
+        lambda context: SimpleNamespace(sd_version="sd15", output_path="C:/tmp"),
+    )
+    monkeypatch.setattr(operators, "require_supported_sd_version", lambda version: None)
+    monkeypatch.setattr(
+        operators,
+        "get_runtime_capability",
+        lambda context: SimpleNamespace(
+            diffusion_dependencies_importable=True,
+            can_generate=False,
+            message=(
+                "Cycles capability is inconclusive in preferences; "
+                "render-time setup will choose a device."
+            ),
+        ),
+    )
+
+    def _raise_render_error(context, obj):  # noqa: ARG001
+        nonlocal render_called
+        render_called = True
+        msg = "forced render failure"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(
+        operators,
+        "prepare_scene",
+        lambda obj: {"target_object": selected_obj},
+    )
+    monkeypatch.setattr(operators, "render_views", _raise_render_error)
+    monkeypatch.setattr(operators, "restore_scene", lambda backup, cameras: None)
+    monkeypatch.setattr(
+        operators,
+        "bpy",
+        SimpleNamespace(
+            data=SimpleNamespace(
+                objects=SimpleNamespace(get=lambda name: selected_obj),
+            ),
+        ),
+    )
+
+    class _WindowManager:
+        def progress_begin(self, start: int, end: int) -> None:  # noqa: ARG002
+            return
+
+        def progress_update(self, value: int) -> None:  # noqa: ARG002
+            return
+
+        def progress_end(self) -> None:
+            return
+
+    class _Window:
+        def cursor_set(self, value: str) -> None:  # noqa: ARG002
+            return
+
+    scene = SimpleNamespace(
+        my_mesh_object="Cube",
+        operation_mode="PARALLEL_IMG",
+        input_texture=None,
+        diffused_texture_operator_running=False,
+        diffused_texture_operator_done=False,
+        diffused_texture_operator_error="",
+        diffused_texture_operator_cancel_requested=False,
+    )
+    context = SimpleNamespace(
+        scene=scene,
+        window_manager=_WindowManager(),
+        window=_Window(),
+    )
+
+    class _FakeOperator:
+        def report(self, levels: set[str], message: str) -> None:  # noqa: ARG002
+            return
+
+        def _set_scene_status(
+            self,
+            scene_obj,
+            *,
+            running: bool,
+            done: bool,
+            error: str = "",
+        ) -> None:
+            scene_obj.diffused_texture_operator_running = running
+            scene_obj.diffused_texture_operator_done = done
+            scene_obj.diffused_texture_operator_error = error
+
+    operator = _FakeOperator()
+    operator._should_cancel = types.MethodType(  # type: ignore[attr-defined]
+        operators.OBJECT_OT_GenerateTexture._should_cancel,
+        operator,
+    )
+    result = operators.OBJECT_OT_GenerateTexture.execute(operator, context)
+
+    assert result == {"CANCELLED"}
+    assert render_called
+
+
+def test_execute_rejects_disabled_uv_mode_before_scene_prep(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operators = _load_addon_submodule("operators")
+
+    selected_obj = object()
+    reported: list[tuple[set[str], str]] = []
+
+    monkeypatch.setattr(
+        operators,
+        "prepare_scene",
+        lambda obj: (_ for _ in ()).throw(AssertionError("prepare_scene")),  # noqa: ARG005, B023
     )
     monkeypatch.setattr(
         operators,
         "render_views",
         lambda context, obj: (_ for _ in ()).throw(AssertionError("render_views")),  # noqa: ARG005, B023
+    )
+    monkeypatch.setattr(
+        operators,
+        "build_uv_pass_assets",
+        lambda context, obj: (_ for _ in ()).throw(
+            AssertionError("build_uv_pass_assets")
+        ),
     )
     monkeypatch.setattr(
         operators,
@@ -320,38 +424,16 @@ def test_execute_uses_uv_pass_assets_and_skips_multiview_loading(
     )
     monkeypatch.setattr(
         operators,
-        "extract_process_parameter_from_context",
-        lambda context: SimpleNamespace(
-            sd_version="sd15",
-            output_path="C:/tmp",
-            operation_mode="UV_PASS",
+        "require_supported_sd_version",
+        lambda version: (_ for _ in ()).throw(
+            AssertionError("require_supported_sd_version")
         ),
     )
-    monkeypatch.setattr(operators, "require_supported_sd_version", lambda version: None)
     monkeypatch.setattr(
         operators,
         "get_runtime_capability",
-        lambda context: SimpleNamespace(can_generate=True, message="Generation ready."),
+        lambda context: (_ for _ in ()).throw(AssertionError("get_runtime_capability")),
     )
-    monkeypatch.setattr(
-        operators,
-        "restore_scene",
-        lambda backup, cameras: restore_calls.append((backup, cameras)),
-    )
-
-    class _FakeThread:
-        def __init__(self, target, args, daemon: bool) -> None:
-            thread_state["target"] = target
-            thread_state["args"] = args
-            thread_state["daemon"] = daemon
-
-        def start(self) -> None:
-            thread_state["started"] = True
-
-        def is_alive(self) -> bool:
-            return False
-
-    monkeypatch.setattr(operators.threading, "Thread", _FakeThread)
     monkeypatch.setattr(
         operators,
         "bpy",
@@ -386,6 +468,7 @@ def test_execute_uses_uv_pass_assets_and_skips_multiview_loading(
     scene = SimpleNamespace(
         my_mesh_object="Cube",
         operation_mode="UV_PASS",
+        num_loras=0,
         input_texture=None,
         diffused_texture_operator_running=False,
         diffused_texture_operator_done=False,
@@ -399,8 +482,8 @@ def test_execute_uses_uv_pass_assets_and_skips_multiview_loading(
     )
 
     class _FakeOperator:
-        def report(self, levels: set[str], message: str) -> None:  # noqa: ARG002
-            return
+        def report(self, levels: set[str], message: str) -> None:
+            reported.append((levels, message))
 
         def _set_scene_status(
             self,
@@ -419,21 +502,20 @@ def test_execute_uses_uv_pass_assets_and_skips_multiview_loading(
         operators.OBJECT_OT_GenerateTexture._should_cancel,
         operator,
     )
-    operator._run_texture_generation_thread = types.MethodType(  # type: ignore[attr-defined]
-        operators.OBJECT_OT_GenerateTexture._run_texture_generation_thread,
-        operator,
-    )
     result = operators.OBJECT_OT_GenerateTexture.execute(operator, context)
 
-    assert result == {"RUNNING_MODAL"}
-    assert restore_calls == [(scene_backup, [])]
-    assert operator.render_img_folders is None
-    assert thread_state["started"] is True
-    args = thread_state["args"]
-    assert isinstance(args, tuple)
-    assert callable(args[2])
-    assert callable(args[3])
-    assert args[4] is built_assets
+    expected_error = (
+        "Operation mode 'UV_PASS' is not supported. Dedicated UV mode is "
+        "currently disabled."
+    )
+    assert result == {"CANCELLED"}
+    assert scene.diffused_texture_operator_error == expected_error
+    assert reported == [
+        (
+            {"ERROR"},
+            f"Execution error: {expected_error}",
+        ),
+    ]
 
 
 def test_execute_builds_uv_assets_for_image_mode_follow_up(
@@ -483,7 +565,11 @@ def test_execute_builds_uv_assets_for_image_mode_follow_up(
     monkeypatch.setattr(
         operators,
         "get_runtime_capability",
-        lambda context: SimpleNamespace(can_generate=True, message="Generation ready."),
+        lambda context: SimpleNamespace(
+            diffusion_dependencies_importable=True,
+            can_generate=True,
+            message="Generation ready.",
+        ),
     )
     monkeypatch.setattr(
         operators,

@@ -9,8 +9,8 @@ from .blender_operations import ProcessParameter, UVPassAssets, load_img_to_nump
 from .diffusedtexture.img_parallel import img_parallel
 from .diffusedtexture.img_parasequential import img_parasequential
 from .diffusedtexture.img_sequential import img_sequential
-from .diffusedtexture.uv_pass import uv_pass
 from .diffusedtexture.uv_stitch_pass import uv_stitch_pass
+from .operation_mode import validate_operation_mode
 
 MultiviewImages = dict[str, list[NDArray[Any]]]
 
@@ -64,9 +64,9 @@ def load_multiview_images(
     return multiview_images
 
 
-def run_texture_generation(  # noqa: C901, PLR0913
+def run_texture_generation(  # noqa: PLR0913
     process_parameter: ProcessParameter,
-    generation_inputs: MultiviewImages | UVPassAssets,
+    generation_inputs: MultiviewImages,
     progress_callback: Callable,
     should_cancel: Callable[[], bool],
     mark_done: Callable,
@@ -86,69 +86,52 @@ def run_texture_generation(  # noqa: C901, PLR0913
         texture: Optional input texture.
         uv_assets: Optional UV-space assets for automatic image-mode stitching.
     """
-    if process_parameter.operation_mode == "UV_PASS":
-        if not isinstance(generation_inputs, UVPassAssets):
-            msg = "UV mode requires UV pass assets."
-            raise TypeError(msg)
-        output_texture = uv_pass(
-            uv_assets=generation_inputs,
+    operation_mode = validate_operation_mode(process_parameter.operation_mode)
+    multiview_images = generation_inputs
+
+    def base_progress_callback(percent: int) -> None:
+        if uv_assets is None:
+            progress_callback(percent)
+            return
+        progress_callback(int(percent * 0.75))
+
+    def stitch_progress_callback(percent: int) -> None:
+        progress_callback(75 + int(percent * 0.25))
+
+    if operation_mode == "PARALLEL_IMG":
+        output_texture = img_parallel(
+            multiview_images=multiview_images,
             process_parameter=process_parameter,
-            progress_callback=progress_callback,
+            progress_callback=base_progress_callback,
+            should_cancel=should_cancel,
+            texture=texture,
+        )
+    elif operation_mode == "SEQUENTIAL_IMG":
+        output_texture = img_sequential(
+            multiview_images=multiview_images,
+            process_parameter=process_parameter,
+            progress_callback=base_progress_callback,
             should_cancel=should_cancel,
             texture=texture,
         )
     else:
-        if isinstance(generation_inputs, UVPassAssets):
-            msg = "Image-based modes require preloaded multiview images."
-            raise TypeError(msg)
-        multiview_images = generation_inputs
+        output_texture = img_parasequential(
+            multiview_images=multiview_images,
+            process_parameter=process_parameter,
+            progress_callback=base_progress_callback,
+            should_cancel=should_cancel,
+            texture=texture,
+            subgrid_rows=process_parameter.subgrid_rows,
+            subgrid_cols=process_parameter.subgrid_cols,
+        )
 
-        def base_progress_callback(percent: int) -> None:
-            if uv_assets is None:
-                progress_callback(percent)
-                return
-            progress_callback(int(percent * 0.75))
-
-        def stitch_progress_callback(percent: int) -> None:
-            progress_callback(75 + int(percent * 0.25))
-
-        if process_parameter.operation_mode == "PARALLEL_IMG":
-            output_texture = img_parallel(
-                multiview_images=multiview_images,
-                process_parameter=process_parameter,
-                progress_callback=base_progress_callback,
-                should_cancel=should_cancel,
-                texture=texture,
-            )
-        elif process_parameter.operation_mode == "SEQUENTIAL_IMG":
-            output_texture = img_sequential(
-                multiview_images=multiview_images,
-                process_parameter=process_parameter,
-                progress_callback=base_progress_callback,
-                should_cancel=should_cancel,
-                texture=texture,
-            )
-        elif process_parameter.operation_mode == "PARA_SEQUENTIAL_IMG":
-            output_texture = img_parasequential(
-                multiview_images=multiview_images,
-                process_parameter=process_parameter,
-                progress_callback=base_progress_callback,
-                should_cancel=should_cancel,
-                texture=texture,
-                subgrid_rows=process_parameter.subgrid_rows,
-                subgrid_cols=process_parameter.subgrid_cols,
-            )
-        else:
-            msg = f"Unknown operation mode: {process_parameter.operation_mode}"
-            raise ValueError(msg)
-
-        if uv_assets is not None:
-            output_texture = uv_stitch_pass(
-                texture=output_texture,
-                uv_assets=uv_assets,
-                multiview_images=multiview_images,
-            )
-            stitch_progress_callback(100)
+    if uv_assets is not None:
+        output_texture = uv_stitch_pass(
+            texture=output_texture,
+            uv_assets=uv_assets,
+            multiview_images=multiview_images,
+        )
+        stitch_progress_callback(100)
 
     return_texture_bucket.append(output_texture)
 

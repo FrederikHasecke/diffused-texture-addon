@@ -1,3 +1,4 @@
+from dotenv import load_dotenv
 import importlib
 import os
 import tempfile
@@ -37,6 +38,12 @@ def _enable_addon() -> str:
     try:
         addon_module = importlib.import_module("diffused_texture_addon")
         addon_module.register()
+
+        # Set local hf cache path
+        load_dotenv()
+        hf_home = os.getenv('HF_HOME')
+        os.environ["HF_HOME"] = hf_home
+
         return "diffused_texture_addon"
     except Exception as exc:  # noqa: BLE001
         errors.append(f"manual register failed: {exc}")
@@ -161,8 +168,3 @@ def test_run_para_sequential() -> None:
         subgrid_rows=1,
         subgrid_cols=2,
     )
-
-
-def test_run_uv_space() -> None:
-    """Test the dedicated UV-space texture generation end to end."""
-    _run_generation_mode("UV_PASS")
