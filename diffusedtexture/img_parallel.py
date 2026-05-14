@@ -10,6 +10,7 @@ except ModuleNotFoundError:
     Image = None
 
 from ..blender_operations import ProcessParameter
+from ..model_support import get_default_sd_resolution
 from .pipeline.pipeline_builder import create_diffusion_pipeline
 
 try:
@@ -52,11 +53,17 @@ def img_parallel(  # noqa: PLR0913
         msg = "Pillow is not available."
         raise RuntimeError(msg)
 
+    sd_resolution = get_default_sd_resolution(
+        process_parameter.sd_version,
+        process_parameter.custom_sd_resolution,
+    )
+
     # Assemble grids
     _, resized_grids = assemble_multiview_grid(
         texture=texture,
         multiview_images=multiview_images,
         render_resolution=int(process_parameter.render_resolution),
+        sd_resolution=sd_resolution,
     )
 
     # Create the diffusion pipeline

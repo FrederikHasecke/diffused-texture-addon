@@ -143,3 +143,54 @@ def test_install_models_operator_uses_selected_model_preference() -> None:
     assert reported == [
         ({"INFO"}, "Stable Diffusion XL models installed in the default HF cache."),
     ]
+
+
+def test_install_deps_operator_reports_runtime_matrix_mismatch() -> None:
+    operators, bpy_module = _load_installer_operators_module()
+
+    prefs = SimpleNamespace(cuda_variant="cpu")
+    bpy_module.context.preferences = SimpleNamespace(
+        addons={
+            "addon_under_test": SimpleNamespace(preferences=prefs),
+        },
+    )
+
+    reported: list[tuple[set[str], str]] = []
+    operator = operators.InstallDepsOperator()
+    operator.report = lambda level, message: reported.append((level, message))
+
+    with (
+        patch.object(
+            operators,
+            "resolve_runtime_spec",
+            side_effect=ValueError(
+                "Unsupported Blender/Python combination: Blender 5.0.0 requires "
+                "Python 3.11, got 3.13."
+            ),
+        ),
+        patch.object(
+            operators,
+            "deps_target_dir",
+            side_effect=AssertionError("Existing dependency target was read."),
+        ),
+        patch.object(
+            operators,
+            "new_deps_target_dir",
+            side_effect=AssertionError("Fresh dependency target was allocated."),
+        ),
+        patch.object(
+            operators,
+            "ensure_pip",
+            side_effect=AssertionError("pip was prepared before runtime validation."),
+        ),
+    ):
+        result = operator.execute(context=None)
+
+    assert result == {"CANCELLED"}
+    assert reported == [
+        (
+            {"ERROR"},
+            "Unsupported Blender/Python combination: Blender 5.0.0 requires "
+            "Python 3.11, got 3.13.",
+        ),
+    ]

@@ -34,7 +34,13 @@ def _compute_uv_flat_indices(
     texture_resolution: int,
 ) -> tuple[NDArray[np.int64], NDArray[np.bool_]]:
     uv = uv_image[..., :2].astype(np.float32)
-    valid_mask = np.sum(uv, axis=-1) > 0
+    valid_mask = np.all(np.isfinite(uv), axis=-1)
+    if uv_image.ndim == RGB_CHANNELS and uv_image.shape[-1] >= 4:  # noqa: PLR2004
+        # Rendered UV passes include alpha, which distinguishes atlas-origin
+        # texels from untouched background pixels that also decode to (0, 0).
+        valid_mask &= np.isfinite(uv_image[..., 3]) & (uv_image[..., 3] > 0)
+    else:
+        valid_mask &= np.sum(uv, axis=-1) > 0
     if not np.any(valid_mask):
         return np.empty((0,), dtype=np.int64), valid_mask
 

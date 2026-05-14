@@ -41,6 +41,24 @@ def normalize_python_version(python_version: tuple[int, int]) -> tuple[int, int]
     return version
 
 
+def validate_runtime_pair(
+    *,
+    blender_version: tuple[int, int, int],
+    python_version: tuple[int, int],
+) -> tuple[int, int]:
+    normalized_python = normalize_python_version(python_version)
+    expected_python = expected_python_version(blender_version)
+    if normalized_python != expected_python:
+        msg = (
+            f"Unsupported Blender/Python combination: Blender "
+            f"{blender_version[0]}.{blender_version[1]}.{blender_version[2]} "
+            f"requires Python {expected_python[0]}.{expected_python[1]}, got "
+            f"{normalized_python[0]}.{normalized_python[1]}."
+        )
+        raise ValueError(msg)
+    return normalized_python
+
+
 def constraints_filename(python_version: tuple[int, int]) -> str:
     normalized = normalize_python_version(python_version)
     return f"runtime-{SUPPORTED_PYTHON_SERIES[normalized]}.txt"
@@ -70,7 +88,10 @@ def resolve_runtime_spec(
     python_version: tuple[int, int],
     constraints_dir: Path | None = None,
 ) -> RuntimeSpec:
-    normalized_python = normalize_python_version(python_version)
+    normalized_python = validate_runtime_pair(
+        blender_version=blender_version,
+        python_version=python_version,
+    )
     python_tag = SUPPORTED_PYTHON_SERIES[normalized_python]
     root = constraints_dir if constraints_dir is not None else _CONSTRAINTS_DIR
     constraints_path = root / constraints_filename(normalized_python)

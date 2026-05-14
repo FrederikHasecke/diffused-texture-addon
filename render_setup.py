@@ -1,4 +1,5 @@
 import math
+import shutil
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -272,6 +273,24 @@ def setup_render_settings(
     return setup_output_nodes(context)
 
 
+def get_render_output_paths(output_root: Path | str) -> dict[str, Path]:
+    """Return the addon-managed render output directories for a run."""
+    root_path = Path(output_root)
+    return {
+        "render": root_path / "RenderOutput",
+        "depth": root_path / "render_depth",
+        "normal": root_path / "render_normal",
+        "uv": root_path / "render_uv",
+        "facing": root_path / "render_facing",
+    }
+
+
+def clear_render_output_paths(output_root: Path | str) -> None:
+    """Remove addon-managed render outputs so no stale frames survive a run."""
+    for output_path in get_render_output_paths(output_root).values():
+        shutil.rmtree(output_path, ignore_errors=True)
+
+
 def setup_output_nodes(
     context: bpy.types.Context,
 ) -> dict[str, bpy.types.CompositorNodeOutputFile]:
@@ -319,7 +338,8 @@ def setup_output_nodes(
     render_layers.name = "DiffusedTexture_RenderLayers"
 
     # output path for the render
-    render_output_dir = Path(scene.output_path) / "RenderOutput"
+    render_output_paths = get_render_output_paths(scene.output_path)
+    render_output_dir = render_output_paths["render"]
     render_output_dir.mkdir(parents=True, exist_ok=True)
     scene.render.filepath = str(render_output_dir / "render_")
 
@@ -328,7 +348,7 @@ def setup_output_nodes(
 
     for name in ["Depth", "Normal", "UV"]:
         output_nodes[name.lower()] = set_node_path(name, node_tree, render_layers)
-        output_dir = Path(scene.output_path) / f"render_{name.lower()}"
+        output_dir = render_output_paths[name.lower()]
         set_output_node_directory(output_nodes[name.lower()], output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 

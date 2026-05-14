@@ -47,6 +47,17 @@ def test_normalize_python_version_rejects_unsupported_versions() -> None:
         normalize_python_version((3, 12))
 
 
+def test_runtime_spec_rejects_blender_python_mismatch() -> None:
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"Unsupported Blender/Python combination: Blender 5\.0\.0 "
+            r"requires Python 3\.11, got 3\.13\."
+        ),
+    ):
+        resolve_runtime_spec(blender_version=(5, 0, 0), python_version=(3, 13))
+
+
 def test_runtime_spec_for_blender_50_uses_numpy_1_constraints() -> None:
     spec = resolve_runtime_spec(blender_version=(5, 0, 0), python_version=(3, 11))
 

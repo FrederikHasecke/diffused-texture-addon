@@ -24,6 +24,7 @@ from .diffusedtexture.uv_seams import (
 )
 from .operation_mode import OperationMode, validate_operation_mode
 from .render_setup import (
+    clear_render_output_paths,
     create_cameras_on_sphere,
     create_cameras_on_two_rings,
     find_output_node_image_path,
@@ -1242,6 +1243,7 @@ def render_views(
         dict: A dictionary containing the rendered image paths.
     """
     original_camera = context.scene.camera
+    clear_render_output_paths(context.scene.output_path)
 
     # Set up cameras
     num_cameras = int(context.scene.num_cameras)
@@ -1322,6 +1324,7 @@ def render_views(
 
     except Exception:
         _logger.exception("Rendering views failed; cleaning up temporary cameras.")
+        clear_render_output_paths(context.scene.output_path)
         context.scene.camera = original_camera
         for cam in cameras:
             if cam and cam.name in bpy.data.objects:

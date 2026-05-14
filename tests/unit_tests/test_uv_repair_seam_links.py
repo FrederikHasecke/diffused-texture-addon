@@ -139,3 +139,23 @@ def test_topology_seam_mismatch_mask_is_pairwise() -> None:
     assert mismatch[2, 6] == 255
     assert mismatch[5, 5] == 0
     assert mismatch[5, 6] == 0
+
+
+def test_accumulate_uv_repair_diagnostics_counts_uv_origin_texels() -> None:
+    uv_repair_pass = _load_uv_repair_pass_module()
+    uv_image = np.zeros((2, 2, 4), dtype=np.float32)
+    uv_image[0, 0] = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
+    facing_image = np.zeros((2, 2), dtype=np.float32)
+    facing_image[0, 0] = 0.25
+
+    coverage_count, best_facing, weight_sum = (
+        uv_repair_pass.accumulate_uv_repair_diagnostics(
+            {"uv": [uv_image], "facing": [facing_image]},
+            texture_resolution=4,
+        )
+    )
+
+    assert coverage_count[3, 0] == 1.0
+    assert best_facing[3, 0] == 0.25
+    assert weight_sum[3, 0] == 0.25
+    assert np.count_nonzero(coverage_count) == 1

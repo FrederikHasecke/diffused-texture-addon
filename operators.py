@@ -1,6 +1,5 @@
 """Handles the operators of the addon."""
 
-import shutil
 import threading
 import time
 from collections.abc import Callable
@@ -30,6 +29,7 @@ from .blender_operations import (
 )
 from .diagnostics import get_logger
 from .model_support import require_supported_sd_version
+from .render_setup import clear_render_output_paths
 from .runtime_capability import get_runtime_capability
 
 _logger = get_logger("operators")
@@ -74,115 +74,105 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
     _run_id = ""
     _cancelled = False
 
-    def _finalize_generation(  # noqa: C901
+    def _cleanup_render_outputs(self) -> None:
+        if self._output_file:
+            clear_render_output_paths(self._output_file)
+
+    def _finalize_generation(
         self,
         context: bpy.types.Context,
     ) -> set[str]:
-        if self._cancelled:
-            _logger.info("Texture generation cancelled. run_id=%s", self._run_id)
-            self._set_scene_status(
-                context.scene,
-                running=False,
-                done=False,
-                error=CANCELLED_BY_USER_MESSAGE,
-            )
-            self.report({"INFO"}, "Texture generation cancelled.")
-            return {"CANCELLED"}
+        try:
+            if self._cancelled:
+                _logger.info("Texture generation cancelled. run_id=%s", self._run_id)
+                self._set_scene_status(
+                    context.scene,
+                    running=False,
+                    done=False,
+                    error=CANCELLED_BY_USER_MESSAGE,
+                )
+                self.report({"INFO"}, "Texture generation cancelled.")
+                return {"CANCELLED"}
 
-        if self._error:
-            _logger.error(
-                "Texture generation failed. run_id=%s error=%s",
+            if self._error:
+                _logger.error(
+                    "Texture generation failed. run_id=%s error=%s",
+                    self._run_id,
+                    self._error,
+                )
+                self._set_scene_status(
+                    context.scene,
+                    running=False,
+                    done=False,
+                    error=self._error,
+                )
+                self.report({"ERROR"}, f"Texture generation failed: {self._error}")
+                return {"CANCELLED"}
+
+            if not self._return_texture:
+                msg = "Texture generation completed without a texture result."
+                self._set_scene_status(
+                    context.scene,
+                    running=False,
+                    done=False,
+                    error=msg,
+                )
+                self.report({"ERROR"}, msg)
+                return {"CANCELLED"}
+
+            if Image is None:
+                msg = "Pillow is not available."
+                self._set_scene_status(
+                    context.scene,
+                    running=False,
+                    done=False,
+                    error=msg,
+                )
+                self.report({"ERROR"}, msg)
+                return {"CANCELLED"}
+
+            if self._output_file is None:
+                msg = "Output path is not set."
+                self._set_scene_status(
+                    context.scene,
+                    running=False,
+                    done=False,
+                    error=msg,
+                )
+                self.report({"ERROR"}, msg)
+                return {"CANCELLED"}
+
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            output_path = Path(self._output_file) / f"output_texture_{timestamp}.png"
+            Image.fromarray(self._return_texture[0]).save(output_path)
+
+            apply_texture(
+                context,
+                str(output_path),
+            )
+
+            duration = time.time() - self._start_time if self._start_time else 0.0
+            _logger.info(
+                (
+                    "Texture generation completed successfully. run_id=%s output=%s "
+                    "duration=%.2fs"
+                ),
                 self._run_id,
-                self._error,
+                output_path,
+                duration,
             )
+            self.report({"INFO"}, "Texture saved successfully.")
+
             self._set_scene_status(
                 context.scene,
                 running=False,
-                done=False,
-                error=self._error,
+                done=True,
+                error="",
             )
-            self.report({"ERROR"}, f"Texture generation failed: {self._error}")
-            return {"CANCELLED"}
 
-        if not self._return_texture:
-            msg = "Texture generation completed without a texture result."
-            self._set_scene_status(
-                context.scene,
-                running=False,
-                done=False,
-                error=msg,
-            )
-            self.report({"ERROR"}, msg)
-            return {"CANCELLED"}
-
-        if Image is None:
-            msg = "Pillow is not available."
-            self._set_scene_status(
-                context.scene,
-                running=False,
-                done=False,
-                error=msg,
-            )
-            self.report({"ERROR"}, msg)
-            return {"CANCELLED"}
-
-        if self._output_file is None:
-            msg = "Output path is not set."
-            self._set_scene_status(
-                context.scene,
-                running=False,
-                done=False,
-                error=msg,
-            )
-            self.report({"ERROR"}, msg)
-            return {"CANCELLED"}
-
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        output_path = Path(self._output_file) / f"output_texture_{timestamp}.png"
-        Image.fromarray(self._return_texture[0]).save(output_path)
-
-        apply_texture(
-            context,
-            str(output_path),
-        )
-
-        duration = time.time() - self._start_time if self._start_time else 0.0
-        _logger.info(
-            (
-                "Texture generation completed successfully. run_id=%s output=%s "
-                "duration=%.2fs"
-            ),
-            self._run_id,
-            output_path,
-            duration,
-        )
-        self.report({"INFO"}, "Texture saved successfully.")
-
-        if self.render_img_folders is not None:
-            for render_type_folder in self.render_img_folders.values():
-                if (
-                    isinstance(render_type_folder, str)
-                    and Path(render_type_folder).is_dir()
-                ):
-                    shutil.rmtree(render_type_folder, ignore_errors=True)
-
-            depth_folder = self.render_img_folders.get("depth")
-            if isinstance(depth_folder, str):
-                parent_folder = Path(depth_folder).parent
-                if (parent_folder.is_dir() and not any(parent_folder.iterdir())) or (
-                    parent_folder.is_dir()
-                    and list(parent_folder.iterdir()) == [parent_folder / "render_.exr"]
-                ):
-                    shutil.rmtree(parent_folder, ignore_errors=True)
-
-        self._set_scene_status(
-            context.scene,
-            running=False,
-            done=True,
-            error="",
-        )
-
-        return {"FINISHED"}
+            return {"FINISHED"}
+        finally:
+            OBJECT_OT_GenerateTexture._cleanup_render_outputs(self)
 
     def _set_scene_status(
         self,
@@ -447,6 +437,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                 "Texture generation setup failed. run_id=%s",
                 self._run_id,
             )
+            OBJECT_OT_GenerateTexture._cleanup_render_outputs(self)
             if not is_background:
                 wm.progress_end()
                 context.window.cursor_set("DEFAULT")

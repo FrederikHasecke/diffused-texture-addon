@@ -158,6 +158,34 @@ def test_probe_cycles_ui_capability_reports_inconclusive_when_devices_missing() 
     assert "inconclusive" in capability.message.lower()
 
 
+def test_resolve_cycles_render_selection_falls_back_to_cpu_when_devices_missing() -> None:
+    runtime_capability, _, context, _ = _load_runtime_capability(
+        available_backends=("CUDA",),
+        device_uses=None,
+    )
+
+    selection = runtime_capability.resolve_cycles_render_selection(context, apply=False)
+
+    assert selection.cycles_backend is None
+    assert selection.scene_render_device == "CPU"
+    assert selection.can_render
+    assert "CPU" in selection.message
+
+
+def test_resolve_cycles_render_selection_falls_back_to_cpu_when_backend_missing() -> None:
+    runtime_capability, _, context, _ = _load_runtime_capability(
+        available_backends=("CUDA",),
+        device_uses={"CPU": True},
+    )
+
+    selection = runtime_capability.resolve_cycles_render_selection(context, apply=False)
+
+    assert selection.cycles_backend is None
+    assert selection.scene_render_device == "CPU"
+    assert selection.can_render
+    assert "CPU" in selection.message
+
+
 def test_resolve_cycles_render_selection_failure_includes_probe_details() -> None:
     runtime_capability, _, context, _ = _load_runtime_capability(
         available_backends=("CUDA",),

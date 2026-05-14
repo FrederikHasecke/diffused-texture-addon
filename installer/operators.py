@@ -151,6 +151,16 @@ class InstallDepsOperator(bpy.types.Operator):
         prefs = bpy.context.preferences.addons[
             ".".join(__package__.split(".")[:-1])
         ].preferences
+        try:
+            runtime_spec = resolve_runtime_spec(
+                blender_version=bpy.app.version,
+                python_version=sys.version_info[:2],
+            )
+        except ValueError as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        runtime_pkgs = list(runtime_spec.runtime_requirements)
+
         channel = normalize_choice(prefs.cuda_variant)
         install_channel, torch_requirement, install_note = resolve_torch_install(
             channel,
@@ -164,12 +174,6 @@ class InstallDepsOperator(bpy.types.Operator):
 
         previous_target = deps_target_dir()
         target = new_deps_target_dir()
-
-        runtime_spec = resolve_runtime_spec(
-            blender_version=bpy.app.version,
-            python_version=sys.version_info[:2],
-        )
-        runtime_pkgs = list(runtime_spec.runtime_requirements)
 
         env = clean_pip_env()
         _logger.info(

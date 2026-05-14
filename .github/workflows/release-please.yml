@@ -53,8 +53,7 @@ jobs:
             --exclude='.git/' --exclude='.github/' --exclude='.githooks/' --exclude='__pycache__/' \
             --exclude='.vscode/' --exclude='.ruff_cache/' --exclude='.pytest_cache/' \
             --exclude='documentation/' --exclude='tests/' --exclude='images/' \
-            --exclude='scratchbook/' --exclude='*.md' --exclude='LICENSE' \
-            --exclude='NOTICE' --exclude='Dockerfile' --exclude='requirements*.txt' \
+            --exclude='scratchbook/' --exclude='*.md' --exclude='Dockerfile' --exclude='requirements*.txt' \
             --exclude='wheels*/' --exclude='scripts/' \
             --exclude='release-please-config.json' --exclude='.release-please-manifest.json' \
             ./ dist/addon/

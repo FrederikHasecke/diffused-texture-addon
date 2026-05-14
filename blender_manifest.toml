@@ -37,8 +37,6 @@ paths_exclude_pattern = [
   "scratchbook/",
   "scripts/",
   "*.md",
-  "LICENSE",
-  "NOTICE",
   "release-please-config.json",
   "tests/",
   "pytest.ini",

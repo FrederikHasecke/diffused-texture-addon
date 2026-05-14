@@ -193,7 +193,7 @@ def _backend_has_enabled_device(
     _refresh_cycles_devices(preferences)
     devices = _flatten_cycles_devices(getattr(preferences, "devices", None))
     if not devices:
-        return True
+        return False
 
     matching = [
         device
@@ -201,7 +201,7 @@ def _backend_has_enabled_device(
         if str(getattr(device, "type", "")).upper() == backend
     ]
     if not matching:
-        return True
+        return False
 
     return any(bool(getattr(device, "use", True)) for device in matching)
 

@@ -109,6 +109,7 @@ def _load_blender_operations_module() -> ModuleType:
     render_setup_module = ModuleType(f"{package_name}.render_setup")
     render_setup_module.create_cameras_on_sphere = lambda *args, **kwargs: []
     render_setup_module.create_cameras_on_two_rings = lambda *args, **kwargs: []
+    render_setup_module.clear_render_output_paths = lambda *args, **kwargs: None
     render_setup_module.find_output_node_image_path = lambda *args, **kwargs: ""
     render_setup_module.get_output_node_directory = lambda *args, **kwargs: ""
     render_setup_module.set_output_node_directory = lambda *args, **kwargs: None

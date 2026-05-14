@@ -140,3 +140,19 @@ def test_uv_stitch_pass_leaves_texture_unchanged_without_topology_links() -> Non
     stitched = uv_stitch_pass.uv_stitch_pass(texture, uv_assets)
 
     assert np.array_equal(stitched, texture)
+
+
+def test_accumulate_stitch_confidence_counts_uv_origin_texels() -> None:
+    uv_stitch_pass = _load_uv_stitch_pass_module()
+    uv_image = np.zeros((2, 2, 4), dtype=np.float32)
+    uv_image[0, 0] = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
+    facing_image = np.zeros((2, 2), dtype=np.float32)
+    facing_image[0, 0] = 0.5
+
+    confidence = uv_stitch_pass.accumulate_stitch_confidence(
+        {"uv": [uv_image], "facing": [facing_image]},
+        texture_resolution=4,
+    )
+
+    assert confidence[3, 0] > 0.5
+    assert np.count_nonzero(confidence) == 1
