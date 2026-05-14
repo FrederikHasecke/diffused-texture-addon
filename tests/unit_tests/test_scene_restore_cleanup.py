@@ -1,10 +1,12 @@
 import importlib
 import sys
+import types
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
 
+import numpy as np
 import pytest
 
 
@@ -53,6 +55,12 @@ def _load_addon_submodule(submodule: str):
     texture_generation = ModuleType(f"{package_name}.texture_generation")
     texture_generation.load_multiview_images = lambda *args, **kwargs: {}  # noqa: ARG005
     texture_generation.run_texture_generation = lambda *args, **kwargs: None  # noqa: ARG005
+    runtime_capability = ModuleType(f"{package_name}.runtime_capability")
+    runtime_capability.get_runtime_capability = lambda context: SimpleNamespace(  # noqa: ARG005
+        diffusion_dependencies_importable=True,
+        can_generate=True,
+        message="Generation ready.",
+    )
 
     modules = {
         package_name: package_module,
@@ -61,6 +69,7 @@ def _load_addon_submodule(submodule: str):
     }
     if submodule == "operators":
         modules[f"{package_name}.texture_generation"] = texture_generation
+        modules[f"{package_name}.runtime_capability"] = runtime_capability
 
     with patch.dict(sys.modules, modules):
         return importlib.import_module(f"{package_name}.{submodule}")
@@ -130,6 +139,7 @@ def test_execute_restores_scene_when_render_fails(
         diffused_texture_operator_running=False,
         diffused_texture_operator_done=False,
         diffused_texture_operator_error="",
+        diffused_texture_operator_cancel_requested=False,
     )
     context = SimpleNamespace(
         scene=scene,
@@ -153,10 +163,747 @@ def test_execute_restores_scene_when_render_fails(
             scene_obj.diffused_texture_operator_done = done
             scene_obj.diffused_texture_operator_error = error
 
-    result = operators.OBJECT_OT_GenerateTexture.execute(_FakeOperator(), context)
+    operator = _FakeOperator()
+    operator._should_cancel = types.MethodType(  # type: ignore[attr-defined]
+        operators.OBJECT_OT_GenerateTexture._should_cancel,
+        operator,
+    )
+    result = operators.OBJECT_OT_GenerateTexture.execute(operator, context)
 
     assert result == {"CANCELLED"}
     assert restore_calls == [(scene_backup, [])]
+
+
+def test_execute_blocks_before_render_when_runtime_capability_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operators = _load_addon_submodule("operators")
+
+    selected_obj = object()
+    render_called = False
+    reported: list[tuple[set[str], str]] = []
+
+    monkeypatch.setattr(
+        operators,
+        "extract_process_parameter_from_context",
+        lambda context: SimpleNamespace(sd_version="sd15", output_path="C:/tmp"),
+    )
+    monkeypatch.setattr(operators, "require_supported_sd_version", lambda version: None)
+    monkeypatch.setattr(
+        operators,
+        "get_runtime_capability",
+        lambda context: SimpleNamespace(
+            diffusion_dependencies_importable=False,
+            can_generate=False,
+            diffusion_environment_warning=None,
+            message=(
+                "Dependency backend: rocm6.3. Cycles render: CPU. "
+                "Diffusion dependencies are not importable."
+            ),
+        ),
+    )
+
+    def _render_views(context, obj):  # noqa: ARG001
+        nonlocal render_called
+        render_called = True
+        return {}, []
+
+    monkeypatch.setattr(operators, "render_views", _render_views)
+    monkeypatch.setattr(
+        operators,
+        "bpy",
+        SimpleNamespace(
+            data=SimpleNamespace(
+                objects=SimpleNamespace(get=lambda name: selected_obj),
+            ),
+        ),
+    )
+
+    class _WindowManager:
+        def progress_begin(self, start: int, end: int) -> None:  # noqa: ARG002
+            return
+
+        def progress_update(self, value: int) -> None:  # noqa: ARG002
+            return
+
+        def progress_end(self) -> None:
+            return
+
+    class _Window:
+        def cursor_set(self, value: str) -> None:  # noqa: ARG002
+            return
+
+    scene = SimpleNamespace(
+        my_mesh_object="Cube",
+        operation_mode="PARALLEL_IMG",
+        input_texture=None,
+        diffused_texture_operator_running=False,
+        diffused_texture_operator_done=False,
+        diffused_texture_operator_error="",
+        diffused_texture_operator_cancel_requested=False,
+    )
+    context = SimpleNamespace(
+        scene=scene,
+        window_manager=_WindowManager(),
+        window=_Window(),
+    )
+
+    class _FakeOperator:
+        def report(self, levels: set[str], message: str) -> None:
+            reported.append((levels, message))
+
+        def _set_scene_status(
+            self,
+            scene_obj,
+            *,
+            running: bool,
+            done: bool,
+            error: str = "",
+        ) -> None:
+            scene_obj.diffused_texture_operator_running = running
+            scene_obj.diffused_texture_operator_done = done
+            scene_obj.diffused_texture_operator_error = error
+
+    operator = _FakeOperator()
+    operator._should_cancel = types.MethodType(  # type: ignore[attr-defined]
+        operators.OBJECT_OT_GenerateTexture._should_cancel,
+        operator,
+    )
+    result = operators.OBJECT_OT_GenerateTexture.execute(operator, context)
+
+    assert result == {"CANCELLED"}
+    assert not render_called
+    assert scene.diffused_texture_operator_error.startswith(
+        "Diffusion dependencies are not importable."
+    )
+    assert reported == [
+        (
+            {"ERROR"},
+            "Diffusion dependencies are not importable. Install Python Dependencies and restart Blender.",
+        ),
+    ]
+
+
+def test_execute_continues_when_cycles_status_is_inconclusive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operators = _load_addon_submodule("operators")
+
+    selected_obj = object()
+    render_called = False
+
+    monkeypatch.setattr(
+        operators,
+        "extract_process_parameter_from_context",
+        lambda context: SimpleNamespace(sd_version="sd15", output_path="C:/tmp"),
+    )
+    monkeypatch.setattr(operators, "require_supported_sd_version", lambda version: None)
+    monkeypatch.setattr(
+        operators,
+        "get_runtime_capability",
+        lambda context: SimpleNamespace(
+            diffusion_dependencies_importable=True,
+            can_generate=False,
+            message=(
+                "Cycles capability is inconclusive in preferences; "
+                "render-time setup will choose a device."
+            ),
+        ),
+    )
+
+    def _raise_render_error(context, obj):  # noqa: ARG001
+        nonlocal render_called
+        render_called = True
+        msg = "forced render failure"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(
+        operators,
+        "prepare_scene",
+        lambda obj: {"target_object": selected_obj},
+    )
+    monkeypatch.setattr(operators, "render_views", _raise_render_error)
+    monkeypatch.setattr(operators, "restore_scene", lambda backup, cameras: None)
+    monkeypatch.setattr(
+        operators,
+        "bpy",
+        SimpleNamespace(
+            data=SimpleNamespace(
+                objects=SimpleNamespace(get=lambda name: selected_obj),
+            ),
+        ),
+    )
+
+    class _WindowManager:
+        def progress_begin(self, start: int, end: int) -> None:  # noqa: ARG002
+            return
+
+        def progress_update(self, value: int) -> None:  # noqa: ARG002
+            return
+
+        def progress_end(self) -> None:
+            return
+
+    class _Window:
+        def cursor_set(self, value: str) -> None:  # noqa: ARG002
+            return
+
+    scene = SimpleNamespace(
+        my_mesh_object="Cube",
+        operation_mode="PARALLEL_IMG",
+        input_texture=None,
+        diffused_texture_operator_running=False,
+        diffused_texture_operator_done=False,
+        diffused_texture_operator_error="",
+        diffused_texture_operator_cancel_requested=False,
+    )
+    context = SimpleNamespace(
+        scene=scene,
+        window_manager=_WindowManager(),
+        window=_Window(),
+    )
+
+    class _FakeOperator:
+        def report(self, levels: set[str], message: str) -> None:  # noqa: ARG002
+            return
+
+        def _set_scene_status(
+            self,
+            scene_obj,
+            *,
+            running: bool,
+            done: bool,
+            error: str = "",
+        ) -> None:
+            scene_obj.diffused_texture_operator_running = running
+            scene_obj.diffused_texture_operator_done = done
+            scene_obj.diffused_texture_operator_error = error
+
+    operator = _FakeOperator()
+    operator._should_cancel = types.MethodType(  # type: ignore[attr-defined]
+        operators.OBJECT_OT_GenerateTexture._should_cancel,
+        operator,
+    )
+    result = operators.OBJECT_OT_GenerateTexture.execute(operator, context)
+
+    assert result == {"CANCELLED"}
+    assert render_called
+
+
+def test_execute_rejects_disabled_uv_mode_before_scene_prep(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operators = _load_addon_submodule("operators")
+
+    selected_obj = object()
+    reported: list[tuple[set[str], str]] = []
+
+    monkeypatch.setattr(
+        operators,
+        "prepare_scene",
+        lambda obj: (_ for _ in ()).throw(AssertionError("prepare_scene")),  # noqa: ARG005, B023
+    )
+    monkeypatch.setattr(
+        operators,
+        "render_views",
+        lambda context, obj: (_ for _ in ()).throw(AssertionError("render_views")),  # noqa: ARG005, B023
+    )
+    monkeypatch.setattr(
+        operators,
+        "build_uv_pass_assets",
+        lambda context, obj: (_ for _ in ()).throw(
+            AssertionError("build_uv_pass_assets")
+        ),
+    )
+    monkeypatch.setattr(
+        operators,
+        "load_multiview_images",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("load_multiview_images")
+        ),
+    )
+    monkeypatch.setattr(
+        operators,
+        "require_supported_sd_version",
+        lambda version: (_ for _ in ()).throw(
+            AssertionError("require_supported_sd_version")
+        ),
+    )
+    monkeypatch.setattr(
+        operators,
+        "get_runtime_capability",
+        lambda context: (_ for _ in ()).throw(AssertionError("get_runtime_capability")),
+    )
+    monkeypatch.setattr(
+        operators,
+        "bpy",
+        SimpleNamespace(
+            data=SimpleNamespace(
+                objects=SimpleNamespace(get=lambda name: selected_obj),
+            ),
+            app=SimpleNamespace(background=False),
+        ),
+    )
+
+    class _WindowManager:
+        def progress_begin(self, start: int, end: int) -> None:  # noqa: ARG002
+            return
+
+        def progress_update(self, value: int) -> None:  # noqa: ARG002
+            return
+
+        def progress_end(self) -> None:
+            return
+
+        def event_timer_add(self, interval: float, window=None):  # noqa: ARG002
+            return object()
+
+        def modal_handler_add(self, operator) -> None:  # noqa: ARG002
+            return
+
+    class _Window:
+        def cursor_set(self, value: str) -> None:  # noqa: ARG002
+            return
+
+    scene = SimpleNamespace(
+        my_mesh_object="Cube",
+        operation_mode="UV_PASS",
+        num_loras=0,
+        input_texture=None,
+        diffused_texture_operator_running=False,
+        diffused_texture_operator_done=False,
+        diffused_texture_operator_error="",
+        diffused_texture_operator_cancel_requested=True,
+    )
+    context = SimpleNamespace(
+        scene=scene,
+        window_manager=_WindowManager(),
+        window=_Window(),
+    )
+
+    class _FakeOperator:
+        def report(self, levels: set[str], message: str) -> None:
+            reported.append((levels, message))
+
+        def _set_scene_status(
+            self,
+            scene_obj,
+            *,
+            running: bool,
+            done: bool,
+            error: str = "",
+        ) -> None:
+            scene_obj.diffused_texture_operator_running = running
+            scene_obj.diffused_texture_operator_done = done
+            scene_obj.diffused_texture_operator_error = error
+
+    operator = _FakeOperator()
+    operator._should_cancel = types.MethodType(  # type: ignore[attr-defined]
+        operators.OBJECT_OT_GenerateTexture._should_cancel,
+        operator,
+    )
+    result = operators.OBJECT_OT_GenerateTexture.execute(operator, context)
+
+    expected_error = (
+        "Operation mode 'UV_PASS' is not supported. Dedicated UV mode is "
+        "currently disabled."
+    )
+    assert result == {"CANCELLED"}
+    assert scene.diffused_texture_operator_error == expected_error
+    assert reported == [
+        (
+            {"ERROR"},
+            f"Execution error: {expected_error}",
+        ),
+    ]
+
+
+def test_execute_builds_uv_assets_for_image_mode_follow_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operators = _load_addon_submodule("operators")
+
+    selected_obj = object()
+    scene_backup = {"target_object": selected_obj}
+    restore_calls = []
+    render_img_folders = {"uv": "C:/tmp/render_uv"}
+    loaded_multiview = {"uv": [], "facing": []}
+    built_assets = operators.UVPassAssets(
+        normal_map=np.zeros((2, 2, 4), dtype=np.float32),
+        position_map=np.zeros((2, 2, 4), dtype=np.float32),
+        uv_layout=np.zeros((2, 2, 4), dtype=np.float32),
+        surface_mask=np.zeros((2, 2), dtype=np.uint8),
+    )
+    thread_state: dict[str, object] = {}
+
+    monkeypatch.setattr(operators, "prepare_scene", lambda obj: scene_backup)
+    monkeypatch.setattr(
+        operators,
+        "render_views",
+        lambda context, obj: (render_img_folders, []),  # noqa: ARG005
+    )
+    monkeypatch.setattr(
+        operators,
+        "load_multiview_images",
+        lambda folders: loaded_multiview if folders is render_img_folders else None,
+    )
+    monkeypatch.setattr(
+        operators,
+        "build_uv_pass_assets",
+        lambda context, obj: built_assets,  # noqa: ARG005
+    )
+    monkeypatch.setattr(
+        operators,
+        "extract_process_parameter_from_context",
+        lambda context: SimpleNamespace(
+            sd_version="sd15",
+            output_path="C:/tmp",
+            operation_mode="PARALLEL_IMG",
+        ),
+    )
+    monkeypatch.setattr(operators, "require_supported_sd_version", lambda version: None)
+    monkeypatch.setattr(
+        operators,
+        "get_runtime_capability",
+        lambda context: SimpleNamespace(
+            diffusion_dependencies_importable=True,
+            can_generate=True,
+            message="Generation ready.",
+        ),
+    )
+    monkeypatch.setattr(
+        operators,
+        "restore_scene",
+        lambda backup, cameras: restore_calls.append((backup, cameras)),
+    )
+
+    class _FakeThread:
+        def __init__(self, target, args, daemon: bool) -> None:
+            thread_state["target"] = target
+            thread_state["args"] = args
+            thread_state["daemon"] = daemon
+
+        def start(self) -> None:
+            thread_state["started"] = True
+
+        def is_alive(self) -> bool:
+            return False
+
+    monkeypatch.setattr(operators.threading, "Thread", _FakeThread)
+    monkeypatch.setattr(
+        operators,
+        "bpy",
+        SimpleNamespace(
+            data=SimpleNamespace(
+                objects=SimpleNamespace(get=lambda name: selected_obj),
+            ),
+            app=SimpleNamespace(background=False),
+        ),
+    )
+
+    class _WindowManager:
+        def progress_begin(self, start: int, end: int) -> None:  # noqa: ARG002
+            return
+
+        def progress_update(self, value: int) -> None:  # noqa: ARG002
+            return
+
+        def progress_end(self) -> None:
+            return
+
+        def event_timer_add(self, interval: float, window=None):  # noqa: ARG002
+            return object()
+
+        def modal_handler_add(self, operator) -> None:  # noqa: ARG002
+            return
+
+    class _Window:
+        def cursor_set(self, value: str) -> None:  # noqa: ARG002
+            return
+
+    scene = SimpleNamespace(
+        my_mesh_object="Cube",
+        operation_mode="PARALLEL_IMG",
+        input_texture=None,
+        diffused_texture_operator_running=False,
+        diffused_texture_operator_done=False,
+        diffused_texture_operator_error="",
+        diffused_texture_operator_cancel_requested=False,
+    )
+    context = SimpleNamespace(
+        scene=scene,
+        window_manager=_WindowManager(),
+        window=_Window(),
+    )
+
+    class _FakeOperator:
+        def report(self, levels: set[str], message: str) -> None:  # noqa: ARG002
+            return
+
+        def _set_scene_status(
+            self,
+            scene_obj,
+            *,
+            running: bool,
+            done: bool,
+            error: str = "",
+        ) -> None:
+            scene_obj.diffused_texture_operator_running = running
+            scene_obj.diffused_texture_operator_done = done
+            scene_obj.diffused_texture_operator_error = error
+
+    operator = _FakeOperator()
+    operator._should_cancel = types.MethodType(  # type: ignore[attr-defined]
+        operators.OBJECT_OT_GenerateTexture._should_cancel,
+        operator,
+    )
+    operator._run_texture_generation_thread = types.MethodType(  # type: ignore[attr-defined]
+        operators.OBJECT_OT_GenerateTexture._run_texture_generation_thread,
+        operator,
+    )
+    result = operators.OBJECT_OT_GenerateTexture.execute(operator, context)
+
+    assert result == {"RUNNING_MODAL"}
+    assert restore_calls == [(scene_backup, [])]
+    assert operator.render_img_folders == render_img_folders
+    assert thread_state["started"] is True
+    args = thread_state["args"]
+    assert isinstance(args, tuple)
+    assert args[4] is loaded_multiview
+    assert args[7] is built_assets
+
+
+def test_finalize_generation_cleans_render_outputs_on_cancel(
+    tmp_path: Path,
+) -> None:
+    operators = _load_addon_submodule("operators")
+
+    for directory_name in [
+        "RenderOutput",
+        "render_depth",
+        "render_normal",
+        "render_uv",
+        "render_facing",
+    ]:
+        directory = tmp_path / directory_name
+        directory.mkdir(parents=True)
+        (directory / "stale.exr").write_text("stale", encoding="utf-8")
+
+    reported: list[tuple[set[str], str]] = []
+    scene = SimpleNamespace(
+        diffused_texture_operator_running=True,
+        diffused_texture_operator_done=False,
+        diffused_texture_operator_error="",
+    )
+    context = SimpleNamespace(scene=scene)
+
+    class _FakeOperator:
+        def report(self, levels: set[str], message: str) -> None:
+            reported.append((levels, message))
+
+        def _set_scene_status(
+            self,
+            scene_obj,
+            *,
+            running: bool,
+            done: bool,
+            error: str = "",
+        ) -> None:
+            scene_obj.diffused_texture_operator_running = running
+            scene_obj.diffused_texture_operator_done = done
+            scene_obj.diffused_texture_operator_error = error
+
+    operator = _FakeOperator()
+    operator._run_id = "cancel123"
+    operator._cancelled = True
+    operator._error = None
+    operator._return_texture = []
+    operator._output_file = str(tmp_path)
+    operator._start_time = None
+
+    result = operators.OBJECT_OT_GenerateTexture._finalize_generation(operator, context)
+
+    assert result == {"CANCELLED"}
+    assert scene.diffused_texture_operator_running is False
+    assert scene.diffused_texture_operator_done is False
+    assert scene.diffused_texture_operator_error == operators.CANCELLED_BY_USER_MESSAGE
+    assert reported == [({"INFO"}, "Texture generation cancelled.")]
+    for directory_name in [
+        "RenderOutput",
+        "render_depth",
+        "render_normal",
+        "render_uv",
+        "render_facing",
+    ]:
+        assert not (tmp_path / directory_name).exists()
+
+
+def test_execute_cleans_render_outputs_when_input_loading_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    operators = _load_addon_submodule("operators")
+
+    selected_obj = object()
+    scene_backup = {"target_object": selected_obj}
+    restore_calls = []
+    reported: list[tuple[set[str], str]] = []
+
+    def _render_views(context, obj):  # noqa: ARG001
+        render_output = tmp_path / "RenderOutput"
+        render_output.mkdir(parents=True)
+        (render_output / "render_0001.exr").write_text("stale", encoding="utf-8")
+
+        render_img_folders = {
+            "depth": str(tmp_path / "render_depth"),
+            "normal": str(tmp_path / "render_normal"),
+            "uv": str(tmp_path / "render_uv"),
+            "facing": str(tmp_path / "render_facing"),
+        }
+        for folder_path in render_img_folders.values():
+            camera_folder = Path(folder_path) / "camera_00"
+            camera_folder.mkdir(parents=True)
+            (camera_folder / "stale.exr").write_text("stale", encoding="utf-8")
+
+        return render_img_folders, []
+
+    monkeypatch.setattr(operators, "prepare_scene", lambda obj: scene_backup)
+    monkeypatch.setattr(operators, "render_views", _render_views)
+    monkeypatch.setattr(
+        operators,
+        "load_multiview_images",
+        lambda folders: (_ for _ in ()).throw(RuntimeError("forced load failure")),
+    )
+    monkeypatch.setattr(
+        operators,
+        "extract_process_parameter_from_context",
+        lambda context: SimpleNamespace(
+            sd_version="sd15",
+            output_path=str(tmp_path),
+            operation_mode="PARALLEL_IMG",
+        ),
+    )
+    monkeypatch.setattr(operators, "require_supported_sd_version", lambda version: None)
+    monkeypatch.setattr(
+        operators,
+        "get_runtime_capability",
+        lambda context: SimpleNamespace(
+            diffusion_dependencies_importable=True,
+            can_generate=True,
+            message="Generation ready.",
+        ),
+    )
+    monkeypatch.setattr(
+        operators,
+        "restore_scene",
+        lambda backup, cameras: restore_calls.append((backup, cameras)),
+    )
+    monkeypatch.setattr(
+        operators,
+        "bpy",
+        SimpleNamespace(
+            data=SimpleNamespace(
+                objects=SimpleNamespace(get=lambda name: selected_obj),
+            ),
+            app=SimpleNamespace(background=False),
+        ),
+    )
+
+    class _WindowManager:
+        def progress_begin(self, start: int, end: int) -> None:  # noqa: ARG002
+            return
+
+        def progress_update(self, value: int) -> None:  # noqa: ARG002
+            return
+
+        def progress_end(self) -> None:
+            return
+
+        def event_timer_add(self, interval: float, window=None):  # noqa: ARG002
+            return object()
+
+        def modal_handler_add(self, operator) -> None:  # noqa: ARG002
+            return
+
+    class _Window:
+        def cursor_set(self, value: str) -> None:  # noqa: ARG002
+            return
+
+    scene = SimpleNamespace(
+        my_mesh_object="Cube",
+        operation_mode="PARALLEL_IMG",
+        input_texture=None,
+        diffused_texture_operator_running=False,
+        diffused_texture_operator_done=False,
+        diffused_texture_operator_error="",
+        diffused_texture_operator_cancel_requested=False,
+    )
+    context = SimpleNamespace(
+        scene=scene,
+        window_manager=_WindowManager(),
+        window=_Window(),
+    )
+
+    class _FakeOperator:
+        def report(self, levels: set[str], message: str) -> None:
+            reported.append((levels, message))
+
+        def _set_scene_status(
+            self,
+            scene_obj,
+            *,
+            running: bool,
+            done: bool,
+            error: str = "",
+        ) -> None:
+            scene_obj.diffused_texture_operator_running = running
+            scene_obj.diffused_texture_operator_done = done
+            scene_obj.diffused_texture_operator_error = error
+
+    operator = _FakeOperator()
+    operator._should_cancel = types.MethodType(  # type: ignore[attr-defined]
+        operators.OBJECT_OT_GenerateTexture._should_cancel,
+        operator,
+    )
+    result = operators.OBJECT_OT_GenerateTexture.execute(operator, context)
+
+    assert result == {"CANCELLED"}
+    assert restore_calls == [(scene_backup, [])]
+    assert scene.diffused_texture_operator_running is False
+    assert scene.diffused_texture_operator_done is False
+    assert scene.diffused_texture_operator_error == "forced load failure"
+    assert reported == [({"ERROR"}, "Execution error: forced load failure")]
+    for directory_name in [
+        "RenderOutput",
+        "render_depth",
+        "render_normal",
+        "render_uv",
+        "render_facing",
+    ]:
+        assert not (tmp_path / directory_name).exists()
+
+
+def test_cancel_operator_marks_scene_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    operators = _load_addon_submodule("operators")
+
+    reported: list[tuple[set[str], str]] = []
+    scene = SimpleNamespace(
+        diffused_texture_operator_running=True,
+        diffused_texture_operator_cancel_requested=False,
+    )
+    context = SimpleNamespace(scene=scene)
+
+    class _FakeOperator:
+        def report(self, levels: set[str], message: str) -> None:
+            reported.append((levels, message))
+
+    result = operators.OBJECT_OT_CancelTextureGeneration.execute(
+        _FakeOperator(), context
+    )
+
+    assert result == {"FINISHED"}
+    assert scene.diffused_texture_operator_cancel_requested is True
+    assert reported == [({"INFO"}, "Cancelling texture generation...")]
 
 
 def test_render_views_cleans_up_cameras_when_render_fails(
@@ -187,7 +934,6 @@ def test_render_views_cleans_up_cameras_when_render_fails(
         "depth": SimpleNamespace(directory="C:/tmp/render_depth"),
         "normal": SimpleNamespace(directory="C:/tmp/render_normal"),
         "uv": SimpleNamespace(directory="C:/tmp/render_uv"),
-        "position": SimpleNamespace(directory="C:/tmp/render_position"),
     }
     monkeypatch.setattr(
         blender_operations,
@@ -238,6 +984,7 @@ def test_render_views_cleans_up_cameras_when_render_fails(
         num_cameras="4",
         render_resolution="1024",
         camera="OriginalCamera",
+        output_path="C:/tmp",
     )
     context = SimpleNamespace(scene=scene)
     obj = SimpleNamespace(dimensions=(1.0, 2.0, 3.0))
@@ -250,6 +997,117 @@ def test_render_views_cleans_up_cameras_when_render_fails(
         ("RenderCam_A", True),
         ("RenderCam_B", True),
     ]
+
+
+def test_render_views_clears_previous_render_outputs_before_rendering(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    blender_operations = _load_addon_submodule("blender_operations")
+
+    stale_paths = [
+        tmp_path / "RenderOutput" / "render_0001.exr",
+        tmp_path / "render_depth" / "camera_00" / "depth_0001.exr",
+        tmp_path / "render_normal" / "camera_00" / "normal_0001.exr",
+        tmp_path / "render_uv" / "camera_00" / "uv_0001.exr",
+        tmp_path / "render_facing" / "camera_00" / "facing_0001.exr",
+    ]
+    for stale_path in stale_paths:
+        stale_path.parent.mkdir(parents=True, exist_ok=True)
+        stale_path.write_text("stale", encoding="utf-8")
+
+    cam_a = SimpleNamespace(name="RenderCam_A")
+    object_store = {cam_a.name: cam_a}
+
+    monkeypatch.setattr(
+        blender_operations,
+        "create_cameras_on_two_rings",
+        lambda **kwargs: [cam_a],
+    )
+
+    output_nodes = {
+        "depth": SimpleNamespace(directory=str(tmp_path / "render_depth")),
+        "normal": SimpleNamespace(directory=str(tmp_path / "render_normal")),
+        "uv": SimpleNamespace(directory=str(tmp_path / "render_uv")),
+    }
+    monkeypatch.setattr(
+        blender_operations,
+        "setup_render_settings",
+        lambda context, resolution: output_nodes,  # noqa: ARG005
+    )
+    monkeypatch.setattr(
+        blender_operations,
+        "get_output_node_directory",
+        lambda output_node: output_node.directory,
+    )
+    monkeypatch.setattr(
+        blender_operations,
+        "set_output_node_directory",
+        lambda output_node, output_dir: setattr(
+            output_node, "directory", str(output_dir)
+        ),
+    )
+    monkeypatch.setattr(
+        blender_operations,
+        "save_normals_in_camera_coordinates",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr(
+        blender_operations,
+        "save_depth_condition",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr(
+        blender_operations,
+        "save_facing_images",
+        lambda **kwargs: None,
+    )
+
+    render_calls = {"count": 0}
+
+    def _render(write_still: bool = True) -> None:  # noqa: ARG001
+        render_calls["count"] += 1
+
+    monkeypatch.setattr(
+        blender_operations,
+        "bpy",
+        SimpleNamespace(
+            context=SimpleNamespace(
+                view_layer=SimpleNamespace(update=lambda: None),
+            ),
+            ops=SimpleNamespace(
+                render=SimpleNamespace(render=_render),
+            ),
+            data=SimpleNamespace(objects=object_store),
+        ),
+    )
+
+    scene = SimpleNamespace(
+        num_cameras="4",
+        render_resolution="1024",
+        camera="OriginalCamera",
+        output_path=str(tmp_path),
+        my_uv_map="",
+    )
+    context = SimpleNamespace(scene=scene)
+    obj = SimpleNamespace(dimensions=(1.0, 2.0, 3.0))
+
+    render_img_folders, cameras = blender_operations.render_views(context, obj)
+
+    assert cameras == [cam_a]
+    assert render_calls["count"] == 1
+    assert render_img_folders == {
+        "depth": str(tmp_path / "render_depth"),
+        "normal": str(tmp_path / "render_normal"),
+        "uv": str(tmp_path / "render_uv"),
+        "facing": str(tmp_path / "render_facing"),
+    }
+    assert (tmp_path / "render_depth" / "camera_00").is_dir()
+    assert (tmp_path / "render_normal" / "camera_00").is_dir()
+    assert (tmp_path / "render_uv" / "camera_00").is_dir()
+    assert (tmp_path / "render_facing").is_dir()
+    for stale_path in stale_paths:
+        assert not stale_path.exists()
 
 
 def test_restore_scene_restores_camera_and_render_state(

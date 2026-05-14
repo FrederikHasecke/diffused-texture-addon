@@ -1,5 +1,5 @@
 import bpy  # noqa: I001
-from bpy.props import BoolProperty, PointerProperty, FloatProperty  # type: ignore  # noqa: PGH003
+from bpy.props import BoolProperty, PointerProperty, FloatProperty
 
 
 def update_ipadapter_image(self: bpy.types.Scene, context: bpy.types.Context) -> None:  # noqa: ARG001
@@ -33,6 +33,6 @@ def register_ipadapter_properties() -> None:
 
 
 def unregister_ipadapter_properties() -> None:
-    del bpy.types.Scene.use_ipadapter
-    del bpy.types.Scene.ipadapter_image
-    del bpy.types.Scene.ipadapter_strength
+    for prop_name in ("use_ipadapter", "ipadapter_image", "ipadapter_strength"):
+        if hasattr(bpy.types.Scene, prop_name):
+            delattr(bpy.types.Scene, prop_name)

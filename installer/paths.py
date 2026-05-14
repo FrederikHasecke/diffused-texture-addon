@@ -1,16 +1,22 @@
 import importlib
 import os
+import site
 import subprocess
 import sys
 import time
-import tomllib
 from collections.abc import Callable
 from pathlib import Path
 from uuid import uuid4
 
 import bpy
 
+try:
+    from ..diagnostics import get_logger
+except ImportError:
+    from diagnostics import get_logger
+
 _ACTIVE_ENV_FILE = ".active"
+_logger = get_logger("installer.paths")
 
 
 def ensure_pip() -> None:
@@ -20,10 +26,6 @@ def ensure_pip() -> None:
         import ensurepip
 
         ensurepip.bootstrap()
-    subprocess.run(  # noqa: S603
-        [sys.executable, "-m", "pip", "install", "--upgrade", "pip"],
-        check=False,
-    )
 
 
 def deps_root_dir() -> Path:
@@ -94,7 +96,59 @@ def set_active_deps_target(path: Path) -> None:
     tmp.replace(marker)
 
 
-def run(cmd: list[str], env: dict[str, str] | None = None) -> tuple[int, str]:
+def _path_key(value: str) -> str:
+    try:
+        return os.path.normcase(str(Path(value).resolve()))
+    except Exception:  # noqa: BLE001
+        return os.path.normcase(os.path.normpath(value))
+
+
+def _dedupe_sys_path_entries() -> None:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for entry in sys.path:
+        key = _path_key(entry)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(entry)
+    sys.path[:] = deduped
+
+
+def activate_deps_import_path(path: Path) -> None:
+    """Ensure the addon dependency directory takes precedence on sys.path."""
+    path_str = str(path)
+    if path.exists():
+        # Process as a site dir first so bundled .pth files are honored.
+        site.addsitedir(path_str)
+    else:
+        sys.path.append(path_str)
+
+    _dedupe_sys_path_entries()
+    target_key = _path_key(path_str)
+    sys.path[:] = [entry for entry in sys.path if _path_key(entry) != target_key]
+    sys.path.insert(0, path_str)
+    importlib.invalidate_caches()
+
+
+def _format_command(cmd: list[str]) -> str:
+    return subprocess.list2cmdline(cmd)
+
+
+def _log_subprocess_output(label: str, output: str) -> None:
+    for line in output.splitlines():
+        _logger.debug("[%s] %s", label, line)
+
+
+def run(
+    cmd: list[str],
+    env: dict[str, str] | None = None,
+    *,
+    label: str | None = None,
+) -> tuple[int, str]:
+    command_label = label or Path(cmd[0]).name
+    started_at = time.monotonic()
+    _logger.debug("Starting subprocess [%s]: %s", command_label, _format_command(cmd))
     try:
         p = subprocess.run(  # noqa: S603
             cmd,
@@ -104,8 +158,21 @@ def run(cmd: list[str], env: dict[str, str] | None = None) -> tuple[int, str]:
             text=True,
             env=env,
         )
+        duration = time.monotonic() - started_at
+        _log_subprocess_output(command_label, p.stdout or "")
+        _logger.debug(
+            "Finished subprocess [%s] rc=%s duration=%.2fs",
+            command_label,
+            p.returncode,
+            duration,
+        )
         return p.returncode, p.stdout  # noqa: TRY300
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
+        _logger.exception(
+            "Subprocess launch failed [%s]: %s",
+            command_label,
+            _format_command(cmd),
+        )
         return 1, f"<exec failed: {e!s}>"
 
 
@@ -113,8 +180,13 @@ def run_stream(
     cmd: list[str],
     env: dict[str, str] | None = None,
     on_line: Callable[[str], None] | None = None,
+    *,
+    label: str | None = None,
 ) -> tuple[int, str]:
     output_lines: list[str] = []
+    command_label = label or Path(cmd[0]).name
+    started_at = time.monotonic()
+    _logger.debug("Starting subprocess [%s]: %s", command_label, _format_command(cmd))
     try:
         proc = subprocess.Popen(  # noqa: S603
             cmd,
@@ -128,20 +200,29 @@ def run_stream(
             for line in proc.stdout:
                 clean = line.rstrip("\n")
                 output_lines.append(clean)
+                _logger.debug("[%s] %s", command_label, clean)
                 if on_line is not None:
                     on_line(clean)
         rc = proc.wait()
+        duration = time.monotonic() - started_at
+        _logger.debug(
+            "Finished subprocess [%s] rc=%s duration=%.2fs",
+            command_label,
+            rc,
+            duration,
+        )
         return rc, "\n".join(output_lines)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
+        _logger.exception(
+            "Streaming subprocess launch failed [%s]: %s",
+            command_label,
+            _format_command(cmd),
+        )
         return 1, f"<exec failed: {e!s}>"
 
 
 def make_importable(path: Path) -> None:
-    path_str = str(path)
-    if path_str in sys.path:
-        sys.path.remove(path_str)
-    sys.path.insert(0, path_str)
-    importlib.invalidate_caches()
+    activate_deps_import_path(path)
 
 
 def clean_pip_env() -> dict[str, str]:
@@ -153,32 +234,3 @@ def clean_pip_env() -> dict[str, str]:
     env["PYTHONNOUSERSITE"] = "1"
     env["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
     return env
-
-
-def read_pyproject_runtime_deps(pyproject_path: Path) -> list[str]:
-    """Return [project].dependencies from pyproject.toml as list of requirement strings.
-
-    Filters out 'torch' and 'bpy' because the operator handles those specially.
-    """
-    if not pyproject_path.exists():
-        return []
-
-    with pyproject_path.open("rb") as f:
-        data = tomllib.load(f)
-    deps = list(data.get("project", {}).get("dependencies", []) or [])
-
-    if not deps:
-        msg = "No dependencies found in pyproject.toml"
-        raise ValueError(msg)
-
-    cleaned: list[str] = []
-    for d in deps:
-        s = str(d).strip()
-        # Avoid letting this pass through the generic install step
-        lower = s.lower()
-        if lower.startswith("torch"):  # torch, torch==x, torch>=x, torch~=x
-            continue
-        if lower.startswith("bpy"):
-            continue
-        cleaned.append(s)
-    return cleaned

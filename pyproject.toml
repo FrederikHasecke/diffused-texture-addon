@@ -3,44 +3,53 @@ name = "diffused_texture_addon"
 version = "0.2.0"
 description = "A Blender Addon for Generating Diffuse Textures on Meshes with Stable Diffusion"
 authors = [{ name = "Frederik Hasecke" }]
-requires-python = "==3.11.11"
+requires-python = ">=3.11,<3.14,!=3.12.*"
 dependencies = [
-    "numpy>=1.26,<2.0",
-    "pillow==12.0.0",
-    "opencv-python-headless>=4.11.0.86,<4.12",
-    "diffusers==0.36.0",
-    "transformers==4.56.2", # TODO(Frederik): https://github.com/huggingface/diffusers/issues/12436#issuecomment-3375629264
-    "accelerate==1.10.1",
-    "safetensors>=0.6.2",
-    "peft>=0.17.1",
+    "numpy>=1.26,<2.0; python_version < '3.13'",
+    "numpy>=2.3,<2.4; python_version >= '3.13'",
+    "pillow==12.2.0",
+    "opencv-python-headless==4.11.0.86; python_version < '3.13'",
+    "opencv-python-headless>=4.13.0.92; python_version >= '3.13'",
+    "diffusers>=0.38",
+    "transformers>=5.8.1", # TODO(Frederik): https://github.com/huggingface/diffusers/issues/12436#issuecomment-3375629264
+    "accelerate>=1.13.0",
+    "safetensors>=0.8.0rc0",
+    "peft>=0.19.1",
 ]
 
 [dependency-groups]
 dev = [
   "torch",
-  "bpy>=5.0.1",
-  "pytest>=9.0.2",
+  "bpy==5.1.0; python_version >= '3.13' and ((sys_platform == 'win32' and platform_machine == 'AMD64') or (sys_platform == 'linux' and platform_machine == 'x86_64'))",
+  "pytest>=9.0.3",
   "pytest-xdist>=3.6.1",
   "pytest-mock>=3.15.1",
-  "coverage>=7.13.4",
-  "ruff==0.15.2",
+  "coverage>=7.14.0",
+  "ruff>=0.15.12",
   "ty",
+  "dotenv>=0.9.9",
 ]
 
 [tool.uv.sources]
 torch = [
-  { index = "pytorch-cu130" }
+  { index = "pytorch-cu130", marker = "sys_platform == 'win32' or sys_platform == 'linux'" }
+]
+
+[tool.uv]
+override-dependencies = [
+  "numpy>=2.3,<2.4; python_version >= '3.13'",
 ]
 
 [[tool.uv.index]]
 name = "pytorch-cu130"
 url = "https://download.pytorch.org/whl/cu130"
+explicit = true
 
 
 [tool.ruff]
 line-length = 88
 indent-width = 4
-target-version = "py311"
+target-version = "py313"
 exclude = [
     "scratchbook/",
     "tests/"
@@ -62,7 +71,7 @@ docstring-code-format = false
 docstring-code-line-length = "dynamic"
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.13"
 strict = true
 ignore_missing_imports = true
 
@@ -70,4 +79,3 @@ ignore_missing_imports = true
 unresolved-attribute = "ignore"
 invalid-assignment = "ignore"
 unresolved-import = "ignore"
-possibly-unbound-attribute = "ignore"

@@ -1,5 +1,5 @@
 import bpy
-from bpy.props import FloatProperty, StringProperty  # type: ignore  # noqa: PGH003
+from bpy.props import FloatProperty, StringProperty
 
 
 def register_prompt_properties() -> None:
@@ -21,6 +21,6 @@ def register_prompt_properties() -> None:
 
 
 def unregister_prompt_properties() -> None:
-    del bpy.types.Scene.my_prompt
-    del bpy.types.Scene.my_negative_prompt
-    del bpy.types.Scene.guidance_scale
+    for prop_name in ("my_prompt", "my_negative_prompt", "guidance_scale"):
+        if hasattr(bpy.types.Scene, prop_name):
+            delattr(bpy.types.Scene, prop_name)

@@ -1,5 +1,7 @@
 import bpy
 
+from ..controlnet_inputs import is_image_operation_mode
+
 
 class OBJECT_OT_SelectPipette(bpy.types.Operator):
     """Operator to select and object."""
@@ -69,7 +71,7 @@ class OBJECT_PT_DiffusedTextureMainPanel(bpy.types.Panel):
     bl_category = "DiffusedTexture"
     bl_order = 0
 
-    def draw(self, context: bpy.types.Context) -> None:  # noqa: PLR0915
+    def draw(self, context: bpy.types.Context) -> None:  # noqa: C901, PLR0912, PLR0915
         """Draw Function.
 
         Args:
@@ -103,22 +105,23 @@ class OBJECT_PT_DiffusedTextureMainPanel(bpy.types.Panel):
             box_dt.prop(scene, "subgrid_cols", text="Subgrid Columns")
 
         box_dt.prop(scene, "mesh_complexity", text="Mesh Complexity")
-        box_dt.prop(scene, "num_cameras", text="Camera Views")
-
-        if scene.num_cameras == "16":
-            box_dt.label(
-                text="Warning: 16 cameras may freeze Blender or cause OOM",
-                icon="ERROR",
-            )
-
         box_dt.prop(scene, "texture_resolution", text="Texture Resolution")
-        box_dt.prop(scene, "render_resolution", text="Render Resolution")
+        if is_image_operation_mode(scene.operation_mode):
+            box_dt.prop(scene, "num_cameras", text="Camera Views")
 
-        if int(scene.render_resolution) <= int(scene.texture_resolution):
-            box_dt.label(
-                text="Render resolution should be at least 2x texture resolution",
-                icon="ERROR",
-            )
+            if scene.num_cameras == "16":
+                box_dt.label(
+                    text="Warning: 16 cameras may freeze Blender or cause OOM",
+                    icon="ERROR",
+                )
+
+            box_dt.prop(scene, "render_resolution", text="Render Resolution")
+
+            if int(scene.render_resolution) <= int(scene.texture_resolution):
+                box_dt.label(
+                    text="Render resolution should be at least 2x texture resolution",
+                    icon="ERROR",
+                )
 
         box_dt.prop(scene, "output_path", text="Output Path")
         if scene.output_path.startswith("//"):
@@ -170,8 +173,28 @@ class OBJECT_PT_DiffusedTextureMainPanel(bpy.types.Panel):
                 box.label(text="Enable it in Preferences > System > Network")
             row = layout.row()
             row.scale_y = 2.0
-            row.operator(
-                "object.generate_texture",
-                text="Start Texture Generation",
-                icon="SHADERFX",
-            )
+            if is_running:
+                row.enabled = False
+                row.operator(
+                    "object.generate_texture",
+                    text="Generation Running",
+                    icon="SHADERFX",
+                )
+                cancel_row = layout.row()
+                cancel_row.scale_y = 1.4
+                cancel_row.operator(
+                    "object.cancel_texture_generation",
+                    text="Cancel Generation",
+                    icon="CANCEL",
+                )
+                if getattr(scene, "diffused_texture_operator_cancel_requested", False):
+                    layout.label(
+                        text="Cancellation requested. Waiting for safe stop...",
+                        icon="INFO",
+                    )
+            else:
+                row.operator(
+                    "object.generate_texture",
+                    text="Start Texture Generation",
+                    icon="SHADERFX",
+                )

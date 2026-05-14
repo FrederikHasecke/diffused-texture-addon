@@ -67,11 +67,15 @@ def register_controlnet_properties() -> None:
 
 
 def unregister_controlnet_properties() -> None:
-    del bpy.types.Scene.controlnet_union_path
-    del bpy.types.Scene.union_controlnet_strength
-    del bpy.types.Scene.depth_controlnet_path
-    del bpy.types.Scene.canny_controlnet_path
-    del bpy.types.Scene.normal_controlnet_path
-    del bpy.types.Scene.depth_controlnet_strength
-    del bpy.types.Scene.canny_controlnet_strength
-    del bpy.types.Scene.normal_controlnet_strength
+    for prop_name in (
+        "controlnet_union_path",
+        "union_controlnet_strength",
+        "depth_controlnet_path",
+        "canny_controlnet_path",
+        "normal_controlnet_path",
+        "depth_controlnet_strength",
+        "canny_controlnet_strength",
+        "normal_controlnet_strength",
+    ):
+        if hasattr(bpy.types.Scene, prop_name):
+            delattr(bpy.types.Scene, prop_name)

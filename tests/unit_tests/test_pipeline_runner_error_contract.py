@@ -32,11 +32,9 @@ def _load_pipeline_runner() -> ModuleType:
     controlnet_config = ModuleType(
         "diffused_texture_addon.diffusedtexture.pipeline.controlnet_config",
     )
-    controlnet_config.build_controlnet_config = lambda process_parameter: {
-        process_parameter.mesh_complexity: {
-            "inputs": ["depth"],
-            "conditioning_scale": [1.0],
-        },
+    controlnet_config.get_controlnet_static_config = lambda process_parameter: {
+        "inputs": ["depth"],
+        "conditioning_scale": [1.0],
     }
 
     diffusers = ModuleType("diffusers")
@@ -71,6 +69,7 @@ def _dummy_process_parameter() -> SimpleNamespace:
         my_negative_prompt="",
         use_ipadapter=False,
         ipadapter_image=None,
+        texture_seed=0,
     )
 
 
@@ -106,6 +105,7 @@ def test_run_pipeline_raises_clear_error_when_torch_missing() -> None:
                 normal_img=_dummy_image(),
                 depth_img=_dummy_image(),
                 progress_callback=lambda _percent: None,
+                should_cancel=lambda: False,
             )
 
     assert "Install Python Dependencies" in str(exc_info.value)
@@ -144,6 +144,7 @@ def test_run_pipeline_raises_clear_error_on_cuda_oom() -> None:
                 normal_img=_dummy_image(),
                 depth_img=_dummy_image(),
                 progress_callback=lambda _percent: None,
+                should_cancel=lambda: False,
             )
 
     assert "out of GPU memory" in str(exc_info.value)
@@ -182,6 +183,7 @@ def test_run_pipeline_wraps_runtime_failures_with_context() -> None:
                 normal_img=_dummy_image(),
                 depth_img=_dummy_image(),
                 progress_callback=lambda _percent: None,
+                should_cancel=lambda: False,
             )
 
     assert "ValueError: bad prompt" in str(exc_info.value)
@@ -220,7 +222,52 @@ def test_run_pipeline_returns_image_on_success() -> None:
             normal_img=_dummy_image(),
             depth_img=_dummy_image(),
             progress_callback=lambda _percent: None,
+            should_cancel=lambda: False,
         )
 
     assert isinstance(result, Image.Image)
     assert result is expected
+
+
+def test_run_pipeline_interrupts_when_cancel_requested() -> None:
+    pipeline_runner = _load_pipeline_runner()
+
+    class _Cuda:
+        class OutOfMemoryError(RuntimeError):
+            pass
+
+        @staticmethod
+        def empty_cache() -> None:
+            return
+
+        @staticmethod
+        def is_available() -> bool:
+            return False
+
+    fake_torch = ModuleType("torch")
+    fake_torch.cuda = _Cuda
+
+    class _InterruptiblePipe:
+        num_timesteps = 4
+        _interrupt = False
+
+        def __call__(self, **kwargs):  # noqa: ANN003
+            callback = kwargs["callback_on_step_end"]
+            callback(self, 0, 0, {})
+            return SimpleNamespace(images=[_dummy_image()])
+
+    with patch.dict(sys.modules, {"torch": fake_torch}):
+        with pytest.raises(pipeline_runner.TextureGenerationCancelledError) as exc_info:
+            pipeline_runner.run_pipeline(
+                pipe=_InterruptiblePipe(),
+                process_parameter=_dummy_process_parameter(),
+                input_img=_dummy_image(),
+                uv_mask=_dummy_image(),
+                canny_img=_dummy_image(),
+                normal_img=_dummy_image(),
+                depth_img=_dummy_image(),
+                progress_callback=lambda _percent: None,
+                should_cancel=lambda: True,
+            )
+
+    assert str(exc_info.value) == "Cancelled by user."

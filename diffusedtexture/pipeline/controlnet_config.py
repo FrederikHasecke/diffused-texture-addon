@@ -1,103 +1,98 @@
 from typing import Any
 
-try:
-    import torch
-except ModuleNotFoundError:
-    torch = None
-
-try:
-    from diffusers import (
-        ControlNetModel,
-        ControlNetUnionModel,
-    )
-except ModuleNotFoundError:
-    ControlNetModel = None
-    ControlNetUnionModel = None
-
 from ...blender_operations import ProcessParameter
+from ...controlnet_inputs import get_active_controlnet_inputs, get_sdxl_control_modes
 from ...model_support import require_supported_sd_version
 
+torch = None
+ControlNetModel = None
+ControlNetUnionModel = None
 
-def build_controlnet_config(
+
+def _load_controlnet_runtime() -> tuple[Any, Any, Any]:
+    try:
+        import torch
+        from diffusers import (
+            ControlNetModel,
+            ControlNetUnionModel,
+        )
+    except Exception as exc:
+        msg = (
+            "Python dependencies are not ready in this Blender session. If you just "
+            "installed or changed them, restart Blender and try again. Otherwise open "
+            "Preferences > Add-ons > DiffusedTexture > Install Python Dependencies, "
+            "then restart Blender."
+        )
+        raise RuntimeError(msg) from exc
+
+    return torch, ControlNetModel, ControlNetUnionModel
+def get_controlnet_static_config(
     process_parameter: ProcessParameter,
-) -> dict[str, dict[str, Any]]:
-    """Return a controlnet configuration dictionary for a given scene."""
+) -> dict[str, Any]:
+    """Return lightweight config (inputs, conditioning_scale) without loading models."""
     model_version = require_supported_sd_version(process_parameter.sd_version)
+    inputs = get_active_controlnet_inputs(
+        process_parameter.operation_mode,
+        process_parameter.mesh_complexity,
+    )
 
     if model_version == "sdxl":
-        torch_dtype = torch.float16
-        if process_parameter.dtype == "bfloat16":
-            torch_dtype = torch.bfloat16
-
-        controlnet_model = ControlNetUnionModel.from_pretrained(
-            process_parameter.controlnet_union_path,
-            torch_dtype=torch_dtype,
-        )
-        scale = process_parameter.union_controlnet_strength
         return {
-            "LOW": {
-                "union_control": True,
-                "control_mode": [1],
-                "controlnets": controlnet_model,
-                "conditioning_scale": scale,
-                "inputs": ["depth"],
-            },
-            "MEDIUM": {
-                "union_control": True,
-                "control_mode": [1, 3],
-                "controlnets": controlnet_model,
-                "conditioning_scale": scale,
-                "inputs": ["depth", "canny"],
-            },
-            "HIGH": {
-                "union_control": True,
-                "control_mode": [1, 3, 4],
-                "controlnets": controlnet_model,
-                "conditioning_scale": scale,
-                "inputs": ["depth", "canny", "normal"],
-            },
+            "inputs": inputs,
+            "conditioning_scale": process_parameter.union_controlnet_strength,
+            "control_mode": get_sdxl_control_modes(
+                process_parameter.operation_mode,
+                process_parameter.mesh_complexity,
+            ),
         }
 
     if model_version == "sd15":
-        torch_dtype = torch.float16
-        if process_parameter.dtype == "bfloat16":
-            torch_dtype = torch.bfloat16
-
-        def load_model(path: str) -> ControlNetModel | None:  # type: ignore  # noqa: PGH003
-            """Load sd15 cn model."""
-            return ControlNetModel.from_pretrained(path, torch_dtype=torch_dtype)
-
-        return {
-            "LOW": {
-                "conditioning_scale": [process_parameter.depth_controlnet_strength],
-                "controlnets": [load_model(process_parameter.depth_controlnet_path)],
-                "inputs": ["depth"],
-            },
-            "MEDIUM": {
-                "conditioning_scale": [
-                    process_parameter.depth_controlnet_strength,
-                    process_parameter.canny_controlnet_strength,
-                ],
-                "controlnets": [
-                    load_model(process_parameter.depth_controlnet_path),
-                    load_model(process_parameter.canny_controlnet_path),
-                ],
-                "inputs": ["depth", "canny"],
-            },
-            "HIGH": {
-                "conditioning_scale": [
-                    process_parameter.depth_controlnet_strength,
-                    process_parameter.canny_controlnet_strength,
-                    process_parameter.normal_controlnet_strength,
-                ],
-                "controlnets": [
-                    load_model(process_parameter.depth_controlnet_path),
-                    load_model(process_parameter.canny_controlnet_path),
-                    load_model(process_parameter.normal_controlnet_path),
-                ],
-                "inputs": ["depth", "canny", "normal"],
-            },
+        strength_map = {
+            "depth": process_parameter.depth_controlnet_strength,
+            "canny": process_parameter.canny_controlnet_strength,
+            "normal": process_parameter.normal_controlnet_strength,
         }
+        return {
+            "inputs": inputs,
+            "conditioning_scale": [strength_map[key] for key in inputs],
+        }
+
+    msg = f"Unexpected supported model: {model_version}"
+    raise RuntimeError(msg)
+
+
+def load_controlnet_models(
+    process_parameter: ProcessParameter,
+) -> Any:  # noqa: ANN401
+    """Load ControlNet models for the selected complexity level only."""
+    torch, controlnet_model_cls, controlnet_union_model_cls = _load_controlnet_runtime()
+
+    model_version = require_supported_sd_version(process_parameter.sd_version)
+    inputs = get_active_controlnet_inputs(
+        process_parameter.operation_mode,
+        process_parameter.mesh_complexity,
+    )
+
+    torch_dtype = torch.float16
+    if process_parameter.dtype == "bfloat16":
+        torch_dtype = torch.bfloat16
+
+    if model_version == "sdxl":
+        return controlnet_union_model_cls.from_pretrained(
+            process_parameter.controlnet_union_path,
+            torch_dtype=torch_dtype,
+        )
+
+    if model_version == "sd15":
+        path_map = {
+            "depth": process_parameter.depth_controlnet_path,
+            "canny": process_parameter.canny_controlnet_path,
+            "normal": process_parameter.normal_controlnet_path,
+        }
+        return [
+            controlnet_model_cls.from_pretrained(path_map[key], torch_dtype=torch_dtype)
+            for key in inputs
+        ]
 
     msg = f"Unexpected supported model: {model_version}"
     raise RuntimeError(msg)

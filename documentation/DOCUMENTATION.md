@@ -3,6 +3,15 @@
 ## Overview
 DiffusedTexture generates textures for 3D models by leveraging Stable Diffusion with ControlNets. The process involves generating viewpoints from multiple cameras, creating control images, and blending results into a cohesive texture. The workflow adapts to different modes: Text2Image, Image2Image Parallel, and Image2Image Sequential.
 
+## Runtime Capability
+
+- The add-on keeps dependency installation and runtime execution separate.
+- The **dependency backend** controls which PyTorch wheels are installed for the diffusion stack.
+- The **runtime capability** is decided at generation time from:
+  - the Cycles render device Blender can actually configure for the render pass;
+  - the diffusion device PyTorch/diffusers can actually use for inference.
+- For Cycles, the add-on prefers `OPTIX`, `CUDA`, `HIP`, `ONEAPI`, and `METAL`, then falls back to `CPU` when no GPU backend is usable.
+
 ## Model Support Matrix
 
 | Model Key | UI Selectable | Pipeline Support | IPAdapter | Status |

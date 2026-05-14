@@ -20,51 +20,6 @@ _DETECTION_TTL_SEC = 10.0
 _detection_cache: tuple[float, tuple[int, int] | None] | None = None
 
 
-def resolve_torch_install(
-    channel: str,
-    *,
-    platform: str,
-    blender_version: tuple[int, int, int],
-) -> tuple[str, str, str]:
-    """Return (channel, torch requirement, note) for installation.
-
-    Blender on Windows up to 5.0 ships an older MSVC runtime. Newer PyTorch
-    wheels (e.g. current cu130 builds) can fail to import with WinError 1114
-    from c10.dll inside Blender's process. Pinning to 2.8.0 avoids this.
-    """
-    resolved_channel = channel
-    if platform == "win32" and blender_version < (5, 1, 0):
-        if resolved_channel == "cu130":
-            resolved_channel = "cu129"
-        if resolved_channel.startswith("rocm"):
-            return (
-                resolved_channel,
-                "torch",
-                ("ROCm wheels were requested on Windows and may not be available."),
-            )
-        build_tag = "cpu" if resolved_channel == "cpu" else resolved_channel
-        note = (
-            "Pinned PyTorch to 2.8.0 for Blender <= 5.0 on Windows to avoid "
-            "c10.dll WinError 1114."
-        )
-        if channel == "cu130" and resolved_channel != channel:
-            note = (
-                f"{note} CUDA 13.0 wheels are unavailable for 2.8.0; "
-                "using CUDA 12.9 wheels instead."
-            )
-        return resolved_channel, f"torch==2.8.0+{build_tag}", note
-    return resolved_channel, "torch", ""
-
-
-def torch_index_url(channel: str) -> tuple[str, str]:
-    if channel == "cpu":
-        return ("https://download.pytorch.org/whl/cpu", "PyTorch CPU")
-    if channel == "rocm6.3":
-        return ("https://download.pytorch.org/whl/rocm6.3", "PyTorch ROCm 6.3")
-    # CUDA channels
-    return (f"https://download.pytorch.org/whl/{channel}", f"PyTorch {channel.upper()}")
-
-
 def _parse_cuda_from_nvidia_smi(text: str) -> tuple[int, int] | None:
     m = re.search(r"CUDA\s+Version:\s*([0-9]+)\.([0-9]+)", text)
     return (int(m.group(1)), int(m.group(2))) if m else None
@@ -84,13 +39,13 @@ def detect_cuda_version() -> tuple[int, int] | None:
     ):
         return _detection_cache[1]
 
-    rc, out = run(["nvidia-smi"])
+    rc, out = run(["nvidia-smi"], label="detect CUDA via nvidia-smi")
     if rc == 0:
         ver = _parse_cuda_from_nvidia_smi(out or "")
         if ver:
             _detection_cache = (now, ver)
             return ver
-    rc, out = run(["nvcc", "--version"])
+    rc, out = run(["nvcc", "--version"], label="detect CUDA via nvcc")
     if rc == 0:
         ver = _parse_cuda_from_nvcc(out or "")
         if ver:

@@ -35,18 +35,22 @@ class _FakePipeline:
         self.cpu_offload_calls += 1
 
 
-def _fake_torch_module() -> ModuleType:
+def _fake_torch_module(
+    *,
+    cuda_available: bool = False,
+    mps_available: bool = False,
+) -> ModuleType:
     torch = ModuleType("torch")
 
     class _Cuda:
         @staticmethod
         def is_available() -> bool:
-            return False
+            return cuda_available
 
     class _Mps:
         @staticmethod
         def is_available() -> bool:
-            return False
+            return mps_available
 
     class _Backends:
         mps = _Mps()
@@ -78,9 +82,25 @@ def _load_pipeline_builder() -> ModuleType:
     controlnet_config = ModuleType(
         "diffused_texture_addon.diffusedtexture.pipeline.controlnet_config",
     )
-    controlnet_config.build_controlnet_config = lambda process_parameter: {
-        process_parameter.mesh_complexity: {"controlnets": ["fake_controlnet"]},
-    }
+    controlnet_config.load_controlnet_models = lambda process_parameter: [
+        "fake_controlnet",
+    ]
+    runtime_capability = ModuleType("diffused_texture_addon.runtime_capability")
+
+    def _resolve_diffusion_device(torch_module=None):  # noqa: ANN001
+        if torch_module is None:
+            return None
+        if hasattr(torch_module, "cuda") and torch_module.cuda.is_available():
+            return "cuda"
+        if (
+            getattr(torch_module, "backends", None)
+            and getattr(torch_module.backends, "mps", None)
+            and torch_module.backends.mps.is_available()
+        ):
+            return "mps"
+        return "cpu"
+
+    runtime_capability.resolve_diffusion_device = _resolve_diffusion_device
 
     with patch.dict(
         sys.modules,
@@ -90,6 +110,7 @@ def _load_pipeline_builder() -> ModuleType:
             "diffused_texture_addon.diffusedtexture.pipeline": pipeline_pkg,
             "diffused_texture_addon.blender_operations": blender_ops,
             "diffused_texture_addon.diffusedtexture.pipeline.controlnet_config": controlnet_config,
+            "diffused_texture_addon.runtime_capability": runtime_capability,
         },
     ):
         spec = importlib.util.spec_from_file_location(module_name, module_path)
@@ -185,3 +206,96 @@ def test_create_pipeline_applies_each_lora_with_matching_scale() -> None:
         {"lora_scale": 0.45},
         {"lora_scale": 0.9},
     ]
+
+
+def test_create_pipeline_uses_cpu_without_offload_when_no_accelerator() -> None:
+    pipeline_builder = _load_pipeline_builder()
+
+    diffusers = ModuleType("diffusers")
+    diffusers.StableDiffusionControlNetInpaintPipeline = _FakePipeline
+    diffusers.StableDiffusionXLControlNetUnionInpaintPipeline = _FakePipeline
+
+    process_parameter = SimpleNamespace(
+        sd_version="sd15",
+        dtype="float16",
+        mesh_complexity="HIGH",
+        checkpoint_path="runwayml/stable-diffusion-v1-5",
+        num_loras=0,
+        lora_models=[],
+        use_ipadapter=False,
+        ipadapter_strength=0.0,
+    )
+
+    with patch.dict(
+        sys.modules,
+        {
+            "torch": _fake_torch_module(),
+            "diffusers": diffusers,
+        },
+    ):
+        pipe = pipeline_builder.create_diffusion_pipeline(process_parameter)
+
+    assert pipe.to_calls == ["cpu"]
+    assert pipe.cpu_offload_calls == 0
+
+
+def test_create_pipeline_uses_cuda_and_cpu_offload_when_available() -> None:
+    pipeline_builder = _load_pipeline_builder()
+
+    diffusers = ModuleType("diffusers")
+    diffusers.StableDiffusionControlNetInpaintPipeline = _FakePipeline
+    diffusers.StableDiffusionXLControlNetUnionInpaintPipeline = _FakePipeline
+
+    process_parameter = SimpleNamespace(
+        sd_version="sd15",
+        dtype="float16",
+        mesh_complexity="HIGH",
+        checkpoint_path="runwayml/stable-diffusion-v1-5",
+        num_loras=0,
+        lora_models=[],
+        use_ipadapter=False,
+        ipadapter_strength=0.0,
+    )
+
+    with patch.dict(
+        sys.modules,
+        {
+            "torch": _fake_torch_module(cuda_available=True),
+            "diffusers": diffusers,
+        },
+    ):
+        pipe = pipeline_builder.create_diffusion_pipeline(process_parameter)
+
+    assert pipe.to_calls == ["cuda"]
+    assert pipe.cpu_offload_calls == 1
+
+
+def test_create_pipeline_uses_mps_and_cpu_offload_when_cuda_unavailable() -> None:
+    pipeline_builder = _load_pipeline_builder()
+
+    diffusers = ModuleType("diffusers")
+    diffusers.StableDiffusionControlNetInpaintPipeline = _FakePipeline
+    diffusers.StableDiffusionXLControlNetUnionInpaintPipeline = _FakePipeline
+
+    process_parameter = SimpleNamespace(
+        sd_version="sd15",
+        dtype="float16",
+        mesh_complexity="HIGH",
+        checkpoint_path="runwayml/stable-diffusion-v1-5",
+        num_loras=0,
+        lora_models=[],
+        use_ipadapter=False,
+        ipadapter_strength=0.0,
+    )
+
+    with patch.dict(
+        sys.modules,
+        {
+            "torch": _fake_torch_module(mps_available=True),
+            "diffusers": diffusers,
+        },
+    ):
+        pipe = pipeline_builder.create_diffusion_pipeline(process_parameter)
+
+    assert pipe.to_calls == ["mps"]
+    assert pipe.cpu_offload_calls == 1

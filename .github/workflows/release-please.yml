@@ -1,0 +1,84 @@
+name: release-please
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+    inputs:
+      release_as:
+        description: "Optional semver override for the release PR"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: release-please-master
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          target-branch: master
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          release-as: ${{ github.event.inputs.release_as || '' }}
+
+      - uses: actions/checkout@v4
+        if: ${{ steps.release.outputs.release_created }}
+        with:
+          fetch-depth: 0
+          ref: ${{ steps.release.outputs.sha }}
+
+      - name: Determine release version
+        if: ${{ steps.release.outputs.release_created }}
+        shell: bash
+        run: |
+          echo "REL_VER=${{ steps.release.outputs.version }}" >> "$GITHUB_ENV"
+
+      - name: Stage clean build dir
+        if: ${{ steps.release.outputs.release_created }}
+        run: |
+          rm -rf dist/addon && mkdir -p dist/addon
+          rsync -a --delete \
+            --exclude='.git/' --exclude='.github/' --exclude='.githooks/' --exclude='__pycache__/' \
+            --exclude='.vscode/' --exclude='.ruff_cache/' --exclude='.pytest_cache/' \
+            --exclude='documentation/' --exclude='tests/' --exclude='images/' \
+            --exclude='scratchbook/' --exclude='*.md' --exclude='Dockerfile' --exclude='requirements*.txt' \
+            --exclude='wheels*/' --exclude='scripts/' \
+            --exclude='release-please-config.json' --exclude='.release-please-manifest.json' \
+            ./ dist/addon/
+
+      - name: Create addon zip
+        if: ${{ steps.release.outputs.release_created }}
+        run: |
+          cd dist
+          zip -r diffused_texture_addon-${{ env.REL_VER }}.zip addon/
+
+      - name: Build addon
+        if: ${{ steps.release.outputs.release_created }}
+        uses: blenderkit/blender-addon-build@main
+        with:
+          name: diffusedtexture-addon
+          do-checkout: 'false'
+          build-location: 'dist/addon'
+          exclude-files: ".git"
+
+      - name: Upload addon asset to GitHub release
+        if: ${{ steps.release.outputs.release_created }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+        run: |
+          gh release upload \
+            "${{ steps.release.outputs.tag_name }}" \
+            "dist/diffused_texture_addon-${{ env.REL_VER }}.zip" \
+            --clobber
