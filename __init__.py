@@ -17,7 +17,19 @@ Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 ======================= END GPL LICENSE BLOCK ========================
 """
 
-from .installer.paths import activate_deps_import_path, deps_target_dir
+import importlib
+from types import ModuleType
+
+
+def _import_addon_module(module_name: str) -> ModuleType:
+    """Import addon modules when loaded as a package or a top-level module."""
+    qualified_name = f"{__package__}.{module_name}" if __package__ else module_name
+    return importlib.import_module(qualified_name)
+
+
+_paths = _import_addon_module("installer.paths")
+activate_deps_import_path = _paths.activate_deps_import_path
+deps_target_dir = _paths.deps_target_dir
 
 _MINIMAL_PREFS_ONLY = False  # set True if we fall back to registering only Preferences
 
@@ -29,13 +41,15 @@ activate_deps_import_path(deps_target_dir())
 def register() -> None:
     """Register the add-on inside Blender."""
     global _MINIMAL_PREFS_ONLY  # noqa: PLW0603
-    from .diagnostics import get_logger, setup_logging
+    diagnostics = _import_addon_module("diagnostics")
+    get_logger = diagnostics.get_logger
+    setup_logging = diagnostics.setup_logging
 
     setup_logging()
     logger = get_logger("addon")
 
     try:
-        from .registration import register_addon
+        register_addon = _import_addon_module("registration").register_addon
 
         register_addon()
         _MINIMAL_PREFS_ONLY = False
@@ -44,7 +58,7 @@ def register() -> None:
         logger.exception(
             "Full registration failed; falling back to minimal preferences mode.",
         )
-        from .preferences import register as register_prefs
+        register_prefs = _import_addon_module("preferences").register
 
         register_prefs()
         _MINIMAL_PREFS_ONLY = True
@@ -54,11 +68,11 @@ def register() -> None:
 def unregister() -> None:
     """Unregister the add-on."""
     if _MINIMAL_PREFS_ONLY:
-        from .preferences import unregister as unregister_prefs
+        unregister_prefs = _import_addon_module("preferences").unregister
 
         unregister_prefs()
     else:
-        from .registration import unregister_addon
+        unregister_addon = _import_addon_module("registration").unregister_addon
 
         unregister_addon()
 
