@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0](https://github.com/FrederikHasecke/diffused-texture-addon/compare/diffused_texture_addon-v0.2.0...diffused_texture_addon-v0.3.0) (2026-05-15)
+
+
+### Features
+
+* **import:** enhance module import handling and add entry point tests ([b810e19](https://github.com/FrederikHasecke/diffused-texture-addon/commit/b810e19e8cda3b45fea1b52dacbd1391094dbe30))
+* **texture:** harden runtime validation and render cleanup ([427c417](https://github.com/FrederikHasecke/diffused-texture-addon/commit/427c417606127fe9e0aa2f126ac4767f18c82df6))
+* **texture:** harden runtime validation and render cleanup ([a3825d1](https://github.com/FrederikHasecke/diffused-texture-addon/commit/a3825d1c504c1774092ecd1746040e8a3d60a72a))
+
+
+### Bug Fixes
+
+* **lint:** add installation of Linux system libraries for bpy ([79ee564](https://github.com/FrederikHasecke/diffused-texture-addon/commit/79ee564f0965f05a15a79bfccf2cc38a54c2b835))
+
 ## [0.1.0]
 
 - Historical release published before automated semver adoption.
