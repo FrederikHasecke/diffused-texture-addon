@@ -77,8 +77,10 @@ jobs:
         if: ${{ steps.release.outputs.release_created }}
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           gh release upload \
+            --repo "$GH_REPO" \
             "${{ steps.release.outputs.tag_name }}" \
             "dist/diffused_texture_addon-${{ env.REL_VER }}.zip" \
             --clobber
