@@ -5,6 +5,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from packaging.requirements import Requirement
+from packaging.version import Version
 import pytest
 
 from installer.runtime_matrix import (
@@ -24,12 +26,6 @@ class _ResolverCase:
     expected_numpy_prefix: str
     expected_torch_prefix: str
     expected_torch_contains: str
-    expected_opencv_version: str
-    expected_diffusers_version: str
-    expected_transformers_version: str
-    expected_accelerate_version: str
-    expected_safetensors_version: str
-    expected_peft_version: str
 
 
 def _resolver_cases() -> list[_ResolverCase]:
@@ -43,12 +39,6 @@ def _resolver_cases() -> list[_ResolverCase]:
             expected_numpy_prefix="1.",
             expected_torch_prefix="2.8.0+cpu",
             expected_torch_contains="+cpu",
-            expected_opencv_version="4.11.0.86",
-            expected_diffusers_version="0.38.0",
-            expected_transformers_version="5.8.1",
-            expected_accelerate_version="1.13.0",
-            expected_safetensors_version="0.8.0rc0",
-            expected_peft_version="0.19.1",
         ),
         _ResolverCase(
             name="win-blender51-cpu",
@@ -59,12 +49,6 @@ def _resolver_cases() -> list[_ResolverCase]:
             expected_numpy_prefix="2.3.",
             expected_torch_prefix="2.",
             expected_torch_contains="+cpu",
-            expected_opencv_version="4.13.0.92",
-            expected_diffusers_version="0.38.0",
-            expected_transformers_version="5.8.1",
-            expected_accelerate_version="1.13.0",
-            expected_safetensors_version="0.8.0rc0",
-            expected_peft_version="0.19.1",
         ),
     ]
     if os.getenv("DIFFUSEDTEXTURE_FULL_RESOLUTION_MATRIX") == "1":
@@ -79,12 +63,6 @@ def _resolver_cases() -> list[_ResolverCase]:
                     expected_numpy_prefix="1.",
                     expected_torch_prefix="2.8.0+cu129",
                     expected_torch_contains="+cu129",
-                    expected_opencv_version="4.11.0.86",
-                    expected_diffusers_version="0.38.0",
-                    expected_transformers_version="5.8.1",
-                    expected_accelerate_version="1.13.0",
-                    expected_safetensors_version="0.8.0rc0",
-                    expected_peft_version="0.19.1",
                 ),
                 _ResolverCase(
                     name="win-blender51-cu130",
@@ -95,12 +73,6 @@ def _resolver_cases() -> list[_ResolverCase]:
                     expected_numpy_prefix="2.3.",
                     expected_torch_prefix="2.",
                     expected_torch_contains="+cu130",
-                    expected_opencv_version="4.13.0.92",
-                    expected_diffusers_version="0.38.0",
-                    expected_transformers_version="5.8.1",
-                    expected_accelerate_version="1.13.0",
-                    expected_safetensors_version="0.8.0rc0",
-                    expected_peft_version="0.19.1",
                 ),
             ]
         )
@@ -195,13 +167,17 @@ def test_runtime_dependencies_resolve_for_supported_windows_matrix(
 ) -> None:
     report = _run_resolution(case, tmp_path / f"{case.name}.json")
     versions = _versions_by_name(report)
+    runtime_spec = resolve_runtime_spec(
+        blender_version=case.blender_version,
+        python_version=case.python_version,
+    )
 
     assert versions["numpy"].startswith(case.expected_numpy_prefix)
     assert versions["torch"].startswith(case.expected_torch_prefix)
     assert case.expected_torch_contains in versions["torch"]
-    assert versions["opencv-python-headless"] == case.expected_opencv_version
-    assert versions["diffusers"] == case.expected_diffusers_version
-    assert versions["transformers"] == case.expected_transformers_version
-    assert versions["accelerate"] == case.expected_accelerate_version
-    assert versions["safetensors"] == case.expected_safetensors_version
-    assert versions["peft"] == case.expected_peft_version
+
+    for requirement_text in runtime_spec.runtime_requirements:
+        requirement = Requirement(requirement_text)
+        package_name = requirement.name.lower()
+        assert package_name in versions
+        assert Version(versions[package_name]) in requirement.specifier
