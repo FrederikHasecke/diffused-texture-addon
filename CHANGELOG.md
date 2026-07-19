@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1](https://github.com/FrederikHasecke/diffused-texture-addon/compare/diffused_texture_addon-v0.3.0...diffused_texture_addon-v0.3.1) (2026-07-19)
+
+
+### Bug Fixes
+
+* **render:** scope isolation to active view layer ([7df5ed3](https://github.com/FrederikHasecke/diffused-texture-addon/commit/7df5ed33201b258f748dd94d646366da921d33b5))
+
 ## [0.3.0](https://github.com/FrederikHasecke/diffused-texture-addon/compare/diffused_texture_addon-v0.2.0...diffused_texture_addon-v0.3.0) (2026-05-15)
 
 
