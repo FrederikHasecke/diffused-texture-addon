@@ -1,6 +1,6 @@
 [project]
 name = "diffused_texture_addon"
-version = "0.3.1"
+version = "0.3.2"
 description = "A Blender Addon for Generating Diffuse Textures on Meshes with Stable Diffusion"
 authors = [{ name = "Frederik Hasecke" }]
 requires-python = ">=3.11,<3.14,!=3.12.*"
