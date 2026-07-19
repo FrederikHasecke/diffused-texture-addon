@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.2](https://github.com/FrederikHasecke/diffused-texture-addon/compare/diffused_texture_addon-v0.3.1...diffused_texture_addon-v0.3.2) (2026-07-19)
+
+
+### Bug Fixes
+
+* **installer:** pin verified PyTorch backends for Python 3.13 ([3bb46de](https://github.com/FrederikHasecke/diffused-texture-addon/commit/3bb46dec8f98cb8b18d20f707ffbcd96c022ebc8))
+
 ## [0.3.1](https://github.com/FrederikHasecke/diffused-texture-addon/compare/diffused_texture_addon-v0.3.0...diffused_texture_addon-v0.3.1) (2026-07-19)
 
 
