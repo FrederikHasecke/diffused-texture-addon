@@ -1,0 +1,80 @@
+name: artifact smoke
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+  schedule:
+    - cron: "23 2 * * *"
+      timezone: "Europe/Berlin"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: artifact-smoke-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+
+  smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: blender-5.0-python-3.11
+            python_version: "3.11"
+            bpy_version: "5.0.1"
+            numpy_requirement: "numpy>=1.26,<2.0"
+            opencv_requirement: "opencv-python-headless==4.11.0.86"
+          - lane: blender-5.2-python-3.13
+            python_version: "3.13"
+            bpy_version: "5.2.0"
+            numpy_requirement: "numpy>=2.3,<2.4"
+            opencv_requirement: "opencv-python-headless>=5.0.0.93"
+
+    name: smoke (${{ matrix.lane }})
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python_version }}
+
+      - name: Install Linux system libraries for bpy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libice6 libsm6
+
+      - name: Install lightweight Blender test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            "bpy==${{ matrix.bpy_version }}" \
+            "${{ matrix.numpy_requirement }}" \
+            "pillow==12.3.0" \
+            "${{ matrix.opencv_requirement }}" \
+            "dotenv>=0.9.9"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: addon-zip
+          path: ${{ runner.temp }}/addon-zip
+
+      - name: Validate and register the built artifact
+        shell: bash
+        run: |
+          ADDON_ZIP="$(find "$RUNNER_TEMP/addon-zip" -maxdepth 1 -type f -name '*.zip' -print -quit)"
+          if [ -z "$ADDON_ZIP" ]; then
+            echo "No add-on ZIP was downloaded" >&2
+            exit 1
+          fi
+          cd "$RUNNER_TEMP"
+          python "$GITHUB_WORKSPACE/scripts/ci/smoke_built_addon.py" "$ADDON_ZIP"

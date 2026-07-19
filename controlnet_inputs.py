@@ -1,4 +1,4 @@
-from typing import Literal, NoReturn, cast
+from typing import Literal, NoReturn
 
 if __package__:
     from .operation_mode import is_image_operation_mode as _is_image_operation_mode
@@ -51,7 +51,7 @@ def _raise_unsupported_sdxl_control_mode(
 
 def _mesh_complexity_key(mesh_complexity: str) -> MeshComplexity:
     if mesh_complexity in _IMAGE_MODE_INPUTS:
-        return cast("MeshComplexity", mesh_complexity)
+        return mesh_complexity
 
     _raise_unsupported_controlnet_selection("unknown", mesh_complexity)
 

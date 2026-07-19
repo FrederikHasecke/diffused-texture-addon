@@ -35,6 +35,7 @@ def test_expected_python_version_switches_at_blender_51() -> None:
     assert expected_python_version((4, 2, 0)) == (3, 11)
     assert expected_python_version((5, 0, 9)) == (3, 11)
     assert expected_python_version((5, 1, 0)) == (3, 13)
+    assert expected_python_version((5, 2, 0)) == (3, 13)
 
 
 def test_constraints_filename_matches_supported_python_series() -> None:
@@ -76,6 +77,14 @@ def test_runtime_spec_for_blender_51_uses_numpy_2_constraints() -> None:
     assert "numpy>=1.26,<2.0" not in spec.runtime_requirements
 
 
+def test_runtime_spec_for_blender_52_uses_python_313_constraints() -> None:
+    spec = resolve_runtime_spec(blender_version=(5, 2, 0), python_version=(3, 13))
+
+    assert spec.python_tag == "py313"
+    assert spec.constraints_path.name == "runtime-py313.txt"
+    assert "numpy>=2.3,<2.4" in spec.runtime_requirements
+
+
 def test_runtime_constraints_files_exist() -> None:
     spec_311 = resolve_runtime_spec(blender_version=(4, 2, 0), python_version=(3, 11))
     spec_313 = resolve_runtime_spec(blender_version=(5, 1, 0), python_version=(3, 13))
@@ -97,16 +106,52 @@ def test_resolve_torch_install_pins_windows_blender_50() -> None:
     assert "Pinned PyTorch to 2.8.0" in note
 
 
-def test_resolve_torch_install_keeps_latest_windows_blender_51() -> None:
+def test_resolve_torch_install_pins_blender_52_cpu() -> None:
+    channel, requirement, note = resolve_torch_install(
+        "cpu",
+        platform="win32",
+        blender_version=(5, 2, 0),
+    )
+
+    assert channel == "cpu"
+    assert requirement == "torch==2.12.0+cpu"
+    assert "verified 2.12.0 cpu baseline" in note
+
+
+def test_resolve_torch_install_pins_blender_52_cu130() -> None:
     channel, requirement, note = resolve_torch_install(
         "cu130",
         platform="win32",
-        blender_version=(5, 1, 0),
+        blender_version=(5, 2, 0),
     )
 
     assert channel == "cu130"
-    assert requirement == "torch"
-    assert note == ""
+    assert requirement == "torch==2.12.0+cu130"
+    assert "verified 2.12.0 cu130 baseline" in note
+
+
+def test_resolve_torch_install_pins_older_cuda_channel_without_pypi_fallback() -> None:
+    channel, requirement, note = resolve_torch_install(
+        "cu128",
+        platform="win32",
+        blender_version=(5, 2, 0),
+    )
+
+    assert channel == "cu128"
+    assert requirement == "torch==2.9.1+cu128"
+    assert "backend-correct wheel selection" in note
+
+
+def test_resolve_torch_install_pins_rocm_without_pypi_fallback() -> None:
+    channel, requirement, note = resolve_torch_install(
+        "rocm6.3",
+        platform="linux",
+        blender_version=(5, 2, 0),
+    )
+
+    assert channel == "rocm6.3"
+    assert requirement == "torch==2.9.0+rocm6.3"
+    assert "backend-correct wheel selection" in note
 
 
 def test_torch_index_url_maps_expected_channels() -> None:

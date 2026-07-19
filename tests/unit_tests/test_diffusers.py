@@ -22,8 +22,9 @@ def test_create_pipeline_sd15_inpaint():
         )
         # Set local hf cache path
         load_dotenv()
-        hf_home = os.getenv('HF_HOME')
-        os.environ["HF_HOME"] = hf_home
+        hf_home = os.getenv("HF_HOME")
+        if hf_home:
+            os.environ["HF_HOME"] = hf_home
         
 
     except ImportError:
@@ -56,8 +57,9 @@ def test_create_pipeline_sdxl_inpaint():
         )
         # Set local hf cache path
         load_dotenv()
-        hf_home = os.getenv('HF_HOME')
-        os.environ["HF_HOME"] = hf_home
+        hf_home = os.getenv("HF_HOME")
+        if hf_home:
+            os.environ["HF_HOME"] = hf_home
     except ImportError:
         pytest.fail("Required dependencies not available")
 

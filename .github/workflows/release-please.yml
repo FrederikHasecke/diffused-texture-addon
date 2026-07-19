@@ -50,19 +50,20 @@ jobs:
         run: |
           rm -rf dist/addon && mkdir -p dist/addon
           rsync -a --delete \
-            --exclude='.git/' --exclude='.github/' --exclude='.githooks/' --exclude='__pycache__/' \
+            --exclude='.*' --exclude='__pycache__/' \
             --exclude='.vscode/' --exclude='.ruff_cache/' --exclude='.pytest_cache/' \
             --exclude='documentation/' --exclude='tests/' --exclude='images/' \
             --exclude='scratchbook/' --exclude='*.md' --exclude='Dockerfile' --exclude='requirements*.txt' \
             --exclude='wheels*/' --exclude='scripts/' \
+            --exclude='pyproject.toml' --exclude='pytest.ini' --exclude='uv.lock' \
             --exclude='release-please-config.json' --exclude='.release-please-manifest.json' \
             ./ dist/addon/
 
       - name: Create addon zip
         if: ${{ steps.release.outputs.release_created }}
         run: |
-          cd dist
-          zip -r diffused_texture_addon-${{ env.REL_VER }}.zip addon/
+          cd dist/addon
+          zip -r ../diffused_texture_addon-${{ env.REL_VER }}.zip *
 
       - name: Build addon
         if: ${{ steps.release.outputs.release_created }}

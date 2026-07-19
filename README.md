@@ -10,7 +10,8 @@
 [![Blender 5.0](https://img.shields.io/badge/Blender-5.0-blue?style=flat-square)](https://download.blender.org/release/Blender5.0/)
 
 [![Python 3.13](https://img.shields.io/badge/python-3.13-orange.svg)](https://www.python.org/downloads/release/python-313/)
-[![Blender 5.1+](https://img.shields.io/badge/Blender-5.1%2B-blue?style=flat-square)](https://www.blender.org/download/)
+[![Blender 5.1](https://img.shields.io/badge/Blender-5.1-blue?style=flat-square)](https://download.blender.org/release/Blender5.1/)
+[![Blender 5.2 LTS](https://img.shields.io/badge/Blender-5.2%20LTS-blue?style=flat-square)](https://www.blender.org/download/lts/5-2/)
 
 [![Lint](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/lint.yml/badge.svg?branch=master)](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/lint.yml)
 [![Release](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/release-please.yml/badge.svg?branch=master)](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/release-please.yml)
@@ -114,8 +115,8 @@ DiffusedTexture is a Blender add-on that uses Stable Diffusion to create texture
 
 ## Development
 
-- Default local dev environment: Python `3.13` with Blender `5.1+`, installed via `uv sync`.
-- The local `uv` configuration overrides the published `bpy` NumPy cap so the dev environment aligns with the CY2026 NumPy `2.3.x` lane.
+- Default local dev environment: Python `3.13` with Blender `5.2 LTS`, installed via `uv sync`.
+- Blender 5.2's `bpy` wheel natively supports the CY2026 NumPy `2.3.x` lane, so no local dependency override is needed.
 - Legacy Blender `<5.1` / Python `3.11` compatibility is still covered by the installer matrix tests.
 - Commit and hook setup: [CONTRIBUTING.md](CONTRIBUTING.md)
 - Testing workflow and local check commands: [documentation/TESTING.md](documentation/TESTING.md)

@@ -10,7 +10,7 @@ Run these after every implementation unless the user explicitly asks otherwise:
 - `uvx ty check . --python-version 3.13`
 - `uv run pytest tests/unit_tests tests/integration_tests -m "not slow and not gpu and not network and not e2e" -q`
 
-The fast `uv run pytest ...` suite now assumes the default local Python 3.13 + Blender 5.1 development environment created by `uv sync`. The shared `uv` configuration deliberately overrides the published `bpy` NumPy cap so the local dev environment aligns with the CY2026 NumPy 2.3 lane. Cross-version dependency coverage for the legacy `py311` lane is handled by the installer matrix tests below.
+The fast `uv run pytest ...` suite assumes the default local Python 3.13 + Blender 5.2 LTS development environment created by `uv sync`. Blender 5.2's `bpy` wheel natively supports the CY2026 NumPy 2.3 lane, so no dependency override is required. Cross-version dependency coverage for the legacy `py311` lane is handled by the installer matrix tests below.
 
 ## Installer Changes
 
@@ -19,7 +19,7 @@ If you change dependency installation, runtime version logic, `pyproject.toml`, 
 - `uv run pytest tests/unit_tests/test_runtime_matrix.py -q`
 - `uv run pytest tests/install_tests/test_pip_resolution.py -q`
 
-Set `DIFFUSEDTEXTURE_FULL_RESOLUTION_MATRIX=1` before `test_pip_resolution.py` when you want the slower CUDA resolver cases in addition to the default CPU boundary cases.
+Set `DIFFUSEDTEXTURE_FULL_RESOLUTION_MATRIX=1` before `test_pip_resolution.py` when you want representative CUDA dependency resolution plus hash-backed wheel checks for every selectable CUDA channel and the Linux ROCm 6.3 lane.
 
 ## Opt-In Heavy Checks
 

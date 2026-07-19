@@ -6,6 +6,14 @@ SUPPORTED_PYTHON_SERIES = {
     (3, 13): "py313",
 }
 _CONSTRAINTS_DIR = Path(__file__).with_name("constraints")
+_PY313_TORCH_BASELINES = {
+    "cpu": "2.12.0",
+    "cu126": "2.9.1",
+    "cu128": "2.9.1",
+    "cu129": "2.9.0",
+    "cu130": "2.12.0",
+    "rocm6.3": "2.9.0",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +124,13 @@ def resolve_torch_install(
     Blender on Windows up to 5.0 ships an older MSVC runtime. Newer PyTorch
     wheels (e.g. current cu130 builds) can fail to import with WinError 1114
     from c10.dll inside Blender's process. Pinning to 2.8.0 avoids this.
+
+    Python 3.13 lanes use channel-specific verified baselines. Pinning is
+    required because pip considers both PyPI and the accelerator index; without
+    a local-version pin, a newer generic PyPI wheel can silently win over an
+    older CUDA or ROCm wheel. PyTorch 2.13.0's cp313 CUDA index entries also
+    currently omit wheel hashes, which breaks reproducible uv installs and
+    leaves pip unable to verify the download against an index-provided digest.
     """
     resolved_channel = channel
     if platform == "win32" and blender_version < (5, 1, 0):
@@ -138,6 +153,19 @@ def resolve_torch_install(
                 "using CUDA 12.9 wheels instead."
             )
         return resolved_channel, f"torch==2.8.0+{build_tag}", note
+
+    if blender_version >= (5, 1, 0):
+        baseline = _PY313_TORCH_BASELINES.get(resolved_channel)
+        if baseline is None:
+            return resolved_channel, "torch", ""
+        build_tag = "cpu" if resolved_channel == "cpu" else resolved_channel
+        note = (
+            f"Pinned PyTorch to the verified {baseline} {build_tag} baseline for "
+            "Python 3.13 dependency compatibility and backend-correct wheel "
+            "selection."
+        )
+        return resolved_channel, f"torch=={baseline}+{build_tag}", note
+
     return resolved_channel, "torch", ""
 
 

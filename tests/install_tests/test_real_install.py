@@ -34,7 +34,7 @@ def _current_blender_boundary() -> tuple[int, int, int]:
     if sys.version_info[:2] == (3, 11):
         return (5, 0, 0)
     if sys.version_info[:2] == (3, 13):
-        return (5, 1, 0)
+        return (5, 2, 0)
     msg = (
         "Real install smoke test only supports the current local dev lanes: Python 3.13 for Blender 5.1+ or Python 3.11 for Blender <5.1, "
         f"got {sys.version_info[0]}.{sys.version_info[1]}."

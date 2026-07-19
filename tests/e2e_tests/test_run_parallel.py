@@ -41,8 +41,9 @@ def _enable_addon() -> str:
 
         # Set local hf cache path
         load_dotenv()
-        hf_home = os.getenv('HF_HOME')
-        os.environ["HF_HOME"] = hf_home
+        hf_home = os.getenv("HF_HOME")
+        if hf_home:
+            os.environ["HF_HOME"] = hf_home
 
         return "diffused_texture_addon"
     except Exception as exc:  # noqa: BLE001
