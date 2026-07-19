@@ -50,6 +50,36 @@ def _create_mesh_object() -> bpy.types.Object:
     return obj
 
 
+def test_prepare_scene_ignores_objects_outside_active_view_layer() -> None:
+    target = _create_mesh_object()
+    target.name = "TextureTarget"
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(3, 0, 0))
+    other_in_view_layer = bpy.context.active_object
+    assert other_in_view_layer is not None
+    other_in_view_layer.name = "OtherInViewLayer"
+
+    other_scene = bpy.data.scenes.new("OtherScene")
+    outside_mesh = bpy.data.meshes.new("OutsideMesh")
+    outside_view_layer = bpy.data.objects.new("Cube", outside_mesh)
+    other_scene.collection.objects.link(outside_view_layer)
+
+    assert outside_view_layer.name == "Cube"
+    assert outside_view_layer.name in bpy.data.objects
+    assert outside_view_layer.name not in bpy.context.view_layer.objects
+
+    backup = blender_operations.prepare_scene(target)
+    try:
+        assert outside_view_layer.name not in backup["original_object_visibility"]
+        assert outside_view_layer.hide_render is False
+        assert other_in_view_layer.hide_get() is True
+        assert other_in_view_layer.hide_render is True
+    finally:
+        blender_operations.restore_scene(backup, cameras=[])
+
+    assert other_in_view_layer.hide_get() is False
+    assert other_in_view_layer.hide_render is False
+
+
 def _create_two_quad_uv_seam_object() -> bpy.types.Object:
     mesh = bpy.data.meshes.new("TwoQuadSeamMesh")
     mesh.from_pydata(

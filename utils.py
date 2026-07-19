@@ -85,15 +85,19 @@ def image_to_numpy(image: bpy.types.Image) -> np.ndarray:
 def isolate_object(obj: bpy.types.Object) -> dict:
     """Isolate the target object.
 
-    Temporarily hide all other objects and translate the object so that
-    its *mesh geometry center* (not the origin) moves to world (0,0,0).
-    The object's origin is not moved.
+    Temporarily hide all other objects in the active view layer and translate
+    the object so that its *mesh geometry center* (not the origin) moves to
+    world (0,0,0). The object's origin is not moved.
 
     """
     hidden_objects = []
 
-    # Hide everything else
-    for other in bpy.data.objects:
+    # Object.hide_set() is view-layer-scoped. bpy.data.objects also contains
+    # objects from other scenes and excluded collections, and trying to hide one
+    # of those raises "Object ... is not in View Layer ...". Objects outside the
+    # active view layer cannot contribute to its render, so only isolate objects
+    # that belong to it.
+    for other in bpy.context.view_layer.objects:
         if other != obj:
             if not other.hide_get():
                 other.hide_set(state=True)

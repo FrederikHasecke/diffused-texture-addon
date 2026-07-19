@@ -1291,6 +1291,11 @@ def test_prepare_scene_snapshots_object_visibility(
         hidden=True,
         hide_render=False,
     )
+    outside_view_layer = _VisibilityObject(
+        "OutsideViewLayer",
+        hidden=False,
+        hide_render=False,
+    )
 
     monkeypatch.setattr(
         blender_operations,
@@ -1316,12 +1321,18 @@ def test_prepare_scene_snapshots_object_visibility(
         ),
         cycles=None,
     )
+    class _ViewLayerObjects(list):
+        active = None
+
+    view_layer_objects = _ViewLayerObjects(
+        [target_obj, render_hidden, viewport_hidden],
+    )
     view_layer = SimpleNamespace(
         use_pass_z=False,
         use_pass_normal=False,
         use_pass_uv=False,
         use_pass_position=False,
-        objects=SimpleNamespace(active=None),
+        objects=view_layer_objects,
     )
 
     monkeypatch.setattr(
@@ -1330,7 +1341,12 @@ def test_prepare_scene_snapshots_object_visibility(
         SimpleNamespace(
             context=SimpleNamespace(scene=scene, view_layer=view_layer),
             data=SimpleNamespace(
-                objects=[target_obj, render_hidden, viewport_hidden],
+                objects=[
+                    target_obj,
+                    render_hidden,
+                    viewport_hidden,
+                    outside_view_layer,
+                ],
             ),
         ),
     )
@@ -1385,7 +1401,10 @@ def test_restore_scene_restores_exact_visibility_and_skips_deleted(
     )
 
     updated = {"called": False}
-    view_layer = SimpleNamespace(update=lambda: updated.__setitem__("called", True))
+    view_layer = SimpleNamespace(
+        objects=object_store,
+        update=lambda: updated.__setitem__("called", True),
+    )
     scene = SimpleNamespace(
         render=SimpleNamespace(image_settings=SimpleNamespace()),
         cycles=None,

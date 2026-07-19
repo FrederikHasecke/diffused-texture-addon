@@ -769,18 +769,18 @@ def save_numpy_to_exr(
 
 def prepare_scene(obj: bpy.types.Object) -> dict[str, Any]:
     """Backup all other objects and isolate the target object to work with."""
+    scene = bpy.context.scene
+    view_layer = bpy.context.view_layer
     original_object_visibility = {
         scene_obj.name: {
             "hide_viewport": scene_obj.hide_get(),
             "hide_render": scene_obj.hide_render,
         }
-        for scene_obj in bpy.data.objects
+        for scene_obj in view_layer.objects
     }
 
     backup_data = isolate_object(obj)
     backup_data["original_object_visibility"] = original_object_visibility
-    scene = bpy.context.scene
-    view_layer = bpy.context.view_layer
 
     backup_data["original_scene_camera"] = getattr(scene, "camera", None)
     backup_data["original_render_settings"] = {
@@ -881,8 +881,9 @@ def restore_scene(  # noqa: C901, PLR0912, PLR0915
 
     object_visibility = backup_data.get("original_object_visibility")
     if isinstance(object_visibility, dict):
+        view_layer_objects = bpy.context.view_layer.objects
         for object_name, visibility in object_visibility.items():
-            scene_obj = bpy.data.objects.get(object_name)
+            scene_obj = view_layer_objects.get(object_name)
             if scene_obj is None or not isinstance(visibility, dict):
                 continue
 
