@@ -57,6 +57,19 @@ def _is_texture_generation_cancelled_error(exc: BaseException) -> bool:
     return exc.__class__.__name__ == "TextureGenerationCancelledError"
 
 
+def _end_progress_ui(context: bpy.types.Context, *, is_background: bool) -> None:
+    if is_background:
+        return
+    context.window_manager.progress_end()
+    context.window.cursor_set("DEFAULT")
+
+
+def _signal_worker_cancel(operator: "OBJECT_OT_GenerateTexture") -> None:
+    cancel_event = getattr(operator, "_cancel_event", None)
+    if cancel_event is not None:
+        cancel_event.set()
+
+
 class OBJECT_OT_GenerateTexture(bpy.types.Operator):
     """Start texture generation in a background thread."""
 
@@ -149,6 +162,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
             apply_texture(
                 context,
                 str(output_path),
+                object_name=getattr(self, "_target_object_name", None),
             )
 
             duration = time.time() - self._start_time if self._start_time else 0.0
@@ -285,6 +299,10 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
         self._cancelled = False
         self._return_texture = []
         self._output_file = None
+        self._target_object_name = None
+        # The worker thread must not touch bpy data, so cancellation reaches it
+        # through this event, set from the main thread (modal/background loop).
+        self._cancel_event = threading.Event()
         self.render_img_folders = None
         if hasattr(context.scene, "diffused_texture_operator_cancel_requested"):
             context.scene.diffused_texture_operator_cancel_requested = False
@@ -307,6 +325,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
             selected_obj = bpy.data.objects.get(selected_obj_name)
             if selected_obj is None:
                 _raise_selected_object_not_found(selected_obj_name)
+            self._target_object_name = selected_obj_name
 
             # Snapshot parameters early so unsupported models fail before rendering.
             process_parameter = extract_process_parameter_from_context(context)
@@ -329,6 +348,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                     error=error_message,
                 )
                 self.report({"ERROR"}, error_message)
+                _end_progress_ui(context, is_background=is_background)
                 return {"CANCELLED"}
             self._output_file = process_parameter.output_path
             _logger.info(
@@ -375,6 +395,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
 
             if self._should_cancel(context):
                 self._cancelled = True
+                _end_progress_ui(context, is_background=is_background)
                 return self._finalize_generation(context)
 
             def mark_done(
@@ -402,7 +423,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                 args=(
                     process_parameter,
                     progress_callback,
-                    lambda: self._should_cancel(context),
+                    self._cancel_event.is_set,
                     mark_done,
                     generation_inputs,
                     self._return_texture,
@@ -417,6 +438,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                 while self._thread.is_alive():
                     if self._should_cancel(context):
                         self._cancelled = True
+                        _signal_worker_cancel(self)
                     time.sleep(0.1)
 
                 if not self._done:
@@ -438,9 +460,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
                 self._run_id,
             )
             OBJECT_OT_GenerateTexture._cleanup_render_outputs(self)
-            if not is_background:
-                wm.progress_end()
-                context.window.cursor_set("DEFAULT")
+            _end_progress_ui(context, is_background=is_background)
             self._set_scene_status(
                 context.scene,
                 running=False,
@@ -465,6 +485,7 @@ class OBJECT_OT_GenerateTexture(bpy.types.Operator):
 
             if self._should_cancel(context):
                 self._cancelled = True
+                _signal_worker_cancel(self)
 
             if (
                 self._thread is not None
