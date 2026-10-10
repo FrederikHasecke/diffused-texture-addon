@@ -194,3 +194,32 @@ def test_install_deps_operator_reports_runtime_matrix_mismatch() -> None:
             "Python 3.11, got 3.13.",
         ),
     ]
+
+
+def test_install_deps_operator_keeps_tls_verification_enabled() -> None:
+    operators, bpy_module = _load_installer_operators_module()
+
+    prefs = SimpleNamespace(cuda_variant="cpu")
+    bpy_module.context.preferences = SimpleNamespace(
+        addons={
+            "addon_under_test": SimpleNamespace(preferences=prefs),
+        },
+    )
+
+    captured: list[list[str]] = []
+
+    def run_stream(cmd, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003, ANN202
+        captured.append(list(cmd))
+        return 0, ""
+
+    operator = operators.InstallDepsOperator()
+    operator.report = lambda level, message: None
+
+    with patch.object(operators, "run_stream", side_effect=run_stream):
+        result = operator.execute(context=None)
+
+    assert result == {"FINISHED"}
+    assert len(captured) == 1
+    pip_args = captured[0]
+    assert "--trusted-host" not in pip_args
+    assert all(arg.startswith("https://") for arg in pip_args if "://" in arg)
