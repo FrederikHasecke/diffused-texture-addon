@@ -876,6 +876,10 @@ def prepare_scene(obj: bpy.types.Object) -> dict[str, Any]:
         "use_compositing",
         None,
     )
+    # Blender 5+ stores the compositor as a scene-assigned node group. Rendering
+    # creates one when missing, so remember the original to restore it later.
+    if hasattr(scene, "compositing_node_group"):
+        backup_data["original_compositing_node_group"] = scene.compositing_node_group
 
     view_layer.objects.active = obj
     return backup_data
@@ -983,9 +987,10 @@ def restore_scene(  # noqa: C901, PLR0912, PLR0915
 
     # Remove compositor output nodes created during rendering
     try:
-        from .render_setup import get_scene_compositor_node_tree
-
-        node_tree = get_scene_compositor_node_tree(scene)
+        # Look up the existing tree without creating one as a side effect.
+        node_tree = getattr(scene, "node_tree", None)
+        if node_tree is None:
+            node_tree = getattr(scene, "compositing_node_group", None)
         addon_node_names = {
             "depth_output",
             "normal_output",
@@ -993,7 +998,7 @@ def restore_scene(  # noqa: C901, PLR0912, PLR0915
             "position_output",
             "DiffusedTexture_RenderLayers",
         }
-        for node in list(node_tree.nodes):
+        for node in list(node_tree.nodes) if node_tree is not None else []:
             if node.name in addon_node_names:
                 node_tree.nodes.remove(node)
     except Exception:  # noqa: BLE001
@@ -1001,6 +1006,25 @@ def restore_scene(  # noqa: C901, PLR0912, PLR0915
             "Failed to clean up compositor nodes during scene restore.",
             exc_info=True,
         )
+
+    # Restore the original compositor node group (Blender 5+). If rendering
+    # created a new group, unassign and delete it so later renders are not
+    # routed through an empty compositor.
+    if "original_compositing_node_group" in backup_data and hasattr(
+        scene,
+        "compositing_node_group",
+    ):
+        original_group = backup_data["original_compositing_node_group"]
+        current_group = scene.compositing_node_group
+        try:
+            scene.compositing_node_group = original_group
+            if original_group is None and current_group is not None:
+                bpy.data.node_groups.remove(current_group)
+        except Exception:  # noqa: BLE001
+            _logger.debug(
+                "Failed to restore compositor node group during scene restore.",
+                exc_info=True,
+            )
 
     # Delete the temporary cameras used during processing
     for cam in cameras or []:

@@ -9,7 +9,7 @@ import numpy as np
 from PIL import Image
 
 bpy = pytest.importorskip("bpy")
-from diffused_texture_addon import blender_operations
+from diffused_texture_addon import blender_operations, render_setup
 
 
 pytestmark = pytest.mark.exclusive
@@ -78,6 +78,59 @@ def test_prepare_scene_ignores_objects_outside_active_view_layer() -> None:
 
     assert other_in_view_layer.hide_get() is False
     assert other_in_view_layer.hide_render is False
+
+
+def _simulate_render_compositor_setup(scene: bpy.types.Scene) -> bpy.types.NodeTree:
+    node_tree = render_setup.get_scene_compositor_node_tree(scene)
+    render_layers = node_tree.nodes.new("CompositorNodeRLayers")
+    render_layers.name = "DiffusedTexture_RenderLayers"
+    for name in ("depth_output", "normal_output", "uv_output"):
+        output_node = node_tree.nodes.new("CompositorNodeOutputFile")
+        output_node.name = name
+    return node_tree
+
+
+def test_restore_scene_removes_compositor_group_created_during_generation() -> None:
+    scene = bpy.context.scene
+    if not hasattr(scene, "compositing_node_group"):
+        pytest.skip("Requires the Blender 5+ compositing_node_group API")
+    target = _create_mesh_object()
+    scene.compositing_node_group = None
+    groups_before = set(bpy.data.node_groups.keys())
+
+    backup = blender_operations.prepare_scene(target)
+    try:
+        created_tree = _simulate_render_compositor_setup(scene)
+        created_name = created_tree.name
+        assert scene.compositing_node_group is created_tree
+    finally:
+        blender_operations.restore_scene(backup, cameras=[])
+
+    assert scene.compositing_node_group is None
+    assert created_name not in bpy.data.node_groups
+    assert set(bpy.data.node_groups.keys()) == groups_before
+
+
+def test_restore_scene_keeps_existing_compositor_group_and_user_nodes() -> None:
+    scene = bpy.context.scene
+    if not hasattr(scene, "compositing_node_group"):
+        pytest.skip("Requires the Blender 5+ compositing_node_group API")
+    target = _create_mesh_object()
+    user_tree = bpy.data.node_groups.new("UserCompositor", "CompositorNodeTree")
+    user_node = user_tree.nodes.new("CompositorNodeRLayers")
+    user_node.name = "UserRenderLayers"
+    scene.compositing_node_group = user_tree
+    groups_before = set(bpy.data.node_groups.keys())
+
+    backup = blender_operations.prepare_scene(target)
+    try:
+        assert _simulate_render_compositor_setup(scene) is user_tree
+    finally:
+        blender_operations.restore_scene(backup, cameras=[])
+
+    assert scene.compositing_node_group is user_tree
+    assert [node.name for node in user_tree.nodes] == ["UserRenderLayers"]
+    assert set(bpy.data.node_groups.keys()) == groups_before
 
 
 def _create_two_quad_uv_seam_object() -> bpy.types.Object:
