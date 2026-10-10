@@ -79,12 +79,18 @@ class OBJECT_PT_DiffusedTextureMainPanel(bpy.types.Panel):
         """
         layout = self.layout
         scene = context.scene
+        is_running = bool(
+            getattr(scene, "diffused_texture_operator_running", False),
+        )
 
-        # Object and UV selection
-        row = layout.row(align=True)
+        # Object and UV selection. Locked while generating: the result is
+        # baked for the object and UV map captured when the run started.
+        selection = layout.column()
+        selection.enabled = not is_running
+        row = selection.row(align=True)
         row.prop(scene, "my_mesh_object", text="Mesh Object")
         row.operator("object.select_pipette", text="", icon="VIS_SEL_11")
-        layout.prop(scene, "my_uv_map", text="UV Map")
+        selection.prop(scene, "my_uv_map", text="UV Map")
 
         # Stable Diffusion configuration
         box_sd = layout.box()
@@ -136,9 +142,6 @@ class OBJECT_PT_DiffusedTextureMainPanel(bpy.types.Panel):
 
         # Input Texture
         layout.label(text="Input Texture")
-        is_running = bool(
-            getattr(scene, "diffused_texture_operator_running", False),
-        )
 
         row = layout.row()
         if is_running:

@@ -130,16 +130,19 @@ class ProcessParameter:
 def apply_texture(
     context: bpy.types.Context,
     output_path: str,
+    *,
+    object_name: str | None = None,
 ) -> None:
     """Apply the generated texture to the selected object.
 
     Args:
         context (bpy.types.Context): The Blender context.
-        texture (NDArray[np.float32]): The texture to apply.
         output_path (str): The output path for the texture.
+        object_name (str | None): Object the texture was generated for. Falls
+            back to the scene's current mesh selection when not given.
     """
-    # Get the selected object
-    selected_obj = bpy.data.objects.get(context.scene.my_mesh_object)
+    target_name = object_name or context.scene.my_mesh_object
+    selected_obj = bpy.data.objects.get(target_name)
 
     # Apply the texture to the object
     apply_texture_to_object(selected_obj, output_path)
