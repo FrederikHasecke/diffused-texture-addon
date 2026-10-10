@@ -553,13 +553,16 @@ def create_similar_angle_image(
     return similar_angle_image.astype(np.float32)
 
 
-def export_uv_layout(
+def rasterize_uv_layout(
     obj: bpy.types.Object,
-    export_path: str | Path,
     uv_map_name: str | None = None,
     size: tuple[int, int] = (1024, 1024),
-) -> None:
-    """Export the UV layout for the given mesh object."""
+) -> NDArray[np.float32]:
+    """Rasterize the UV layout of every face of the mesh into an RGBA array.
+
+    Unlike ``bpy.ops.uv.export_layout`` this ignores the edit-mode face
+    selection and the operator context, so GUI and background runs match.
+    """
     if obj is None or obj.type != "MESH":
         msg = "Input object must be a mesh."
         raise ValueError(msg)
@@ -568,30 +571,24 @@ def export_uv_layout(
     if obj.mode != "OBJECT":
         bpy.ops.object.mode_set(mode="OBJECT")
 
-    _resolve_uv_layout_layer(obj, uv_map_name)
+    return _rasterize_uv_layout_array(obj, uv_map_name=uv_map_name, size=size)
+
+
+def export_uv_layout(
+    obj: bpy.types.Object,
+    export_path: str | Path,
+    uv_map_name: str | None = None,
+    size: tuple[int, int] = (1024, 1024),
+) -> None:
+    """Export the UV layout of every face of the mesh as a PNG."""
     export_path = Path(export_path)
+    if export_path.suffix.lower() != ".png":
+        msg = "UV layout export currently supports PNG output only."
+        raise ValueError(msg)
+
+    uv_layout = rasterize_uv_layout(obj, uv_map_name=uv_map_name, size=size)
     export_path.parent.mkdir(parents=True, exist_ok=True)
-
-    if getattr(getattr(bpy, "app", None), "background", False):
-        if export_path.suffix.lower() != ".png":
-            msg = "Background UV layout export currently supports PNG output only."
-            raise ValueError(msg)
-        _save_uv_layout_png(
-            _rasterize_uv_layout_array(
-                obj,
-                uv_map_name=uv_map_name,
-                size=size,
-            ),
-            export_path,
-        )
-        return
-
-    bpy.ops.uv.export_layout(
-        filepath=str(export_path),
-        size=size,
-        opacity=1.0,
-        export_all=False,
-    )
+    _save_uv_layout_png(uv_layout, export_path)
 
 
 def _resolve_uv_layout_layer(
@@ -1212,24 +1209,19 @@ def build_uv_pass_assets(
     texture_resolution = int(context.scene.texture_resolution)
     _activate_selected_uv_map(context, obj)
 
-    uv_layout_path = (
-        Path(context.scene.output_path) / "RenderOutput" / "uv_mode_layout.png"
-    )
-    uv_layout_path.parent.mkdir(parents=True, exist_ok=True)
-
-    export_uv_layout(
+    uv_layout = rasterize_uv_layout(
         obj,
-        uv_layout_path,
         uv_map_name=getattr(context.scene, "my_uv_map", "") or None,
         size=(texture_resolution, texture_resolution),
     )
-
-    try:
-        uv_layout = load_img_to_numpy(uv_layout_path)
-    finally:
-        uv_layout_path.unlink(missing_ok=True)
-
     surface_mask = _surface_mask_from_uv_layout(uv_layout)
+    if not np.any(surface_mask):
+        msg = (
+            f"UV map of object {obj.name} does not cover any texture pixels. "
+            "Check that the mesh has faces with a valid, non-degenerate UV unwrap."
+        )
+        raise ValueError(msg)
+
     seam_topology_assets = _build_uv_seam_topology_assets(
         context,
         obj,
