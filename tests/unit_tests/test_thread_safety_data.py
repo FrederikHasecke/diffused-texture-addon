@@ -72,3 +72,37 @@ def test_load_img_to_numpy_releases_loaded_image(tmp_path: Path) -> None:
     assert loaded.shape == (1, 2, 4)
     assert loaded.dtype == np.float32
     assert len(bpy.data.images) == initial_count
+
+
+def test_extract_process_parameter_resolves_blend_relative_model_paths(
+    tmp_path: Path,
+) -> None:
+    import bpy
+
+    from diffused_texture_addon.blender_operations import (
+        extract_process_parameter_from_context,
+    )
+
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    bpy.ops.wm.save_as_mainfile(filepath=str(tmp_path / "project.blend"))
+
+    scene = SimpleNamespace(
+        num_loras=1,
+        lora_models=[SimpleNamespace(path="//loras/style.safetensors", strength=1.0)],
+        use_ipadapter=False,
+        checkpoint_path="//models/base.safetensors",
+        controlnet_union_path="xinsir/controlnet-union-sdxl-1.0",
+        depth_controlnet_path="//controlnets/depth",
+        canny_controlnet_path="/abs/canny",
+        normal_controlnet_path="",
+    )
+
+    params = extract_process_parameter_from_context(SimpleNamespace(scene=scene))
+
+    assert Path(params.checkpoint_path) == tmp_path / "models" / "base.safetensors"
+    assert Path(params.lora_models[0]["path"]) == tmp_path / "loras" / "style.safetensors"
+    assert Path(params.depth_controlnet_path) == tmp_path / "controlnets" / "depth"
+    # Hub ids, absolute paths and empty values pass through untouched.
+    assert params.controlnet_union_path == "xinsir/controlnet-union-sdxl-1.0"
+    assert params.canny_controlnet_path == "/abs/canny"
+    assert params.normal_controlnet_path == ""

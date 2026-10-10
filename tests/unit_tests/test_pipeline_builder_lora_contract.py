@@ -11,7 +11,7 @@ class _FakePipeline:
         self.load_lora_weights_calls: list[tuple[tuple, dict]] = []
         self.fuse_lora_calls: list[dict] = []
         self.to_calls: list[str] = []
-        self.cpu_offload_calls = 0
+        self.cpu_offload_devices: list[str | None] = []
 
     @classmethod
     def from_pretrained(cls, *args, **kwargs):  # noqa: ANN002, ANN003
@@ -31,8 +31,8 @@ class _FakePipeline:
         self.to_calls.append(device)
         return self
 
-    def enable_model_cpu_offload(self) -> None:
-        self.cpu_offload_calls += 1
+    def enable_model_cpu_offload(self, device: str | None = None) -> None:
+        self.cpu_offload_devices.append(device)
 
 
 def _fake_torch_module(
@@ -236,7 +236,7 @@ def test_create_pipeline_uses_cpu_without_offload_when_no_accelerator() -> None:
         pipe = pipeline_builder.create_diffusion_pipeline(process_parameter)
 
     assert pipe.to_calls == ["cpu"]
-    assert pipe.cpu_offload_calls == 0
+    assert pipe.cpu_offload_devices == []
 
 
 def test_create_pipeline_uses_cuda_and_cpu_offload_when_available() -> None:
@@ -266,8 +266,10 @@ def test_create_pipeline_uses_cuda_and_cpu_offload_when_available() -> None:
     ):
         pipe = pipeline_builder.create_diffusion_pipeline(process_parameter)
 
-    assert pipe.to_calls == ["cuda"]
-    assert pipe.cpu_offload_calls == 1
+    # Offload places submodules on demand; moving the full pipeline first
+    # would need the whole model in VRAM.
+    assert pipe.to_calls == []
+    assert pipe.cpu_offload_devices == ["cuda"]
 
 
 def test_create_pipeline_uses_mps_and_cpu_offload_when_cuda_unavailable() -> None:
@@ -297,5 +299,5 @@ def test_create_pipeline_uses_mps_and_cpu_offload_when_cuda_unavailable() -> Non
     ):
         pipe = pipeline_builder.create_diffusion_pipeline(process_parameter)
 
-    assert pipe.to_calls == ["mps"]
-    assert pipe.cpu_offload_calls == 1
+    assert pipe.to_calls == []
+    assert pipe.cpu_offload_devices == ["mps"]

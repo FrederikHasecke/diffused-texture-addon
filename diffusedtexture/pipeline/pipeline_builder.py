@@ -118,6 +118,8 @@ def create_diffusion_pipeline(  # noqa: C901, PLR0912
     if device == "cpu":
         pipe.to("cpu")
     else:
-        pipe.to(device)
-        pipe.enable_model_cpu_offload()
+        # Offload moves each submodule to the accelerator only while it runs.
+        # Do not move the whole pipeline there first: that briefly needs the
+        # full model in VRAM, which offloading exists to avoid.
+        pipe.enable_model_cpu_offload(device=device)
     return pipe
