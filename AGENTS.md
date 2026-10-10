@@ -6,7 +6,7 @@ Use the repository root as the working directory for all commands.
 
 Run these after every implementation unless the user explicitly asks otherwise:
 
-- `uvx ruff check . --config .\pyproject.toml`
+- `uv run ruff check . --config pyproject.toml`
 - `uvx ty check . --python-version 3.13`
 - `uv run pytest tests/unit_tests tests/integration_tests -m "not slow and not gpu and not network and not e2e" -q`
 
