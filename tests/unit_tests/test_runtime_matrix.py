@@ -22,6 +22,7 @@ _RUNTIME_DEPENDENCY_NAMES = {
     "accelerate",
     "safetensors",
     "peft",
+    "urllib3",
 }
 
 
