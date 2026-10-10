@@ -112,6 +112,7 @@ class OBJECT_PT_DiffusedTextureMainPanel(bpy.types.Panel):
 
         box_dt.prop(scene, "mesh_complexity", text="Mesh Complexity")
         box_dt.prop(scene, "texture_resolution", text="Texture Resolution")
+        box_dt.prop(scene, "texture_margin", text="Texture Margin")
         if is_image_operation_mode(scene.operation_mode):
             box_dt.prop(scene, "num_cameras", text="Camera Views")
 

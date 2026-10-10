@@ -6,6 +6,7 @@ from bpy.props import (
     StringProperty,
 )
 
+from ..diffusedtexture.uv_padding import DEFAULT_TEXTURE_MARGIN
 from ..utils import get_mesh_objects, update_uv_maps
 
 
@@ -75,6 +76,19 @@ def register_mesh_properties() -> None:
         default="1024",
     )
 
+    bpy.types.Scene.texture_margin = IntProperty(
+        name="Texture Margin",
+        description=(
+            "Pixels to extend UV island colors outward to prevent seams from "
+            "texture filtering. Given for a 2048 texture and scaled "
+            "proportionally for other resolutions"
+        ),
+        default=DEFAULT_TEXTURE_MARGIN,
+        min=0,
+        max=128,
+        subtype="PIXEL",
+    )
+
     bpy.types.Scene.render_resolution = EnumProperty(
         name="Render Resolution",
         items=[
@@ -140,6 +154,7 @@ def unregister_mesh_properties() -> None:
         "mesh_complexity",
         "num_cameras",
         "texture_resolution",
+        "texture_margin",
         "render_resolution",
         "output_path",
         "operation_mode",
