@@ -1276,6 +1276,12 @@ def test_prepare_scene_snapshots_object_visibility(
         def hide_set(self, state: bool) -> None:  # noqa: FBT001
             self.hidden = state
 
+        def select_get(self) -> bool:
+            return False
+
+        def select_set(self, state: bool) -> None:  # noqa: FBT001
+            del state
+
     target_obj = _VisibilityObject(
         "Target",
         hidden=False,

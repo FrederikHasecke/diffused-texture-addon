@@ -2,6 +2,7 @@
 
 from collections.abc import Iterator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -291,3 +292,121 @@ def test_apply_texture_to_object_recovers_when_managed_material_needs_repair(
 
     blender_operations.apply_texture_to_object(obj, first_path)
     _assert_managed_material_layout(managed_material, first_path)
+
+
+class _BakeSpyBpy:
+    """Proxy for ``bpy`` that records the selection when ``object.bake`` runs."""
+
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.selected_during_bake: list[str] | None = None
+        self.active_during_bake: str | None = None
+        self.ops = SimpleNamespace(object=SimpleNamespace(bake=self._bake))
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(bpy, name)
+
+    def _bake(self, **kwargs: Any) -> set[str]:
+        view_layer = bpy.context.view_layer
+        self.selected_during_bake = sorted(
+            o.name for o in view_layer.objects if o.select_get()
+        )
+        active = view_layer.objects.active
+        self.active_during_bake = active.name if active is not None else None
+        if self.fail:
+            msg = "bake failed"
+            raise RuntimeError(msg)
+        return bpy.ops.object.bake(**kwargs)
+
+
+def _selection_state() -> tuple[list[str], str | None]:
+    view_layer = bpy.context.view_layer
+    active = view_layer.objects.active
+    return (
+        sorted(o.name for o in view_layer.objects if o.select_get()),
+        active.name if active is not None else None,
+    )
+
+
+def _create_bake_scene() -> tuple[bpy.types.Object, bpy.types.Object]:
+    target = _create_mesh_object()
+    target.name = "BakeTarget"
+    bpy.ops.mesh.primitive_plane_add(size=1, location=(3, 0, 0))
+    other = bpy.context.active_object
+    assert other is not None
+    other.name = "OtherMesh"
+    bpy.context.scene.cycles.device = "CPU"
+    bpy.context.scene.cycles.samples = 1
+    return target, other
+
+
+@pytest.mark.parametrize("selection", ["nothing", "other"])
+def test_bake_geometry_channel_selects_only_target_and_restores_selection(
+    monkeypatch: pytest.MonkeyPatch,
+    selection: str,
+) -> None:
+    target, other = _create_bake_scene()
+    view_layer = bpy.context.view_layer
+    for obj in view_layer.objects:
+        obj.select_set(state=False)
+    if selection == "nothing":
+        view_layer.objects.active = None
+    else:
+        other.select_set(state=True)
+        view_layer.objects.active = other
+    original_state = _selection_state()
+
+    spy = _BakeSpyBpy()
+    monkeypatch.setattr(blender_operations, "bpy", spy)
+
+    pixels = blender_operations.bake_geometry_channel_to_array(
+        target,
+        "Normal",
+        resolution=8,
+    )
+
+    assert pixels.shape == (8, 8, 4)
+    assert spy.selected_during_bake == [target.name]
+    assert spy.active_during_bake == target.name
+    assert _selection_state() == original_state
+
+
+def test_bake_geometry_channel_restores_selection_when_bake_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target, other = _create_bake_scene()
+    original_material_count = len(target.data.materials)
+    view_layer = bpy.context.view_layer
+    target.select_set(state=False)
+    other.select_set(state=True)
+    view_layer.objects.active = other
+
+    spy = _BakeSpyBpy(fail=True)
+    monkeypatch.setattr(blender_operations, "bpy", spy)
+
+    with pytest.raises(RuntimeError, match="bake failed"):
+        blender_operations.bake_geometry_channel_to_array(target, resolution=8)
+
+    assert spy.selected_during_bake == [target.name]
+    assert _selection_state() == ([other.name], other.name)
+    assert len(target.data.materials) == original_material_count
+    assert "__bake_mat" not in bpy.data.materials
+    assert "__bake_temp" not in bpy.data.images
+
+
+def test_prepare_scene_selects_target_and_restore_scene_restores_selection() -> (
+    None
+):
+    target, other = _create_bake_scene()
+    view_layer = bpy.context.view_layer
+    target.select_set(state=False)
+    other.select_set(state=True)
+    view_layer.objects.active = other
+
+    backup = blender_operations.prepare_scene(target)
+    try:
+        assert _selection_state() == ([target.name], target.name)
+    finally:
+        blender_operations.restore_scene(backup, cameras=[])
+
+    assert _selection_state() == ([other.name], other.name)

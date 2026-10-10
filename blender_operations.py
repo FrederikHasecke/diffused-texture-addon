@@ -1,4 +1,5 @@
-from collections.abc import Sequence
+from collections.abc import Generator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, overload
@@ -800,6 +801,54 @@ def save_numpy_to_exr(
     bpy.data.images.remove(img_bpy)
 
 
+def _snapshot_selection(view_layer: bpy.types.ViewLayer) -> dict[str, Any]:
+    """Record selected and active objects of the view layer by name."""
+    active = view_layer.objects.active
+    return {
+        "selected": [o.name for o in view_layer.objects if o.select_get()],
+        "active": active.name if active is not None else None,
+    }
+
+
+def _select_only(view_layer: bpy.types.ViewLayer, obj: bpy.types.Object) -> None:
+    """Make ``obj`` the only selected object and the active object.
+
+    Operators such as ``bpy.ops.object.bake`` act on the *selected* objects, so
+    the target must be selected and every other object deselected.
+    """
+    for scene_obj in view_layer.objects:
+        scene_obj.select_set(state=False)
+    obj.select_set(state=True)
+    view_layer.objects.active = obj
+
+
+def _restore_selection(
+    view_layer: bpy.types.ViewLayer,
+    snapshot: dict[str, Any],
+) -> None:
+    """Restore a selection recorded with ``_snapshot_selection``."""
+    selected_names = set(snapshot.get("selected", ()))
+    for scene_obj in view_layer.objects:
+        scene_obj.select_set(state=scene_obj.name in selected_names)
+
+    active_name = snapshot.get("active")
+    view_layer.objects.active = (
+        view_layer.objects.get(active_name) if active_name else None
+    )
+
+
+@contextmanager
+def _target_selected(obj: bpy.types.Object) -> Generator[None]:
+    """Select only ``obj`` for the duration of the block, then restore selection."""
+    view_layer = bpy.context.view_layer
+    snapshot = _snapshot_selection(view_layer)
+    try:
+        _select_only(view_layer, obj)
+        yield
+    finally:
+        _restore_selection(view_layer, snapshot)
+
+
 def prepare_scene(obj: bpy.types.Object) -> dict[str, Any]:
     """Backup all other objects and isolate the target object to work with."""
     scene = bpy.context.scene
@@ -811,9 +860,12 @@ def prepare_scene(obj: bpy.types.Object) -> dict[str, Any]:
         }
         for scene_obj in view_layer.objects
     }
+    # Snapshot before isolate_object: hiding an object also deselects it.
+    original_selection = _snapshot_selection(view_layer)
 
     backup_data = isolate_object(obj)
     backup_data["original_object_visibility"] = original_object_visibility
+    backup_data["original_selection"] = original_selection
 
     backup_data["original_scene_camera"] = getattr(scene, "camera", None)
     backup_data["original_render_settings"] = {
@@ -877,7 +929,7 @@ def prepare_scene(obj: bpy.types.Object) -> dict[str, Any]:
         None,
     )
 
-    view_layer.objects.active = obj
+    _select_only(view_layer, obj)
     return backup_data
 
 
@@ -941,6 +993,11 @@ def restore_scene(  # noqa: C901, PLR0912, PLR0915
 
     scene = bpy.context.scene
     view_layer = bpy.context.view_layer
+
+    # Restore selection after visibility: hidden objects cannot be selected.
+    original_selection = backup_data.get("original_selection")
+    if isinstance(original_selection, dict):
+        _restore_selection(view_layer, original_selection)
 
     if "original_scene_camera" in backup_data:
         scene.camera = backup_data["original_scene_camera"]
@@ -1515,21 +1572,22 @@ def bake_geometry_channel_to_array(
     obj.data.materials.append(mat)
     obj.active_material_index = 0
 
-    # Use Cycles and bake
-    bpy.context.scene.render.engine = "CYCLES"
-    bpy.context.view_layer.objects.active = obj
-    bpy.context.scene.cycles.bake_type = "EMIT"
-    bpy.ops.object.bake(type="EMIT", use_clear=True)
+    try:
+        # Use Cycles and bake. The bake operator only bakes selected objects.
+        bpy.context.scene.render.engine = "CYCLES"
+        bpy.context.scene.cycles.bake_type = "EMIT"
+        with _target_selected(obj):
+            bpy.ops.object.bake(type="EMIT", use_clear=True)
 
-    # Extract pixels as numpy array
-    img_pixels = np.array(img.pixels[:], dtype=np.float32)
-    img_pixels = img_pixels.reshape((img.size[1], img.size[0], 4))  # RGBA
-
-    # Cleanup temporary data
-    bpy.data.images.remove(img, do_unlink=True)
-    bpy.data.materials.remove(mat, do_unlink=True)
-    obj.data.materials.clear()
-    for m in original_materials:
-        obj.data.materials.append(m)
+        # Extract pixels as numpy array
+        img_pixels = np.array(img.pixels[:], dtype=np.float32)
+        img_pixels = img_pixels.reshape((img.size[1], img.size[0], 4))  # RGBA
+    finally:
+        # Cleanup temporary data
+        bpy.data.images.remove(img, do_unlink=True)
+        bpy.data.materials.remove(mat, do_unlink=True)
+        obj.data.materials.clear()
+        for m in original_materials:
+            obj.data.materials.append(m)
 
     return img_pixels
