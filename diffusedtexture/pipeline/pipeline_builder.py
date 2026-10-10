@@ -122,4 +122,12 @@ def create_diffusion_pipeline(  # noqa: C901, PLR0912
         # Do not move the whole pipeline there first: that briefly needs the
         # full model in VRAM, which offloading exists to avoid.
         pipe.enable_model_cpu_offload(device=device)
+        # The SD input grid tiles every camera view at the SD resolution, so
+        # the VAE sees e.g. 2048x2048 for SDXL with 4 views. Encoding that in
+        # one pass (fp32 for SDXL's force_upcast VAE) does not fit on 12 GB
+        # cards. The VAE only tiles inputs larger than its native sample
+        # size and blends overlapping tiles, so default SD 1.5 grids and
+        # single views are unaffected.
+        pipe.vae.enable_tiling()
+        pipe.vae.enable_slicing()
     return pipe

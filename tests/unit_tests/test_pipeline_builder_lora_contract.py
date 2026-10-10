@@ -6,8 +6,21 @@ from unittest.mock import patch
 from uuid import uuid4
 
 
+class _FakeVae:
+    def __init__(self) -> None:
+        self.use_tiling = False
+        self.use_slicing = False
+
+    def enable_tiling(self) -> None:
+        self.use_tiling = True
+
+    def enable_slicing(self) -> None:
+        self.use_slicing = True
+
+
 class _FakePipeline:
     def __init__(self) -> None:
+        self.vae = _FakeVae()
         self.load_lora_weights_calls: list[tuple[tuple, dict]] = []
         self.fuse_lora_calls: list[dict] = []
         self.to_calls: list[str] = []
@@ -301,3 +314,68 @@ def test_create_pipeline_uses_mps_and_cpu_offload_when_cuda_unavailable() -> Non
 
     assert pipe.to_calls == []
     assert pipe.cpu_offload_devices == ["mps"]
+
+
+def test_create_pipeline_enables_vae_tiling_and_slicing_on_accelerator() -> None:
+    # A 2x2 grid of 1024px SDXL views is 2048x2048; encoding it untiled
+    # (fp32, force_upcast VAE) runs out of memory on 12 GB GPUs.
+    pipeline_builder = _load_pipeline_builder()
+
+    diffusers = ModuleType("diffusers")
+    diffusers.StableDiffusionControlNetInpaintPipeline = _FakePipeline
+    diffusers.StableDiffusionXLControlNetUnionInpaintPipeline = _FakePipeline
+
+    for sd_version in ("sd15", "sdxl"):
+        process_parameter = SimpleNamespace(
+            sd_version=sd_version,
+            dtype="float16",
+            mesh_complexity="HIGH",
+            checkpoint_path="some/checkpoint",
+            num_loras=0,
+            lora_models=[],
+            use_ipadapter=False,
+            ipadapter_strength=0.0,
+        )
+
+        with patch.dict(
+            sys.modules,
+            {
+                "torch": _fake_torch_module(cuda_available=True),
+                "diffusers": diffusers,
+            },
+        ):
+            pipe = pipeline_builder.create_diffusion_pipeline(process_parameter)
+
+        assert pipe.vae.use_tiling, sd_version
+        assert pipe.vae.use_slicing, sd_version
+
+
+def test_create_pipeline_keeps_vae_untiled_on_cpu() -> None:
+    pipeline_builder = _load_pipeline_builder()
+
+    diffusers = ModuleType("diffusers")
+    diffusers.StableDiffusionControlNetInpaintPipeline = _FakePipeline
+    diffusers.StableDiffusionXLControlNetUnionInpaintPipeline = _FakePipeline
+
+    process_parameter = SimpleNamespace(
+        sd_version="sdxl",
+        dtype="float16",
+        mesh_complexity="HIGH",
+        checkpoint_path="some/checkpoint",
+        num_loras=0,
+        lora_models=[],
+        use_ipadapter=False,
+        ipadapter_strength=0.0,
+    )
+
+    with patch.dict(
+        sys.modules,
+        {
+            "torch": _fake_torch_module(),
+            "diffusers": diffusers,
+        },
+    ):
+        pipe = pipeline_builder.create_diffusion_pipeline(process_parameter)
+
+    assert not pipe.vae.use_tiling
+    assert not pipe.vae.use_slicing
