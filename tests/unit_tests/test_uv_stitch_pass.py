@@ -142,6 +142,21 @@ def test_uv_stitch_pass_leaves_texture_unchanged_without_topology_links() -> Non
     assert np.array_equal(stitched, texture)
 
 
+def test_uv_stitch_pass_only_whitens_pixels_outside_surface_mask() -> None:
+    uv_stitch_pass = _load_uv_stitch_pass_module()
+    texture = np.full((8, 8, 3), 64, dtype=np.uint8)
+    surface_mask = np.zeros((8, 8), dtype=np.uint8)
+    surface_mask[2:6, 1:7] = 255
+    uv_assets = _build_uv_assets(uv_stitch_pass, linked=False)
+    uv_assets.surface_mask = surface_mask
+
+    stitched = uv_stitch_pass.uv_stitch_pass(texture, uv_assets)
+
+    inside = surface_mask > 0
+    assert np.array_equal(stitched[inside], texture[inside])
+    assert np.all(stitched[~inside] == 255)
+
+
 def test_accumulate_stitch_confidence_counts_uv_origin_texels() -> None:
     uv_stitch_pass = _load_uv_stitch_pass_module()
     uv_image = np.zeros((2, 2, 4), dtype=np.float32)
