@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, overload
 
 import bpy
 import numpy as np
@@ -399,6 +399,26 @@ def create_normal_condition(
     return normal_image.astype(np.float32)
 
 
+@overload
+def _resolve_blend_relative_path(path: str) -> str: ...
+
+
+@overload
+def _resolve_blend_relative_path(path: None) -> None: ...
+
+
+def _resolve_blend_relative_path(path: str | None) -> str | None:
+    """Expand Blender's '//' (relative to the .blend file) prefix.
+
+    File-browser paths are stored relative by default, but diffusers, PIL and
+    pathlib do not understand the prefix. Hugging Face repo ids and absolute
+    paths are returned unchanged.
+    """
+    if isinstance(path, str) and path.startswith("//"):
+        return bpy.path.abspath(path)
+    return path
+
+
 def extract_process_parameter_from_context(
     context: bpy.types.Context,
 ) -> ProcessParameter:
@@ -414,7 +434,7 @@ def extract_process_parameter_from_context(
         if lora_model:
             lora_models.append(
                 {
-                    "path": lora_model.path,
+                    "path": _resolve_blend_relative_path(lora_model.path),
                     "strength": lora_model.strength,
                 },
             )
@@ -442,16 +462,26 @@ def extract_process_parameter_from_context(
         texture_seed=getattr(scene, "texture_seed", 0),
         input_texture=getattr(scene, "input_texture", None),
         sd_version=getattr(scene, "sd_version", None),
-        checkpoint_path=getattr(scene, "checkpoint_path", ""),
+        checkpoint_path=_resolve_blend_relative_path(
+            getattr(scene, "checkpoint_path", ""),
+        ),
         dtype=getattr(scene, "dtype", None),
         custom_sd_resolution=getattr(scene, "custom_sd_resolution", 0),
-        controlnet_union_path=getattr(scene, "controlnet_union_path", None),
+        controlnet_union_path=_resolve_blend_relative_path(
+            getattr(scene, "controlnet_union_path", None),
+        ),
         union_controlnet_strength=getattr(scene, "union_controlnet_strength", None),
-        depth_controlnet_path=getattr(scene, "depth_controlnet_path", None),
+        depth_controlnet_path=_resolve_blend_relative_path(
+            getattr(scene, "depth_controlnet_path", None),
+        ),
         depth_controlnet_strength=getattr(scene, "depth_controlnet_strength", None),
-        canny_controlnet_path=getattr(scene, "canny_controlnet_path", None),
+        canny_controlnet_path=_resolve_blend_relative_path(
+            getattr(scene, "canny_controlnet_path", None),
+        ),
         canny_controlnet_strength=getattr(scene, "canny_controlnet_strength", None),
-        normal_controlnet_path=getattr(scene, "normal_controlnet_path", None),
+        normal_controlnet_path=_resolve_blend_relative_path(
+            getattr(scene, "normal_controlnet_path", None),
+        ),
         normal_controlnet_strength=getattr(scene, "normal_controlnet_strength", None),
         use_ipadapter=getattr(scene, "use_ipadapter", False),
         ipadapter_strength=getattr(scene, "ipadapter_strength", 0.0),
