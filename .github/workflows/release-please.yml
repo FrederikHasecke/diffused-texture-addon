@@ -37,6 +37,7 @@ jobs:
         if: ${{ steps.release.outputs.release_created }}
         with:
           fetch-depth: 0
+          persist-credentials: false
           ref: ${{ steps.release.outputs.sha }}
 
       - name: Determine release version
@@ -64,15 +65,6 @@ jobs:
         run: |
           cd dist/addon
           zip -r ../diffused_texture_addon-${{ env.REL_VER }}.zip *
-
-      - name: Build addon
-        if: ${{ steps.release.outputs.release_created }}
-        uses: blenderkit/blender-addon-build@main
-        with:
-          name: diffusedtexture-addon
-          do-checkout: 'false'
-          build-location: 'dist/addon'
-          exclude-files: ".git"
 
       - name: Upload addon asset to GitHub release
         if: ${{ steps.release.outputs.release_created }}
