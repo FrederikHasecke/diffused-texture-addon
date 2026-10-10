@@ -15,6 +15,7 @@ dependencies = [
     "accelerate>=1.14.0",
     "safetensors>=0.8.0",
     "peft>=0.19.1",
+    "urllib3>=2.8.0",
 ]
 
 [dependency-groups]
