@@ -10,6 +10,7 @@ from PIL import Image as PILImage
 from PIL import ImageDraw
 
 from .diagnostics import get_logger
+from .diffusedtexture.uv_padding import DEFAULT_TEXTURE_MARGIN
 from .diffusedtexture.uv_seams import (
     UV_EPSILON,
     SeamTopologyAssets,
@@ -125,6 +126,9 @@ class ProcessParameter:
     # LoRA Settings
     num_loras: int
     lora_models: list[dict[str, str | float]]
+
+    # Output Settings
+    texture_margin: int = DEFAULT_TEXTURE_MARGIN
 
 
 def apply_texture(
@@ -457,6 +461,7 @@ def extract_process_parameter_from_context(
         mesh_complexity=getattr(scene, "mesh_complexity", "MEDIUM"),
         num_cameras=getattr(scene, "num_cameras", 4),
         texture_resolution=getattr(scene, "texture_resolution", "1024"),
+        texture_margin=getattr(scene, "texture_margin", DEFAULT_TEXTURE_MARGIN),
         render_resolution=getattr(scene, "render_resolution", "2048"),
         output_path=getattr(scene, "output_path", ""),
         texture_seed=getattr(scene, "texture_seed", 0),

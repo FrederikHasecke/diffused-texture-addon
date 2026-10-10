@@ -173,3 +173,48 @@ def test_run_texture_generation_rejects_disabled_uv_mode() -> None:
 
     assert "uv_stitch_args" not in calls
     assert return_bucket == []
+
+
+@pytest.mark.parametrize(("margin", "expect_padded"), [(16, True), (0, False)])
+def test_run_texture_generation_pads_uv_island_edges(
+    margin: int,
+    *,
+    expect_padded: bool,
+) -> None:
+    calls: dict[str, object] = {}
+    texture_generation = _load_texture_generation_module(calls)
+    surface_mask = np.zeros((4, 4), dtype=np.uint8)
+    surface_mask[:, :2] = 255
+    uv_assets = texture_generation.UVPassAssets(
+        normal_map=np.zeros((4, 4, 4), dtype=np.float32),
+        position_map=np.zeros((4, 4, 4), dtype=np.float32),
+        uv_layout=np.zeros((4, 4, 4), dtype=np.float32),
+        surface_mask=surface_mask,
+    )
+    stitched = np.full((4, 4, 3), 255, dtype=np.uint8)
+    stitched[:, :2] = 40
+    texture_generation.uv_stitch_pass = lambda **kwargs: stitched.copy()
+    return_bucket: list[np.ndarray] = []
+
+    texture_generation.run_texture_generation(
+        process_parameter=SimpleNamespace(
+            operation_mode="PARALLEL_IMG",
+            subgrid_rows=2,
+            subgrid_cols=2,
+            texture_margin=margin,
+        ),
+        generation_inputs={"uv": [], "facing": []},
+        progress_callback=lambda _value: None,
+        should_cancel=lambda: False,
+        mark_done=lambda success=True: None,
+        return_texture_bucket=return_bucket,
+        texture=None,
+        uv_assets=uv_assets,
+    )
+
+    result = return_bucket[0]
+    assert np.array_equal(result[:, :2], stitched[:, :2])
+    # A 16 px margin at 2048 scales to 1 px at this 4 px texture.
+    expected_column = 40 if expect_padded else 255
+    assert np.all(result[:, 2] == expected_column)
+    assert np.all(result[:, 3] == 255)

@@ -9,6 +9,11 @@ from .blender_operations import ProcessParameter, UVPassAssets, load_img_to_nump
 from .diffusedtexture.img_parallel import img_parallel
 from .diffusedtexture.img_parasequential import img_parasequential
 from .diffusedtexture.img_sequential import img_sequential
+from .diffusedtexture.uv_padding import (
+    DEFAULT_TEXTURE_MARGIN,
+    pad_uv_islands,
+    scale_texture_margin,
+)
 from .diffusedtexture.uv_stitch_pass import uv_stitch_pass
 from .operation_mode import validate_operation_mode
 
@@ -62,6 +67,19 @@ def load_multiview_images(
                 multiview_images[target_bucket].append(image)
 
     return multiview_images
+
+
+def _pad_texture_edges(
+    texture: NDArray[np.uint8],
+    uv_assets: UVPassAssets,
+    process_parameter: ProcessParameter,
+) -> NDArray[np.uint8]:
+    """Bleed UV island colors outward so filtering does not sample background."""
+    margin = scale_texture_margin(
+        int(getattr(process_parameter, "texture_margin", DEFAULT_TEXTURE_MARGIN)),
+        int(texture.shape[0]),
+    )
+    return pad_uv_islands(texture, uv_assets.surface_mask, margin)
 
 
 def run_texture_generation(  # noqa: PLR0913
@@ -130,6 +148,11 @@ def run_texture_generation(  # noqa: PLR0913
             texture=output_texture,
             uv_assets=uv_assets,
             multiview_images=multiview_images,
+        )
+        output_texture = _pad_texture_edges(
+            output_texture,
+            uv_assets,
+            process_parameter,
         )
         stitch_progress_callback(100)
 
