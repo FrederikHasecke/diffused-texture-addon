@@ -1,0 +1,95 @@
+{
+  "asset": {
+    "id": "wooden_axe",
+    "page": "https://polyhaven.com/a/wooden_axe",
+    "creator": "Ulan Cabanilla",
+    "license": "CC0-1.0"
+  },
+  "source_recipe": "documentation/axe_progressive_recipe.json",
+  "working_assets_directory": "/mnt/big-ssd/tmp-dt-media/high_detail",
+  "stage": 4,
+  "job": {
+    "negative": "blurry, low quality, deformed, text, watermark, logo, cartoon, harsh shadows, lens flare, plastic, solid red surface, person, hand",
+    "sd_version": "sdxl",
+    "mode": "PARALLEL_IMG",
+    "complexity": "HIGH",
+    "texture_res": 2048,
+    "render_res": 4096,
+    "steps": 40,
+    "guidance": 7.5,
+    "seed": 157,
+    "render_size": 1200,
+    "azimuth": -25,
+    "elevation": 12,
+    "cameras": 16,
+    "custom_sd_res": 512,
+    "union_strength": 0.65,
+    "prompt": "A blood stained wood handled axe, irregular dark crimson dried blood smears and red blood spatters covering the silver steel axe head, thick red stains along the sharp cutting edge, scratched forged steel visible beneath the stains, warm oiled wooden handle with fine grain and reddish bloody fingerprints near the head, detailed photorealistic prop surface texture",
+    "name": "axe_blood_progressive_4",
+    "denoise": 0.2,
+    "asset": "wooden_axe",
+    "capture_guidance": false,
+    "capture_pipeline": true,
+    "input_from_job": "axe_blood_progressive_3",
+    "input_texture_sha256": "3ce0b2fa3e8671b6f000654dbb49bf1fb4b6295a4a05dda293caaf18d553c57b",
+    "hdri": "studio.hdr",
+    "input_texture": "renders/axe_blood_progressive_3_gen/output_texture_20261011_081531.png"
+  },
+  "status": "FINISHED",
+  "seconds": 420.3,
+  "texture": "renders/axe_blood_progressive_4_gen/output_texture_20261011_082803.png",
+  "texture_sha256": "9699a41306e7d3d90f1035337dc7b1ad683dbdcebe45b0ee1b9fd89a18f30f05",
+  "input_texture_sha256": "3ce0b2fa3e8671b6f000654dbb49bf1fb4b6295a4a05dda293caaf18d553c57b",
+  "pipeline_calls": [
+    {
+      "index": 0,
+      "input_size": [
+        2048,
+        2048
+      ],
+      "denoise": 0.20000000298023224,
+      "steps": 40,
+      "guidance": 7.5,
+      "sha256": {
+        "input": "3c4bc4150e065488529408ba486ef37de169ae05b79269c2bfb55e69c8e64c4a",
+        "mask": "d7efbff7e4c2d7c54ee1a87b2c6f2f0eed7cdd564df551de61ed26e9aa04a817",
+        "depth": "a9d6172684f670640e0b2ea8b09586c3515fc23083097819bb5eac7cdf552ece",
+        "normal": "acdde3809f57cc5015e77e3e786e8273de421b5387ae2430cd061cc04b78f81f",
+        "canny": "98064ab602bc9a9886cb4cafbba01d87ccfcf87b9dcdc8917f95b8f3c81a5a84",
+        "output": "987e82072bf113c2f2f2cd82e72c65208714639dbaf6fa379e0dba19a9d4abb3"
+      }
+    }
+  ],
+  "verified_input_matches_stage_3_output": true,
+  "verified_same_world_geometry": true,
+  "verified_same_uv_map": true,
+  "verified_same_camera": true,
+  "verified_diffuse_only_shaders": true,
+  "uv_sha256": "8e3030651ee80afb34788a1356fa8c88991af87f1418077cc06974e2cf15cad7",
+  "reused_guidance_renders_from_stage": 3,
+  "comparison_note": "Pass 3 used 768-pixel views in 2x2 sub-grids. Pass 4 uses 512-pixel views in one 4x4 grid; mode and per-view diffusion resolution both change.",
+  "local_scripts": {
+    "generate_multipass.py": "fca9a6b9236612629914b326dc51d60a01adb7d62f76495abcddac7616f5b41b",
+    "render_parallel_finish.py": "6df22d384b92d9d8ba14201c089245c6fa9a168d333f7fc92c8e50fc3c700e5d",
+    "compose_parallel_finish.py": "7c245d5c04fd98a210833d98119538bc76db9f43536c686e19796891feebf2f1",
+    "verify_parallel_finish.py": "97dff4b1a0237da01e6f4c30c15ddd111989a9d165410566a483fc237595e778"
+  },
+  "comparison_image": {
+    "path": "images/axe-parallel-finish.webp",
+    "dimensions": [
+      1800,
+      890
+    ],
+    "sha256": "8042b792db36bbe76e5c6f6d66758fab9a58f253119d56e375acd696b5705800",
+    "detail_crop_xyxy": [
+      480,
+      20,
+      720,
+      335
+    ],
+    "view_azimuth_degrees": 155,
+    "view_elevation_degrees": 12,
+    "verified_matched_comparison_camera": true
+  },
+  "visual_observation": "Pass four further softens the wood grain and merges the blood speckles into a broader stain. It does not restore the fine detail visible in pass two."
+}

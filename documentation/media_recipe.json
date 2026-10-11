@@ -1,0 +1,734 @@
+{
+  "addon_commit": "5fbb7fdbda5acba218e543b04b97311ad09dd936",
+  "blender": "5.2.0 LTS",
+  "gpu": "NVIDIA GeForce RTX 3080 Ti 12 GB",
+  "assets": [
+    {
+      "name": "lion",
+      "id": "lion_head",
+      "page": "https://polyhaven.com/a/lion_head",
+      "license": "CC0-1.0",
+      "triangles_used": 47214,
+      "preparation": "Use the original mesh and UV map.",
+      "source_blend": {
+        "url": "https://dl.polyhaven.org/file/ph-assets/Models/blend/2k/lion_head/lion_head_2k.blend",
+        "md5": "a538bbc346846bd9bceec1154e731b1e",
+        "size": 1306948
+      },
+      "source_textures": {
+        "textures/lion_head_diff_2k.jpg": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/lion_head/lion_head_diff_2k.jpg",
+          "md5": "220384dbf7b5e816d13b295f5362e696",
+          "size": 2129462
+        },
+        "textures/lion_head_metal_2k.exr": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/lion_head/lion_head_metal_2k.exr",
+          "md5": "0c7b69fe6d9cfa976acb943ead2b3253",
+          "size": 85412
+        },
+        "textures/lion_head_nor_gl_2k.exr": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/lion_head/lion_head_nor_gl_2k.exr",
+          "md5": "7c761e9cb0c887307ce9dfb95cc30a6e",
+          "size": 7395061
+        },
+        "textures/lion_head_rough_2k.exr": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/lion_head/lion_head_rough_2k.exr",
+          "md5": "7deccd1469c6d87e4fc84d1630d419b9",
+          "size": 1988396
+        }
+      },
+      "authors": {
+        "Tina": "All"
+      }
+    },
+    {
+      "name": "chest",
+      "id": "treasure_chest",
+      "page": "https://polyhaven.com/a/treasure_chest",
+      "license": "CC0-1.0",
+      "triangles_used": 103330,
+      "preparation": "Join all five parts, preserving transforms and the shared UV atlas.",
+      "source_blend": {
+        "size": 2621579,
+        "url": "https://dl.polyhaven.org/file/ph-assets/Models/blend/2k/treasure_chest/treasure_chest_2k.blend",
+        "md5": "f41ebf0dc2f792d029f8fbcf9477ccba"
+      },
+      "source_textures": {
+        "textures/treasure_chest_nor_gl_2k.exr": {
+          "size": 8388399,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/treasure_chest/treasure_chest_nor_gl_2k.exr",
+          "md5": "0aebe5ff75ad9919e529eabfbe3a7393"
+        },
+        "textures/treasure_chest_rough_2k.exr": {
+          "size": 4420065,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/treasure_chest/treasure_chest_rough_2k.exr",
+          "md5": "5ef7b80d5abe5f0f6e93c310198101a8"
+        },
+        "textures/treasure_chest_diff_2k.jpg": {
+          "size": 2999401,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/treasure_chest/treasure_chest_diff_2k.jpg",
+          "md5": "b746ad6fb5bd24c8b7027abba607deb7"
+        },
+        "textures/treasure_chest_metal_2k.exr": {
+          "size": 479504,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/treasure_chest/treasure_chest_metal_2k.exr",
+          "md5": "761dfccfdd5e486ce92b8ca1a3023ea3"
+        }
+      },
+      "authors": {
+        "Rico Cilliers": "All"
+      }
+    },
+    {
+      "name": "axe",
+      "id": "wooden_axe",
+      "page": "https://polyhaven.com/a/wooden_axe",
+      "license": "CC0-1.0",
+      "triangles_used": 3348,
+      "authors": {
+        "Ulan Cabanilla": "All"
+      },
+      "preparation": "Apply modifiers and retain original geometry and UV map; three closed connected components.",
+      "source_blend": {
+        "size": 191389,
+        "url": "https://dl.polyhaven.org/file/ph-assets/Models/blend/2k/wooden_axe/wooden_axe_2k.blend",
+        "md5": "00d1068d2a421b5841bc9f7a06f7a31c"
+      },
+      "source_textures": {
+        "textures/wooden_axe_metal_2k.exr": {
+          "size": 840776,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/wooden_axe/wooden_axe_metal_2k.exr",
+          "md5": "5a895ad56e2b4f4f1059440b7b863f02"
+        },
+        "textures/wooden_axe_diff_2k.jpg": {
+          "size": 2591662,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/wooden_axe/wooden_axe_diff_2k.jpg",
+          "md5": "783f8f6c70bc8388bbbe41a64a33ba99"
+        },
+        "textures/wooden_axe_nor_gl_2k.exr": {
+          "size": 4617413,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/wooden_axe/wooden_axe_nor_gl_2k.exr",
+          "md5": "7d45e8465072a033133aa30efd1cd3ac"
+        },
+        "textures/wooden_axe_rough_2k.exr": {
+          "size": 2180387,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/wooden_axe/wooden_axe_rough_2k.exr",
+          "md5": "00df03add1d00afc7376a18ec6dea75d"
+        }
+      },
+      "geometry_checks": {
+        "boundary_edges": 0,
+        "non_manifold_edges": 0,
+        "inconsistent_winding_edges": 0,
+        "connected_components": 3
+      },
+      "uv_check": {
+        "resolution": 1024,
+        "covered_texels": 624357,
+        "overlapping_texels": 0,
+        "degenerate_uv_triangles": 0
+      },
+      "audit_reports": {
+        "fallback_evaluated_topology_report.json": "024f334b14e0b51bddfa6e9cd8b517e87f566a6f7f98a48b4446ef6441294d3c",
+        "fallback_uv_report.json": "f31836d79419dba9a941b06faac4727a2b666a8c8553a9ba7cffab2b2162b043"
+      }
+    },
+    {
+      "name": "boulder",
+      "id": "boulder_01",
+      "page": "https://polyhaven.com/a/boulder_01",
+      "license": "CC0-1.0",
+      "authors": {
+        "Rico Cilliers": "All"
+      },
+      "triangles_used": 66122,
+      "preparation": "Keep highest-detail LOD0 only, preserving original mesh and UVs; remove LOD1, LOD2 and LOD3.",
+      "source_blend": {
+        "url": "https://dl.polyhaven.org/file/ph-assets/Models/blend/2k/boulder_01/boulder_01_2k.blend",
+        "size": 5370331,
+        "md5": "a1c7b8825533cb84d56ef0b5d87eeab8"
+      },
+      "source_textures": {
+        "textures/boulder_01_nor_gl_2k.exr": {
+          "size": 9451901,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/boulder_01/boulder_01_nor_gl_2k.exr",
+          "md5": "42b8a522a3418fac8bb9de32f5266867"
+        },
+        "textures/boulder_01_diff_2k.jpg": {
+          "size": 3672483,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/boulder_01/boulder_01_diff_2k.jpg",
+          "md5": "63571077317c9a2d1db95894e0268a07"
+        },
+        "textures/boulder_01_rough_2k.exr": {
+          "size": 1767701,
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/boulder_01/boulder_01_rough_2k.exr",
+          "md5": "ec8605524663b1933c4bf98169e92850"
+        }
+      },
+      "geometry_checks": {
+        "boundary_edges": 0,
+        "non_manifold_edges": 0,
+        "inconsistent_winding_edges": 0,
+        "connected_components": 1
+      },
+      "uv_check": {
+        "resolution": 1024,
+        "covered_texels": 799121,
+        "overlapping_texels": 0,
+        "degenerate_uv_triangles": 0
+      },
+      "audit_reports": {
+        "boulder_uv_report.json": "34990d830d617029f8e3e434db1c7019c30d632df8d8353262f92e8a8dd9abed",
+        "boulder_topology_report.json": "731d29c9e1544f638f740f2c9a593018d203de866c0ab79d5960577b1c9d7652"
+      }
+    }
+  ],
+  "jobs": {
+    "lion": {
+      "hdri": "studio.hdr",
+      "negative": "blurry, low quality, deformed, text, watermark, logo, cartoon, painting, harsh shadows, strong highlights, lens flare, oversaturated, smooth featureless surface, plain unadorned metal, plastic, green marble, black monochrome",
+      "sd_version": "sdxl",
+      "mode": "PARALLEL_IMG",
+      "complexity": "HIGH",
+      "texture_res": 2048,
+      "render_res": 4096,
+      "steps": 40,
+      "guidance": 7.5,
+      "seed": 91,
+      "render_size": 1200,
+      "azimuth": -20,
+      "elevation": 8,
+      "cameras": 4,
+      "custom_sd_res": 768,
+      "union_strength": 0.45,
+      "prompt": "Damascene lion head, dense intricate gold and silver floral inlay covering dark bronze, high contrast arabesque engraving across the face and mane, tiny etched leaves and curling vines, hand-chiseled stippling, aged hammered metal with dark oxidized recesses, richly decorated antique Persian metalwork, photorealistic surface texture",
+      "name": "lion",
+      "denoise": 1.0,
+      "asset": "lion_head"
+    },
+    "chest": {
+      "hdri": "studio.hdr",
+      "negative": "blurry, low quality, deformed, text, watermark, logo, cartoon, painting, harsh shadows, strong highlights, lens flare, oversaturated",
+      "sd_version": "sdxl",
+      "mode": "PARALLEL_IMG",
+      "complexity": "HIGH",
+      "texture_res": 2048,
+      "render_res": 4096,
+      "steps": 40,
+      "guidance": 7.5,
+      "seed": 61,
+      "render_size": 1200,
+      "azimuth": -30,
+      "elevation": 20,
+      "cameras": 4,
+      "custom_sd_res": 768,
+      "union_strength": 0.9,
+      "prompt": "an antique pirate treasure chest, weathered dark walnut wooden planks, aged turquoise painted wood with flaking paint revealing warm timber, tarnished brass bands hinges and lock, photorealistic material, detailed surface",
+      "name": "chest",
+      "denoise": 1.0,
+      "asset": "treasure_chest"
+    },
+    "axe": {
+      "hdri": "studio.hdr",
+      "negative": "blurry, low quality, deformed, text, watermark, logo, cartoon, harsh shadows, lens flare, plastic, rust, corrosion, blood, dirt, solid color",
+      "sd_version": "sdxl",
+      "mode": "PARALLEL_IMG",
+      "complexity": "HIGH",
+      "texture_res": 2048,
+      "render_res": 4096,
+      "steps": 40,
+      "guidance": 7.5,
+      "seed": 157,
+      "render_size": 1200,
+      "azimuth": -25,
+      "elevation": 12,
+      "cameras": 4,
+      "custom_sd_res": 768,
+      "union_strength": 0.65,
+      "prompt": "A pristine handcrafted wood handled axe, clean silver forged steel axe head with intricate Damascus steel wave patterns, a bright honed cutting edge, honey colored ash wood handle with crisp natural grain and a smooth oiled finish, immaculate polished steel butt cap, highly detailed photorealistic material texture",
+      "name": "axe",
+      "denoise": 0.8,
+      "asset": "wooden_axe",
+      "capture_guidance": true,
+      "capture_pipeline": true,
+      "input_texture": "wooden_axe/textures/wooden_axe_diff_2k.jpg"
+    },
+    "axe_blood": {
+      "hdri": "studio.hdr",
+      "negative": "blurry, low quality, deformed, text, watermark, logo, cartoon, harsh shadows, lens flare, plastic, solid red surface, person, hand",
+      "sd_version": "sdxl",
+      "mode": "PARALLEL_IMG",
+      "complexity": "HIGH",
+      "texture_res": 2048,
+      "render_res": 4096,
+      "steps": 40,
+      "guidance": 7.5,
+      "seed": 157,
+      "render_size": 1200,
+      "azimuth": -25,
+      "elevation": 12,
+      "cameras": 4,
+      "custom_sd_res": 768,
+      "union_strength": 0.65,
+      "prompt": "A blood stained wood handled axe, irregular dark crimson dried blood smears and red blood spatters covering the silver steel axe head, thick red stains along the sharp cutting edge, scratched forged steel visible beneath the stains, warm oiled wooden handle with fine grain and reddish bloody fingerprints near the head, detailed photorealistic prop surface texture",
+      "name": "axe_blood",
+      "denoise": 0.8,
+      "asset": "wooden_axe",
+      "capture_guidance": false,
+      "capture_pipeline": true,
+      "input_texture": "wooden_axe/textures/wooden_axe_diff_2k.jpg"
+    },
+    "boulder": {
+      "hdri": "studio.hdr",
+      "negative": "blurry, low quality, deformed, text, watermark, logo, cartoon, harsh shadows, lens flare, plastic, smooth surface, polished stone, featureless, flat color, vegetation, flames, smoke",
+      "sd_version": "sdxl",
+      "mode": "PARALLEL_IMG",
+      "complexity": "HIGH",
+      "texture_res": 2048,
+      "render_res": 4096,
+      "steps": 40,
+      "guidance": 7.5,
+      "seed": 181,
+      "render_size": 1200,
+      "azimuth": -25,
+      "elevation": 18,
+      "cameras": 4,
+      "custom_sd_res": 768,
+      "union_strength": 0.35,
+      "prompt": "(glowing molten lava rock:1.4), volcanic boulder made of jagged black basalt plates, wide branching rivers of (brilliant yellow white hot magma:1.5) flowing through deep cracks, vivid golden orange molten veins and red hot fissures across the entire surface, dark porous cooled lava crust with tiny bubbles and granular mineral texture, dramatic bright incandescent cracks contrasting with charcoal black stone, photorealistic detailed volcanic rock",
+      "name": "boulder",
+      "denoise": 0.95,
+      "asset": "boulder_01",
+      "capture_guidance": true,
+      "capture_pipeline": true,
+      "input_texture": "boulder_01/textures/boulder_01_diff_2k.jpg",
+      "reuse_render_folder": "boulder_render_cache"
+    },
+    "boulder_lichen": {
+      "hdri": "studio.hdr",
+      "negative": "blurry, low quality, deformed, text, watermark, logo, cartoon, harsh shadows, lens flare, plastic, smooth surface, polished stone, featureless, flat color, thick moss carpet, leaves, grass",
+      "sd_version": "sdxl",
+      "mode": "PARALLEL_IMG",
+      "complexity": "HIGH",
+      "texture_res": 2048,
+      "render_res": 4096,
+      "steps": 40,
+      "guidance": 7.5,
+      "seed": 197,
+      "render_size": 1200,
+      "azimuth": -25,
+      "elevation": 18,
+      "cameras": 4,
+      "custom_sd_res": 768,
+      "union_strength": 0.3,
+      "prompt": "A lichen encrusted boulder, abundant vivid yellow green and pale mint green crustose lichen covering every face of the rock in intricate circular rosettes, scattered golden yellow and orange lichen patches, detailed tiny branching frilled lobes, cracked scaly organic crust and powdery granules, small exposed islands of dark coarse granite between dense lichen colonies, speckled quartz grains, photorealistic macro texture of an old lichen covered stone",
+      "name": "boulder_lichen",
+      "denoise": 0.85,
+      "asset": "boulder_01",
+      "capture_guidance": false,
+      "capture_pipeline": true,
+      "input_texture": "boulder_01/textures/boulder_01_diff_2k.jpg",
+      "reuse_render_folder": "boulder_render_cache"
+    }
+  },
+  "comparison": {
+    "source": "boulder_01_diff_2k.jpg",
+    "use_original_normal_map": false,
+    "use_original_roughness_map": false,
+    "use_original_metalness_map": false,
+    "shader": "Principled BSDF; roughness 0.5; metallic 0; no emission; same camera, lighting and geometry in all three panels.",
+    "denoise_by_variation": {
+      "boulder": 0.95,
+      "boulder_lichen": 0.85
+    },
+    "passes_per_variation": 1,
+    "variations": [
+      "boulder",
+      "boulder_lichen"
+    ],
+    "independent_original_input": true,
+    "identical_crop": true,
+    "result": "Fractured lava basalt and patchy crustose lichen, generated independently from the original boulder albedo.",
+    "source_render": "boulder_original.png",
+    "generated_renders": [
+      "boulder.png",
+      "boulder_lichen.png"
+    ],
+    "verified_variations": {
+      "boulder": {
+        "actual_sdxl_call": {
+          "index": 0,
+          "input_size": [
+            1536,
+            1536
+          ],
+          "denoise": 0.949999988079071,
+          "steps": 40,
+          "guidance": 7.5
+        },
+        "verified_saved_scene_input": "assets/boulder_01/textures/boulder_01_diff_2k.jpg",
+        "verified_saved_scene_denoise": 0.95,
+        "verified_same_world_geometry": true,
+        "verified_same_uv_map": true,
+        "verified_same_camera": true,
+        "uv_sha256": "fae318d492c5b46b0e66ef0c9ad774d00d27d9e999b236d390c0b14496f00a98",
+        "pipeline_capture": {
+          "input": "fad284a87f9e7ef4cacb6aa2a5a731bf216f9a906d905865b5d1fe74bc48fb5a",
+          "mask": "04053f2503be6e005204d736d5368e03d96c6fb0dd19f2e7479bd33e1a1fd039",
+          "output": "2cb9bd3d29a9bd50786b4e0ba1ed4f413fb31215c66ac581f8dfe754faff22cd",
+          "depth": "8035e11760a54cef98730574e81ab1df796e5415512101c97be38f0a95f8e456",
+          "normal": "45b46247825ab14c2ae66018f328362474d02083106d9a6e265f27cd4fedd76d",
+          "canny": "372065363c4f4e830c0019990a0024cded694f43bfd5f41284699dff938252f1"
+        }
+      },
+      "boulder_lichen": {
+        "actual_sdxl_call": {
+          "index": 0,
+          "input_size": [
+            1536,
+            1536
+          ],
+          "denoise": 0.8500000238418579,
+          "steps": 40,
+          "guidance": 7.5
+        },
+        "verified_saved_scene_input": "assets/boulder_01/textures/boulder_01_diff_2k.jpg",
+        "verified_saved_scene_denoise": 0.85,
+        "verified_same_world_geometry": true,
+        "verified_same_uv_map": true,
+        "verified_same_camera": true,
+        "uv_sha256": "fae318d492c5b46b0e66ef0c9ad774d00d27d9e999b236d390c0b14496f00a98",
+        "pipeline_capture": {
+          "input": "fad284a87f9e7ef4cacb6aa2a5a731bf216f9a906d905865b5d1fe74bc48fb5a",
+          "mask": "04053f2503be6e005204d736d5368e03d96c6fb0dd19f2e7479bd33e1a1fd039",
+          "output": "ff3e4476180a58dba4b1fb654c306478a03644bba3c63065fa42967961f32661",
+          "depth": "8035e11760a54cef98730574e81ab1df796e5415512101c97be38f0a95f8e456",
+          "normal": "45b46247825ab14c2ae66018f328362474d02083106d9a6e265f27cd4fedd76d",
+          "canny": "372065363c4f4e830c0019990a0024cded694f43bfd5f41284699dff938252f1"
+        }
+      }
+    },
+    "uv_coverage_note": "Original UV map retained; raster audit at 1024 squared found no overlaps or degenerate triangles."
+  },
+  "lighting": {
+    "local_file": "studio.hdr",
+    "sha256": "36724313c0fc66dab126ff90f081b85a0b1ef47be65eda1417bd20b033f0573f",
+    "note": "Reused the studio HDRI from the existing README media workspace."
+  },
+  "diffusion_models": {
+    "checkpoint": {
+      "repository": "stabilityai/stable-diffusion-xl-base-1.0",
+      "revision_cached": "462165984030d82259a11f4367a4eed129e94a7b"
+    },
+    "controlnet_union": {
+      "repository": "xinsir/controlnet-union-sdxl-1.0",
+      "revision_cached": "801a4a3fa3d4c936f4feea95b98607bc6726f80c"
+    }
+  },
+  "render": {
+    "engine": "Cycles",
+    "device": "OptiX",
+    "samples": 128,
+    "denoising": true,
+    "view_transform": "AgX",
+    "size": [
+      1200,
+      1200
+    ],
+    "transparent_background": true,
+    "normal_maps": false,
+    "roughness": 0.5,
+    "metallic": 0.0,
+    "emission": false
+  },
+  "working_assets_directory": "/mnt/big-ssd/tmp-dt-media/high_detail",
+  "camera_sweep": {
+    "frames": 72,
+    "fps": 18,
+    "camera_motion": "azimuth + 14 degrees * sin(2*pi*frame/72)",
+    "render_size": [
+      720,
+      720
+    ],
+    "samples": 24,
+    "view_transform": "AgX",
+    "images": "images/showcase.mp4",
+    "encoding": {
+      "codec": "H.264",
+      "crf": 18,
+      "pixel_format": "yuv420p",
+      "faststart": true,
+      "dimensions": [
+        1800,
+        760
+      ]
+    },
+    "models": [
+      "lion",
+      "chest",
+      "boulder"
+    ]
+  },
+  "generation_results": {
+    "chest": {
+      "status": "FINISHED",
+      "seconds": 175.1,
+      "texture_sha256": "344ae581152de9a294fde5e62227caa860df7905ff7e2ea689640c502e82da83",
+      "texture_file": "output_texture_20261010_163441.png"
+    },
+    "lion": {
+      "status": "FINISHED",
+      "seconds": 169.3,
+      "texture_sha256": "cc048974956a04e3f72f14ced431e4fc802ea45cffbf353443c2ef911e0fbbd5",
+      "texture_file": "output_texture_20261010_165818.png"
+    },
+    "axe": {
+      "status": "FINISHED",
+      "seconds": 222.6,
+      "texture_sha256": "26f0ff5d81cd9f56fa4bb446c8a219883c24d1817de163c1b8dd42fcf0db4b87",
+      "texture_file": "output_texture_20261011_075208.png"
+    },
+    "axe_blood": {
+      "status": "FINISHED",
+      "seconds": 135.2,
+      "texture_sha256": "e35ccb72022b203d0d655b53201092d16b2ecb81d7737d468cf6315b19bea0d1",
+      "texture_file": "output_texture_20261011_075443.png"
+    },
+    "boulder": {
+      "status": "FINISHED",
+      "seconds": 106.2,
+      "texture_sha256": "57daaa7c3980619eed7476b4f3e855fc87b6d177aca2198f13fd7ef7dcca29a8",
+      "texture_file": "output_texture_20261011_084313.png"
+    },
+    "boulder_lichen": {
+      "status": "FINISHED",
+      "seconds": 105.3,
+      "texture_sha256": "a0e0da3a353ab7d562c0dc47e9e3bf5f896ddb8f8e2594fa3dcd41d42a4b69d2",
+      "texture_file": "output_texture_20261011_084535.png"
+    }
+  },
+  "guidance": {
+    "source_job": "boulder",
+    "capture": "Exact depth_img, canny_img and normal_img passed to run_pipeline.",
+    "source_grid_dimensions": [
+      1536,
+      1536
+    ],
+    "display": "images/controlnet-guidance.webp",
+    "source_checksums": {
+      "depth": "8035e11760a54cef98730574e81ab1df796e5415512101c97be38f0a95f8e456",
+      "normal": "45b46247825ab14c2ae66018f328362474d02083106d9a6e265f27cd4fedd76d",
+      "canny": "372065363c4f4e830c0019990a0024cded694f43bfd5f41284699dff938252f1"
+    }
+  },
+  "local_scripts": {
+    "note": "Superseded by scripts/media in the repository; media.py compose reproduces every output above byte for byte from this run's workspace.",
+    "prepare.py": "882b2dd9e1b9d8a8ad8ec8566a29bbf2b9b71bf4902cea92c872eb15cf3212de",
+    "generate_multipass.py": "fca9a6b9236612629914b326dc51d60a01adb7d62f76495abcddac7616f5b41b",
+    "compose_boulder.py": "dabfee3764086f4332a3e0405189e54261bc3a8ea1e2e088085037419cbae3c4",
+    "animate.py": "dcb3047b8143e59413e5dbc173eaf6ef039cd1562532959165c9a42221dce095",
+    "verify_boulder_scene.py": "fba7150c9b6edf5e240f8c4c7dda3dcceff19260b106303333ccd1e597ca4726",
+    "verify_boulder.py": "48460d8b48c7d9ca23da3170b19df312914da28b34eb131e7266b76afcb829a3"
+  },
+  "outputs": {
+    "hero.webp": {
+      "dimensions": [
+        1800,
+        760
+      ],
+      "sha256": "d7b10dee86af1cac3ee7586022677576599a8e7dca1c9bc4c398936cd48e7a36"
+    },
+    "social_preview.png": {
+      "dimensions": [
+        1280,
+        640
+      ],
+      "sha256": "6057888fed85f3b241c3fe14af14e74eb2078bcf0833a4c45b789ce5d74d4c83"
+    },
+    "texture-to-texture.webp": {
+      "dimensions": [
+        1800,
+        820
+      ],
+      "sha256": "df86571573f8cb86e00cdf9254ca26fb9f2e2c861a6acdb551caaeaa6df7b933"
+    },
+    "controlnet-guidance.webp": {
+      "dimensions": [
+        1800,
+        720
+      ],
+      "sha256": "99cdde2dd2e527445f87d373d93c3efb198c655c021452df159b6a8bb36b1691"
+    },
+    "showcase.mp4": {
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "width": 1800,
+            "height": 760,
+            "r_frame_rate": "18/1",
+            "nb_frames": "72"
+          }
+        ],
+        "format": {
+          "duration": "4.000000"
+        }
+      },
+      "sha256": "a81bae0b44fe4dd387bcd799bb6411d2dc91b06b9da12ea419981b9b24e83b3a",
+      "decoded_frames": 72,
+      "distinct_decoded_frame_checksums": 72
+    },
+    "how-it-works.webp": {
+      "dimensions": [
+        1800,
+        600
+      ],
+      "sha256": "710980f391bf2917ff556a26ad7f27647b6ccffacee9314ede3b59a4d1e6e9a7",
+      "source": "boulder job: pipeline_capture/boulder/00, its UV texture and the boulder_original/boulder renders"
+    }
+  },
+  "workflow_video_model": {
+    "id": "marble_bust_01",
+    "page": "https://polyhaven.com/a/marble_bust_01",
+    "authors": {
+      "Rico Cilliers": "All"
+    },
+    "license": "CC0-1.0",
+    "outputs": [
+      "images/usage.webp",
+      "images/usage.mp4"
+    ]
+  },
+  "hero_axe_blade_inset_crop_xyxy_1200": [
+    480,
+    20,
+    720,
+    335
+  ],
+  "additional_experiments": {
+    "progressive_axe": "documentation/axe_progressive_recipe.json",
+    "parallel_axe_finish": "documentation/axe_parallel_finish_recipe.json"
+  },
+  "hero_assets": [
+    "lion",
+    "chest",
+    "boulder"
+  ],
+  "previous_axe_comparison": {
+    "source": "wooden_axe_diff_2k.jpg",
+    "use_original_normal_map": false,
+    "use_original_roughness_map": false,
+    "use_original_metalness_map": false,
+    "shader": "Principled BSDF; roughness 0.5; metallic 0; same camera, lighting and geometry in all three panels.",
+    "denoise": 0.8,
+    "passes_per_variation": 1,
+    "variations": [
+      "axe",
+      "axe_blood"
+    ],
+    "independent_original_input": true,
+    "detail_inset_crop_xyxy": [
+      480,
+      20,
+      720,
+      335
+    ],
+    "detail_insets_use_identical_coordinates": true,
+    "verified_variations": {
+      "axe": {
+        "verified_saved_scene_input": "assets/wooden_axe/textures/wooden_axe_diff_2k.jpg",
+        "verified_saved_scene_denoise": 0.8,
+        "verified_same_world_geometry": true,
+        "verified_same_uv_map": true,
+        "verified_same_camera": true,
+        "uv_sha256": "8e3030651ee80afb34788a1356fa8c88991af87f1418077cc06974e2cf15cad7",
+        "pipeline_capture": {
+          "input": "b85c40ee87993be14437f77c638b9d807884267e8a128408aa3f91b2442f88d8",
+          "mask": "d510f28ec5c629db2a2d6fcf5d4e0ef794ebff4fdde6598a7ddd6a0ec3caefb9",
+          "output": "edadb8ec3e884c717cbc5d960def204311ac9a9d6c9ed0040153402fd14b63c6"
+        }
+      },
+      "axe_blood": {
+        "verified_saved_scene_input": "assets/wooden_axe/textures/wooden_axe_diff_2k.jpg",
+        "verified_saved_scene_denoise": 0.8,
+        "verified_same_world_geometry": true,
+        "verified_same_uv_map": true,
+        "verified_same_camera": true,
+        "uv_sha256": "8e3030651ee80afb34788a1356fa8c88991af87f1418077cc06974e2cf15cad7",
+        "pipeline_capture": {
+          "input": "b85c40ee87993be14437f77c638b9d807884267e8a128408aa3f91b2442f88d8",
+          "mask": "d510f28ec5c629db2a2d6fcf5d4e0ef794ebff4fdde6598a7ddd6a0ec3caefb9",
+          "output": "8149da968a24cd39a918977636c96063cfaf0855c4c5ab24110dafac44a0e440"
+        }
+      }
+    },
+    "result": "Pristine Damascus-patterned steel and blood-stained steel, generated independently from the original axe albedo.",
+    "source_render": "axe_original.png",
+    "generated_renders": [
+      "axe.png",
+      "axe_blood.png"
+    ]
+  },
+  "boulder_initial_attempts": {
+    "lava_first_attempt": {
+      "job": {
+        "hdri": "studio.hdr",
+        "negative": "blurry, low quality, deformed, text, watermark, logo, cartoon, harsh shadows, lens flare, plastic, smooth surface, polished stone, featureless, flat color, vegetation, flames, smoke",
+        "sd_version": "sdxl",
+        "mode": "PARALLEL_IMG",
+        "complexity": "HIGH",
+        "texture_res": 2048,
+        "render_res": 4096,
+        "steps": 40,
+        "guidance": 7.5,
+        "seed": 173,
+        "render_size": 1200,
+        "azimuth": -25,
+        "elevation": 18,
+        "cameras": 4,
+        "custom_sd_res": 768,
+        "union_strength": 0.55,
+        "prompt": "A volcanic lava boulder, rough fractured charcoal basalt crust split by branching incandescent orange and golden yellow molten fissures, deep red heat inside narrow cracks, jagged cooled black lava plates, porous vesicular stone with tiny pits, scorched rusty mineral flecks, intricate irregular rocky surface, photorealistic volcanic rock texture",
+        "name": "boulder",
+        "denoise": 0.8,
+        "asset": "boulder_01",
+        "capture_guidance": true,
+        "capture_pipeline": true,
+        "input_texture": "boulder_01/textures/boulder_01_diff_2k.jpg"
+      },
+      "render_sha256": "de81e948d70418c919214960518f640f36d264d346ded81b61efd9126d835d41",
+      "result": "Material change too subtle; replaced with lower ControlNet strength and stronger denoise."
+    },
+    "lichen_first_attempt": {
+      "job": {
+        "hdri": "studio.hdr",
+        "negative": "blurry, low quality, deformed, text, watermark, logo, cartoon, harsh shadows, lens flare, plastic, smooth surface, polished stone, featureless, flat color, thick moss carpet, leaves, grass",
+        "sd_version": "sdxl",
+        "mode": "PARALLEL_IMG",
+        "complexity": "HIGH",
+        "texture_res": 2048,
+        "render_res": 4096,
+        "steps": 40,
+        "guidance": 7.5,
+        "seed": 173,
+        "render_size": 1200,
+        "azimuth": -25,
+        "elevation": 18,
+        "cameras": 4,
+        "custom_sd_res": 768,
+        "union_strength": 0.55,
+        "prompt": "An ancient weathered granite boulder covered in intricate crustose lichens, patchy mustard yellow and burnt orange rosette colonies mixed with pale sage green and chalk white lichen, tiny curled scaly lobes and powdery granular edges, exposed coarse gray stone with sparkling quartz grains and rusty mineral veins between the colonies, dark damp crevices, detailed photorealistic natural rock surface",
+        "name": "boulder_lichen",
+        "denoise": 0.8,
+        "asset": "boulder_01",
+        "capture_guidance": false,
+        "capture_pipeline": true,
+        "input_texture": "boulder_01/textures/boulder_01_diff_2k.jpg",
+        "reuse_render_folder": "boulder_render_cache"
+      },
+      "render_sha256": "4a9e8118bff86fe150e2b69a5e20b7a02ab314eb992e782f070def98ca837358",
+      "result": "Material change too subtle; replaced with lower ControlNet strength and stronger denoise."
+    }
+  }
+}
