@@ -1,0 +1,270 @@
+{
+  "_comment": "Inputs for scripts/media/media.py. documentation/*_recipe.json record the outputs of a specific run.",
+  "addon_module": "bl_ext.user_default.diffused_texture_addon",
+  "hdri": {
+    "file": "studio.hdr",
+    "sha256": "36724313c0fc66dab126ff90f081b85a0b1ef47be65eda1417bd20b033f0573f",
+    "note": "2048x1024 Radiance HDR. Its original source was not recorded; check verifies the file by checksum."
+  },
+  "render": {
+    "size": 1200,
+    "samples": 128,
+    "lens": 85,
+    "view_transform": "AgX"
+  },
+  "sweep": {
+    "frames": 72,
+    "size": 720,
+    "samples": 24,
+    "swing_degrees": 14,
+    "fps": 18
+  },
+  "assets": {
+    "lion_head": {
+      "page": "https://polyhaven.com/a/lion_head",
+      "license": "CC0-1.0",
+      "files": {
+        "lion_head.blend": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/blend/2k/lion_head/lion_head_2k.blend",
+          "md5": "a538bbc346846bd9bceec1154e731b1e"
+        },
+        "textures/lion_head_diff_2k.jpg": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/lion_head/lion_head_diff_2k.jpg",
+          "md5": "220384dbf7b5e816d13b295f5362e696"
+        },
+        "textures/lion_head_metal_2k.exr": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/lion_head/lion_head_metal_2k.exr",
+          "md5": "0c7b69fe6d9cfa976acb943ead2b3253"
+        },
+        "textures/lion_head_nor_gl_2k.exr": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/lion_head/lion_head_nor_gl_2k.exr",
+          "md5": "7c761e9cb0c887307ce9dfb95cc30a6e"
+        },
+        "textures/lion_head_rough_2k.exr": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/lion_head/lion_head_rough_2k.exr",
+          "md5": "7deccd1469c6d87e4fc84d1630d419b9"
+        }
+      }
+    },
+    "treasure_chest": {
+      "page": "https://polyhaven.com/a/treasure_chest",
+      "license": "CC0-1.0",
+      "files": {
+        "treasure_chest.blend": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/blend/2k/treasure_chest/treasure_chest_2k.blend",
+          "md5": "f41ebf0dc2f792d029f8fbcf9477ccba"
+        },
+        "textures/treasure_chest_diff_2k.jpg": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/treasure_chest/treasure_chest_diff_2k.jpg",
+          "md5": "b746ad6fb5bd24c8b7027abba607deb7"
+        },
+        "textures/treasure_chest_metal_2k.exr": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/treasure_chest/treasure_chest_metal_2k.exr",
+          "md5": "761dfccfdd5e486ce92b8ca1a3023ea3"
+        },
+        "textures/treasure_chest_nor_gl_2k.exr": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/treasure_chest/treasure_chest_nor_gl_2k.exr",
+          "md5": "0aebe5ff75ad9919e529eabfbe3a7393"
+        },
+        "textures/treasure_chest_rough_2k.exr": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/treasure_chest/treasure_chest_rough_2k.exr",
+          "md5": "5ef7b80d5abe5f0f6e93c310198101a8"
+        }
+      }
+    },
+    "wooden_axe": {
+      "page": "https://polyhaven.com/a/wooden_axe",
+      "license": "CC0-1.0",
+      "files": {
+        "wooden_axe.blend": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/blend/2k/wooden_axe/wooden_axe_2k.blend",
+          "md5": "00d1068d2a421b5841bc9f7a06f7a31c"
+        },
+        "textures/wooden_axe_diff_2k.jpg": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/wooden_axe/wooden_axe_diff_2k.jpg",
+          "md5": "783f8f6c70bc8388bbbe41a64a33ba99"
+        },
+        "textures/wooden_axe_metal_2k.exr": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/wooden_axe/wooden_axe_metal_2k.exr",
+          "md5": "5a895ad56e2b4f4f1059440b7b863f02"
+        },
+        "textures/wooden_axe_nor_gl_2k.exr": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/wooden_axe/wooden_axe_nor_gl_2k.exr",
+          "md5": "7d45e8465072a033133aa30efd1cd3ac"
+        },
+        "textures/wooden_axe_rough_2k.exr": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/wooden_axe/wooden_axe_rough_2k.exr",
+          "md5": "00df03add1d00afc7376a18ec6dea75d"
+        }
+      }
+    },
+    "boulder_01": {
+      "page": "https://polyhaven.com/a/boulder_01",
+      "license": "CC0-1.0",
+      "files": {
+        "boulder_01.blend": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/blend/2k/boulder_01/boulder_01_2k.blend",
+          "md5": "a1c7b8825533cb84d56ef0b5d87eeab8"
+        },
+        "textures/boulder_01_diff_2k.jpg": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/2k/boulder_01/boulder_01_diff_2k.jpg",
+          "md5": "63571077317c9a2d1db95894e0268a07"
+        },
+        "textures/boulder_01_nor_gl_2k.exr": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/boulder_01/boulder_01_nor_gl_2k.exr",
+          "md5": "42b8a522a3418fac8bb9de32f5266867"
+        },
+        "textures/boulder_01_rough_2k.exr": {
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/exr/2k/boulder_01/boulder_01_rough_2k.exr",
+          "md5": "ec8605524663b1933c4bf98169e92850"
+        }
+      }
+    }
+  },
+  "scenes": {
+    "lion": {
+      "asset": "lion_head",
+      "azimuth": -20,
+      "elevation": 8
+    },
+    "chest": {
+      "asset": "treasure_chest",
+      "azimuth": -30,
+      "elevation": 20
+    },
+    "axe": {
+      "asset": "wooden_axe",
+      "azimuth": -25,
+      "elevation": 12
+    },
+    "boulder": {
+      "asset": "boulder_01",
+      "azimuth": -25,
+      "elevation": 18,
+      "mesh": "largest"
+    }
+  },
+  "defaults": {
+    "sd_version": "sdxl",
+    "mode": "PARALLEL_IMG",
+    "complexity": "HIGH",
+    "steps": 40,
+    "guidance": 7.5,
+    "cameras": 4,
+    "texture_res": 2048,
+    "render_res": 4096,
+    "custom_sd_res": 768,
+    "denoise": 1.0,
+    "capture_pipeline": true
+  },
+  "jobs": {
+    "lion": {
+      "scene": "lion",
+      "prompt": "Damascene lion head, dense intricate gold and silver floral inlay covering dark bronze, high contrast arabesque engraving across the face and mane, tiny etched leaves and curling vines, hand-chiseled stippling, aged hammered metal with dark oxidized recesses, richly decorated antique Persian metalwork, photorealistic surface texture",
+      "negative": "blurry, low quality, deformed, text, watermark, logo, cartoon, painting, harsh shadows, strong highlights, lens flare, oversaturated, smooth featureless surface, plain unadorned metal, plastic, green marble, black monochrome",
+      "seed": 91,
+      "union_strength": 0.45,
+      "sweep": true
+    },
+    "chest": {
+      "scene": "chest",
+      "prompt": "an antique pirate treasure chest, weathered dark walnut wooden planks, aged turquoise painted wood with flaking paint revealing warm timber, tarnished brass bands hinges and lock, photorealistic material, detailed surface",
+      "negative": "blurry, low quality, deformed, text, watermark, logo, cartoon, painting, harsh shadows, strong highlights, lens flare, oversaturated",
+      "seed": 61,
+      "union_strength": 0.9,
+      "sweep": true
+    },
+    "boulder": {
+      "scene": "boulder",
+      "prompt": "(glowing molten lava rock:1.4), volcanic boulder made of jagged black basalt plates, wide branching rivers of (brilliant yellow white hot magma:1.5) flowing through deep cracks, vivid golden orange molten veins and red hot fissures across the entire surface, dark porous cooled lava crust with tiny bubbles and granular mineral texture, dramatic bright incandescent cracks contrasting with charcoal black stone, photorealistic detailed volcanic rock",
+      "negative": "blurry, low quality, deformed, text, watermark, logo, cartoon, harsh shadows, lens flare, plastic, smooth surface, polished stone, featureless, flat color, vegetation, flames, smoke",
+      "denoise": 0.95,
+      "seed": 181,
+      "union_strength": 0.35,
+      "input_texture": "asset:textures/boulder_01_diff_2k.jpg",
+      "sweep": true
+    },
+    "boulder_lichen": {
+      "scene": "boulder",
+      "prompt": "A lichen encrusted boulder, abundant vivid yellow green and pale mint green crustose lichen covering every face of the rock in intricate circular rosettes, scattered golden yellow and orange lichen patches, detailed tiny branching frilled lobes, cracked scaly organic crust and powdery granules, small exposed islands of dark coarse granite between dense lichen colonies, speckled quartz grains, photorealistic macro texture of an old lichen covered stone",
+      "negative": "blurry, low quality, deformed, text, watermark, logo, cartoon, harsh shadows, lens flare, plastic, smooth surface, polished stone, featureless, flat color, thick moss carpet, leaves, grass",
+      "denoise": 0.85,
+      "seed": 197,
+      "union_strength": 0.3,
+      "input_texture": "asset:textures/boulder_01_diff_2k.jpg"
+    },
+    "axe_blood_progressive_1": {
+      "scene": "axe",
+      "prompt": "A blood stained wood handled axe, irregular dark crimson dried blood smears and red blood spatters covering the silver steel axe head, thick red stains along the sharp cutting edge, scratched forged steel visible beneath the stains, warm oiled wooden handle with fine grain and reddish bloody fingerprints near the head, detailed photorealistic prop surface texture",
+      "negative": "blurry, low quality, deformed, text, watermark, logo, cartoon, harsh shadows, lens flare, plastic, solid red surface, person, hand",
+      "texture_res": 512,
+      "render_res": 1024,
+      "custom_sd_res": 512,
+      "seed": 157,
+      "union_strength": 0.65,
+      "views": {
+        "reverse": {
+          "azimuth": 155,
+          "elevation": 12
+        }
+      }
+    },
+    "axe_blood_progressive_2": {
+      "scene": "axe",
+      "prompt": "A blood stained wood handled axe, irregular dark crimson dried blood smears and red blood spatters covering the silver steel axe head, thick red stains along the sharp cutting edge, scratched forged steel visible beneath the stains, warm oiled wooden handle with fine grain and reddish bloody fingerprints near the head, detailed photorealistic prop surface texture",
+      "negative": "blurry, low quality, deformed, text, watermark, logo, cartoon, harsh shadows, lens flare, plastic, solid red surface, person, hand",
+      "cameras": 9,
+      "texture_res": 1024,
+      "render_res": 2048,
+      "custom_sd_res": 512,
+      "denoise": 0.5,
+      "seed": 157,
+      "union_strength": 0.65,
+      "input_from_job": "axe_blood_progressive_1",
+      "views": {
+        "reverse": {
+          "azimuth": 155,
+          "elevation": 12
+        }
+      }
+    },
+    "axe_blood_progressive_3": {
+      "scene": "axe",
+      "prompt": "A blood stained wood handled axe, irregular dark crimson dried blood smears and red blood spatters covering the silver steel axe head, thick red stains along the sharp cutting edge, scratched forged steel visible beneath the stains, warm oiled wooden handle with fine grain and reddish bloody fingerprints near the head, detailed photorealistic prop surface texture",
+      "negative": "blurry, low quality, deformed, text, watermark, logo, cartoon, harsh shadows, lens flare, plastic, solid red surface, person, hand",
+      "mode": "PARA_SEQUENTIAL_IMG",
+      "cameras": 16,
+      "denoise": 0.2,
+      "seed": 157,
+      "union_strength": 0.65,
+      "subgrid": [
+        2,
+        2
+      ],
+      "input_from_job": "axe_blood_progressive_2",
+      "views": {
+        "reverse": {
+          "azimuth": 155,
+          "elevation": 12
+        }
+      }
+    },
+    "axe_blood_progressive_4": {
+      "scene": "axe",
+      "prompt": "A blood stained wood handled axe, irregular dark crimson dried blood smears and red blood spatters covering the silver steel axe head, thick red stains along the sharp cutting edge, scratched forged steel visible beneath the stains, warm oiled wooden handle with fine grain and reddish bloody fingerprints near the head, detailed photorealistic prop surface texture",
+      "negative": "blurry, low quality, deformed, text, watermark, logo, cartoon, harsh shadows, lens flare, plastic, solid red surface, person, hand",
+      "cameras": 16,
+      "custom_sd_res": 512,
+      "denoise": 0.2,
+      "seed": 157,
+      "union_strength": 0.65,
+      "input_from_job": "axe_blood_progressive_3",
+      "views": {
+        "reverse": {
+          "azimuth": 155,
+          "elevation": 12
+        }
+      }
+    }
+  }
+}

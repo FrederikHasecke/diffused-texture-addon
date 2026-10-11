@@ -1,5 +1,16 @@
 # Contributing
 
+## Development Setup
+
+1. Install [uv](https://docs.astral.sh/uv/).
+2. Run `uv sync` in the repository root. This creates a Python 3.13 environment with the Blender 5.2 LTS `bpy` wheel, PyTorch and the diffusion stack.
+3. Run the default checks before opening a pull request (see [documentation/TESTING.md](documentation/TESTING.md)):
+   - `uv run ruff check . --config pyproject.toml`
+   - `uvx ty check . --python-version 3.13`
+   - `uv run pytest tests/unit_tests tests/integration_tests -m "not slow and not gpu and not network and not e2e" -q`
+
+To try your changes in Blender, build the add-on with `blender --command extension build` and install the ZIP via `Edit > Preferences > Add-ons > Install from Disk...`.
+
 ## Commit Setup
 
 This repository ships repo-tracked Git hooks under `.githooks/`.

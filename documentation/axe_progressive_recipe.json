@@ -1,0 +1,271 @@
+{
+  "asset": {
+    "id": "wooden_axe",
+    "page": "https://polyhaven.com/a/wooden_axe",
+    "creator": "Ulan Cabanilla",
+    "license": "CC0-1.0"
+  },
+  "purpose": "Progressive blood-stained axe experiment: 4-view generation, 9-view refinement, 16-view para-sequential refinement.",
+  "working_assets_directory": "/mnt/big-ssd/tmp-dt-media/high_detail",
+  "uv_sha256": "8e3030651ee80afb34788a1356fa8c88991af87f1418077cc06974e2cf15cad7",
+  "stages": [
+    {
+      "stage": 1,
+      "job": {
+        "negative": "blurry, low quality, deformed, text, watermark, logo, cartoon, harsh shadows, lens flare, plastic, solid red surface, person, hand",
+        "sd_version": "sdxl",
+        "mode": "PARALLEL_IMG",
+        "complexity": "HIGH",
+        "texture_res": 512,
+        "render_res": 1024,
+        "steps": 40,
+        "guidance": 7.5,
+        "seed": 157,
+        "render_size": 1200,
+        "azimuth": -25,
+        "elevation": 12,
+        "cameras": 4,
+        "custom_sd_res": 512,
+        "union_strength": 0.65,
+        "prompt": "A blood stained wood handled axe, irregular dark crimson dried blood smears and red blood spatters covering the silver steel axe head, thick red stains along the sharp cutting edge, scratched forged steel visible beneath the stains, warm oiled wooden handle with fine grain and reddish bloody fingerprints near the head, detailed photorealistic prop surface texture",
+        "name": "axe_blood_progressive_1",
+        "denoise": 1.0,
+        "asset": "wooden_axe",
+        "capture_guidance": false,
+        "capture_pipeline": true,
+        "hdri": "studio.hdr"
+      },
+      "status": "FINISHED",
+      "seconds": 29.9,
+      "texture": "renders/axe_blood_progressive_1_gen/output_texture_20261011_080324.png",
+      "texture_sha256": "233a879871708efe4f2180fdfa6242ed29970575ab91b85df298111276ceea5c",
+      "pipeline_calls": [
+        {
+          "index": 0,
+          "input_size": [
+            1024,
+            1024
+          ],
+          "denoise": 1.0,
+          "steps": 40,
+          "guidance": 7.5,
+          "sha256": {
+            "input": "d9bd147ced77bca4a875af12714949cd17ddd3c11cc47218b4de30185bc0b4e9",
+            "mask": "98716dd54e8b70b0f7e292490d78bd163dbe4272c4747ef18e62a267e6b0ab94",
+            "depth": "a7cb2d3f3444de3349a259d4ba90120c9ee309f325a4cc3146c7f65bb71aecf9",
+            "normal": "afe8ab627235decf84cb7cabf6823a23c9592f46f0e2f85879b0a04a3b1464fc",
+            "canny": "8c7053c6ee1e7f9786bea802f21ba8d87374eb907f0f381652a101011081fe59",
+            "output": "438d6704e1ed06252446baedbf6d9b16a5a97f1919e2ac698da0d397ed96ef64"
+          }
+        }
+      ],
+      "verified_same_world_geometry": true,
+      "verified_same_uv_map": true,
+      "verified_same_camera": true,
+      "verified_diffuse_only_shaders": true,
+      "verified_input_matches_previous_output": false
+    },
+    {
+      "stage": 2,
+      "job": {
+        "negative": "blurry, low quality, deformed, text, watermark, logo, cartoon, harsh shadows, lens flare, plastic, solid red surface, person, hand",
+        "sd_version": "sdxl",
+        "mode": "PARALLEL_IMG",
+        "complexity": "HIGH",
+        "texture_res": 1024,
+        "render_res": 2048,
+        "steps": 40,
+        "guidance": 7.5,
+        "seed": 157,
+        "render_size": 1200,
+        "azimuth": -25,
+        "elevation": 12,
+        "cameras": 9,
+        "custom_sd_res": 512,
+        "union_strength": 0.65,
+        "prompt": "A blood stained wood handled axe, irregular dark crimson dried blood smears and red blood spatters covering the silver steel axe head, thick red stains along the sharp cutting edge, scratched forged steel visible beneath the stains, warm oiled wooden handle with fine grain and reddish bloody fingerprints near the head, detailed photorealistic prop surface texture",
+        "name": "axe_blood_progressive_2",
+        "denoise": 0.5,
+        "asset": "wooden_axe",
+        "capture_guidance": false,
+        "capture_pipeline": true,
+        "input_from_job": "axe_blood_progressive_1",
+        "input_texture_sha256": "233a879871708efe4f2180fdfa6242ed29970575ab91b85df298111276ceea5c",
+        "hdri": "studio.hdr",
+        "input_texture": "renders/axe_blood_progressive_1_gen/output_texture_20261011_080324.png"
+      },
+      "status": "FINISHED",
+      "seconds": 92.5,
+      "texture": "renders/axe_blood_progressive_2_gen/output_texture_20261011_080530.png",
+      "texture_sha256": "9ea37e550c8368726f4ea3786869b0d6471c99f84f37853df3ef0caf18f20e63",
+      "pipeline_calls": [
+        {
+          "index": 0,
+          "input_size": [
+            1536,
+            1536
+          ],
+          "denoise": 0.5,
+          "steps": 40,
+          "guidance": 7.5,
+          "sha256": {
+            "input": "1b1fee97b2ecbddb19682b816cf39b89c687500a3ee325f74906966aa4c30c35",
+            "mask": "389278bd217f94948b48181d68e1eecac5f1abba6d4a6ed324af331efa43e9bb",
+            "depth": "d14a8d2e276ab1aa17f465846ef7d1cffd113c209cfbe7ded624ac400a5fe92a",
+            "normal": "e481183951275053febd6cc84ab11cb865cd17b6e5d81f8918dd6cee5be1990a",
+            "canny": "34603ad31179aef025dffbf2dc5869c49b3ec073d419d0c92f1058bd03e6ea6b",
+            "output": "9705f86c97a1c83e6dbe867faf40d6d25f5a835aa19d8684071c22715234439a"
+          }
+        }
+      ],
+      "verified_same_world_geometry": true,
+      "verified_same_uv_map": true,
+      "verified_same_camera": true,
+      "verified_diffuse_only_shaders": true,
+      "verified_input_matches_previous_output": true
+    },
+    {
+      "stage": 3,
+      "job": {
+        "negative": "blurry, low quality, deformed, text, watermark, logo, cartoon, harsh shadows, lens flare, plastic, solid red surface, person, hand",
+        "sd_version": "sdxl",
+        "mode": "PARA_SEQUENTIAL_IMG",
+        "complexity": "HIGH",
+        "texture_res": 2048,
+        "render_res": 4096,
+        "steps": 40,
+        "guidance": 7.5,
+        "seed": 157,
+        "render_size": 1200,
+        "azimuth": -25,
+        "elevation": 12,
+        "cameras": 16,
+        "custom_sd_res": 768,
+        "union_strength": 0.65,
+        "prompt": "A blood stained wood handled axe, irregular dark crimson dried blood smears and red blood spatters covering the silver steel axe head, thick red stains along the sharp cutting edge, scratched forged steel visible beneath the stains, warm oiled wooden handle with fine grain and reddish bloody fingerprints near the head, detailed photorealistic prop surface texture",
+        "name": "axe_blood_progressive_3",
+        "denoise": 0.2,
+        "asset": "wooden_axe",
+        "capture_guidance": false,
+        "capture_pipeline": true,
+        "subgrid": [
+          2,
+          2
+        ],
+        "input_from_job": "axe_blood_progressive_2",
+        "input_texture_sha256": "9ea37e550c8368726f4ea3786869b0d6471c99f84f37853df3ef0caf18f20e63",
+        "hdri": "studio.hdr",
+        "input_texture": "renders/axe_blood_progressive_2_gen/output_texture_20261011_080530.png"
+      },
+      "status": "FINISHED",
+      "seconds": 577.8,
+      "texture": "renders/axe_blood_progressive_3_gen/output_texture_20261011_081531.png",
+      "texture_sha256": "3ce0b2fa3e8671b6f000654dbb49bf1fb4b6295a4a05dda293caaf18d553c57b",
+      "pipeline_calls": [
+        {
+          "index": 0,
+          "input_size": [
+            1536,
+            1536
+          ],
+          "denoise": 0.20000000298023224,
+          "steps": 40,
+          "guidance": 7.5,
+          "sha256": {
+            "input": "567e73eb631ac18a15be1727ca2bbf9ba7a19a990c2328e369256684ef7f9d08",
+            "mask": "3b180bbe08777d15ba562247173a69a1c78de941cf5bad1f63e9d930a45876a1",
+            "depth": "c744732afea5aadc09bb47a4e47bdcf2324f51ecb72ffd35c131dac4b7ee33d3",
+            "normal": "4f9f31097f9d3ddb36883fa36107a987aa140d962406e7bb276dedbb4be50a7d",
+            "canny": "3576aff02c65e82e4c1fbb4b6f5bd44c0945183c71d773005074c0388ac669a9",
+            "output": "ef17ef79bae5e22fa838183b616c25bd9b80f9ab3aa77076f7c3b731ea475807"
+          }
+        },
+        {
+          "index": 1,
+          "input_size": [
+            1536,
+            1536
+          ],
+          "denoise": 0.20000000298023224,
+          "steps": 40,
+          "guidance": 7.5,
+          "sha256": {
+            "input": "e9f17d7697177cc6d4b87a64663ab4337f885b38976d04d25ceacd26ce0d9390",
+            "mask": "6bfd1b6ad03dcfb5047ac389cd7d61fca38e3baab6b4a14c26e60339ba5b96b9",
+            "depth": "9b9b33c457a1c63aa53d79d7cd7a7a526744f18ff85f7c7a9f52b2d1f5743424",
+            "normal": "036564225d0731b14f8adc4b314c20c91bd4ffc3601b91f1812234a1f91c48e6",
+            "canny": "440a1d3409012778f81b98390dacb6ac810a12a94fa3366a0c655f69d5de0acf",
+            "output": "7d882b0beef37e4968e86bc7d7c130475b038afea62ef3f4548dc3f41115e2a5"
+          }
+        },
+        {
+          "index": 2,
+          "input_size": [
+            1536,
+            1536
+          ],
+          "denoise": 0.20000000298023224,
+          "steps": 40,
+          "guidance": 7.5,
+          "sha256": {
+            "input": "0bd6949735b0fbe78c910392a8f2f0b7673701a7236f52ffb17d6d1d830cb95a",
+            "mask": "79f050c8286e58ae87547bfd088fa90cd307c7bfe4c641c11244d01c811805c6",
+            "depth": "81bdfbea020b6713afc91b462e13bca43b714525508714226f81057170384e19",
+            "normal": "7ba85a0c4d2487994b31a74ce9c4d278587075d6064e521eefcac765fcdc02c1",
+            "canny": "1493b47e7e04897eeccdb404a98d6d25985d082d2cc157901c422bd06a8b04e1",
+            "output": "a36bc3b733bb49612927f4ef4bca114392862d3cf5310b4e7a419dd69672d9ca"
+          }
+        },
+        {
+          "index": 3,
+          "input_size": [
+            1536,
+            1536
+          ],
+          "denoise": 0.20000000298023224,
+          "steps": 40,
+          "guidance": 7.5,
+          "sha256": {
+            "input": "1ac98d17137c2968f4105306a9614c7c9f0f5dad5c784f621f1e037bbb878e0b",
+            "mask": "191fcf76b3d18e8d329d665dd398a139d43273c082882a944e00a4074c1679a8",
+            "depth": "e9b1b35fec2db7dc4b89ebaa741495e8b8da83571aeec6a16a3145713ed6a4d5",
+            "normal": "a0ae1f6d4a29a4e10d8804f3f769b521ad3ca0dcab51f8f749366b7bf9c8d863",
+            "canny": "4a345ab6da618b3c454ef51a5af9827c17e404b7b07161c5380dd9538493faf0",
+            "output": "933c913b4cf02b1edda19a79b334aace3bb9ee5d03e570b46c01e96c7f3c35c5"
+          }
+        }
+      ],
+      "verified_same_world_geometry": true,
+      "verified_same_uv_map": true,
+      "verified_same_camera": true,
+      "verified_diffuse_only_shaders": true,
+      "verified_input_matches_previous_output": true
+    }
+  ],
+  "notes": "Stage 1 starts untextured at full denoise. Stage 2 takes the exact stage 1 UV texture; stage 3 takes the exact stage 2 UV texture. Stage 3 uses four sequential 2x2 sub-grids, updating the texture between groups.",
+  "local_scripts": {
+    "generate_multipass.py": "fca9a6b9236612629914b326dc51d60a01adb7d62f76495abcddac7616f5b41b",
+    "wire_progressive.py": "e8e3bc8550a8e12130160bf5e46862a2d153e6e86ada1ca146924c8856c7da44",
+    "compose_progressive.py": "31d257593bff06eb122a7b1b44b8e13bf2a552cee2d52ecd1f009c56f24b8f74",
+    "verify_progressive.py": "568e1f00ca4166515204bde2dab7d35adc1b3ae52caee69aa2eb9ad5b96e1ad6",
+    "render_progressive_reverse.py": "2258735250a64b86b96d31b1d1aa65112f85659709222137e955c9b4729550d3"
+  },
+  "comparison_image": {
+    "path": "images/axe-progressive.webp",
+    "dimensions": [
+      1800,
+      890
+    ],
+    "sha256": "502aae5e5ddde6b57f0b1f22506f18647b26de2364a9bbf52a76c99e2d3da288",
+    "detail_crop_xyxy": [
+      480,
+      20,
+      720,
+      335
+    ],
+    "view_azimuth_degrees": 155,
+    "view_elevation_degrees": 12,
+    "verified_matched_comparison_camera": true
+  },
+  "visual_observation": "The final 16-view pass visibly softens wood grain and small blood speckles; blood is concentrated on one blade face."
+}
