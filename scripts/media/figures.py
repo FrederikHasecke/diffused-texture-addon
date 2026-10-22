@@ -1,8 +1,9 @@
 """README figure layouts. Each function reads workspace renders and writes images/.
 
-Inputs come only from the media workspace (renders, pipeline captures, sweep
-frames). Nothing is drawn or mocked up: every object, grid and texture shown
-is an actual Cycles render or an image passed to or from the diffusion call.
+Inputs come from the media workspace (renders, pipeline captures, sweep frames)
+or the composed camera-sweep video. Nothing is drawn or mocked up: every object,
+grid and texture shown is an actual Cycles render or an image passed to or from
+the diffusion call.
 """
 
 import json
@@ -110,14 +111,8 @@ def hero_panels(canvas: Image.Image, paste: Callable[[str, tuple], None]) -> Non
     text_center(canvas, HERO_FOOTER, 710, font(REGULAR, 22), ACCENT)
 
 
-def hero(work: Workspace, out: Path) -> list[Path]:
-    canvas = gradient(1800, 760)
-    hero_panels(
-        canvas,
-        lambda name, box: place(canvas, work.renders / f"{name}.png", box),
-    )
-    canvas.save(out / "hero.webp", quality=90, method=6)
-
+def social_preview(work: Workspace, out: Path) -> list[Path]:
+    """Static social preview, independent of the animated README hero."""
     social = gradient(1280, 640)
     draw = ImageDraw.Draw(social)
     draw.text((44, 30), "DiffusedTexture", font=font(BOLD, 54), fill=LIGHT)
@@ -132,7 +127,39 @@ def hero(work: Workspace, out: Path) -> list[Path]:
         place(social, work.renders / f"{name}.png", (x + 10, 160, 380, 380))
         text_center(social, title, 570, font(REGULAR, 22), LIGHT, x, 400)
     social.save(out / "social_preview.png", optimize=True)
-    return [out / "hero.webp", out / "social_preview.png"]
+    return [out / "social_preview.png"]
+
+
+def hero(_work: Workspace, out: Path) -> list[Path]:
+    """Loop the camera sweep inline in the README using animated WebP."""
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        msg = "ffmpeg is required to encode hero.webp"
+        raise RuntimeError(msg)
+    target = out / "hero.webp"
+    subprocess.run(  # noqa: S603
+        [
+            ffmpeg,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(out / "showcase.mp4"),
+            "-c:v",
+            "libwebp_anim",
+            "-quality",
+            "85",
+            "-compression_level",
+            "6",
+            "-loop",
+            "0",
+            "-an",
+            str(target),
+        ],
+        check=True,
+    )
+    return [target]
 
 
 def showcase(work: Workspace, out: Path) -> list[Path]:
@@ -489,11 +516,15 @@ def how_it_works(work: Workspace, out: Path) -> list[Path]:
 
 # figure -> (layout, workspace files it needs, relative to the workspace root)
 FIGURES: dict[str, tuple[Callable[[Workspace, Path], list[Path]], tuple[str, ...]]] = {
-    "hero": (hero, ("renders/lion.png", "renders/chest.png", "renders/boulder.png")),
+    "social-preview": (
+        social_preview,
+        ("renders/lion.png", "renders/chest.png", "renders/boulder.png"),
+    ),
     "showcase": (
         showcase,
         ("frames/lion/0071.png", "frames/chest/0071.png", "frames/boulder/0071.png"),
     ),
+    "hero": (hero, ()),
     "texture-to-texture": (
         texture_to_texture,
         (
