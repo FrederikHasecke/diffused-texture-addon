@@ -7,8 +7,9 @@ textures and diffusion captures they are laid out from live in a separate
 
 | Figure | Built from |
 | --- | --- |
-| `hero.webp`, `social_preview.png` | renders of the `lion`, `chest` and `boulder` jobs |
+| `social_preview.png` | renders of the `lion`, `chest` and `boulder` jobs |
 | `showcase.mp4` | 72-frame camera sweeps of the same three jobs |
+| `hero.webp` | looping animated preview of `showcase.mp4`, displayed inline in the README |
 | `texture-to-texture.webp` | `boulder_original`, `boulder` and `boulder_lichen` renders |
 | `controlnet-guidance.webp` | depth / canny / normal grids captured from the `boulder` job |
 | `how-it-works.webp` | the `boulder` job's captured inputs, SDXL output and UV texture |
@@ -28,6 +29,11 @@ python3 scripts/media/media.py verify
 
 Each stage can run alone and be limited to some names, for example
 `media.py generate boulder boulder_lichen` or `media.py compose hero`.
+
+`compose hero` rebuilds the animated hero from the committed `images/showcase.mp4`
+without needing the original renders. A full `compose` rebuilds the sweep before
+encoding the hero. `compose social-preview` rebuilds the separate static social
+preview from the three hero renders.
 
 | Stage | Names | What it does | Needs |
 | --- | --- | --- | --- |

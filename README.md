@@ -8,7 +8,7 @@
 
 DiffusedTexture is a free, open-source Blender add-on that generates textures directly on your 3D mesh with **Stable Diffusion 1.5** or **SDXL**. Depth, canny and normal **ControlNets** keep the result aligned with the geometry, and the generated views are projected and baked into your UV map. Everything runs locally on your own GPU: no cloud service and no subscription. It supports text-to-texture, image-to-texture refinement, **LoRA** and **IP-Adapter**.
 
-![Textures generated on detailed CC0 meshes: a decorated bronze-and-gold lion head, a turquoise wooden treasure chest with brass fittings, and a fractured volcanic boulder with fiery orange fissures](images/hero.webp)
+![Animated camera sweep of textures generated on detailed CC0 meshes: a decorated bronze-and-gold lion head, a turquoise wooden treasure chest with brass fittings, and a fractured volcanic boulder with fiery orange fissures](images/hero.webp)
 
 <sub>SDXL textures on detailed CC0 models from [Poly Haven](https://polyhaven.com/models), rendered in Cycles. The carved mane, ornate chest fittings and fractured boulder provide geometry for Depth, Canny and Normal ControlNet guidance. The boulder refines its original albedo; the lion and chest start untextured. [Camera sweep (MP4)](images/showcase.mp4).</sub>
 

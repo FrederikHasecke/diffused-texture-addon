@@ -536,7 +536,17 @@
         1800,
         760
       ],
-      "sha256": "d7b10dee86af1cac3ee7586022677576599a8e7dca1c9bc4c398936cd48e7a36"
+      "frames": 72,
+      "loop": 0,
+      "duration_ms": 3999,
+      "distinct_frames": 72,
+      "sha256": "82c2f79741ab39bc927bb5d65e6d2f01cd47625c2bcac94289ef188e4f2bb4e7",
+      "source": "images/showcase.mp4",
+      "encoding": {
+        "codec": "libwebp_anim",
+        "quality": 85,
+        "compression_level": 6
+      }
     },
     "social_preview.png": {
       "dimensions": [
