@@ -128,9 +128,11 @@ def resolve_torch_install(
     Python 3.13 lanes use channel-specific verified baselines. Pinning is
     required because pip considers both PyPI and the accelerator index; without
     a local-version pin, a newer generic PyPI wheel can silently win over an
-    older CUDA or ROCm wheel. The CPU, CUDA 12.6 and CUDA 13.0 baselines include the
-    torch.jit.script security fix and publish cp313 wheel hashes. Older
-    accelerator channels retain their last verified compatible wheels.
+    older CUDA or ROCm wheel. The CPU, CUDA 12.6 and CUDA 13.0 baselines
+    include the torch.jit.script security fix (2.13.0+) and publish cp313 wheel
+    hashes. The CUDA 12.8 and ROCm 6.3 indexes publish no 2.13+ cp313 wheels
+    and CUDA 12.9 only publishes a Linux one, so those channels keep their last
+    verified compatible wheels.
     """
     resolved_channel = channel
     if platform == "win32" and blender_version < (5, 1, 0):

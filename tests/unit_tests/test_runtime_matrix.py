@@ -99,38 +99,54 @@ def test_runtime_constraints_files_exist() -> None:
     assert spec_311.constraints_path.parent == spec_313.constraints_path.parent
 
 
-@pytest.mark.parametrize(
-    ("blender_version", "python_version"),
-    [((5, 0, 0), (3, 11)), ((5, 2, 0), (3, 13))],
-)
-@pytest.mark.parametrize(
-    ("package", "vulnerable", "patched"),
-    [
-        ("pillow", "12.3.0", "13.0.0"),
-        ("certifi", "2026.6.17", "2026.10.19"),
-        ("filelock", "4.2.0", "4.2.1"),
-        ("setuptools", "84.0.0", "84.1.0"),
-    ],
-)
-def test_runtime_requirements_exclude_vulnerable_dependency_versions(
+_PY311_LANE = ((5, 0, 0), (3, 11))
+_PY313_LANE = ((5, 2, 0), (3, 13))
+
+
+def _runtime_requirements_by_name(
     blender_version: tuple[int, int, int],
     python_version: tuple[int, int],
-    package: str,
-    vulnerable: str,
-    patched: str,
-) -> None:
+) -> dict[str, Requirement]:
     spec = resolve_runtime_spec(
         blender_version=blender_version,
         python_version=python_version,
     )
-    requirements = {
+    return {
         requirement.name.lower(): requirement
         for text in spec.runtime_requirements
         for requirement in [Requirement(text)]
     }
 
+
+@pytest.mark.parametrize(
+    ("lane", "package", "vulnerable", "patched"),
+    [
+        (lane, *versions)
+        for lane in (_PY311_LANE, _PY313_LANE)
+        for versions in (
+            ("pillow", "12.3.0", "13.0.0"),
+            ("certifi", "2026.6.17", "2026.10.19"),
+            ("filelock", "4.2.0", "4.2.1"),
+        )
+    ]
+    + [(_PY313_LANE, "setuptools", "84.0.0", "84.1.0")],
+)
+def test_runtime_requirements_exclude_vulnerable_dependency_versions(
+    lane: tuple[tuple[int, int, int], tuple[int, int]],
+    package: str,
+    vulnerable: str,
+    patched: str,
+) -> None:
+    requirements = _runtime_requirements_by_name(*lane)
+
     assert vulnerable not in requirements[package].specifier
     assert patched in requirements[package].specifier
+
+
+def test_py311_runtime_does_not_add_setuptools() -> None:
+    # torch only depends on setuptools for Python 3.12+. Installing it into the
+    # Python 3.11 target would also activate its distutils .pth hook in Blender.
+    assert "setuptools" not in _runtime_requirements_by_name(*_PY311_LANE)
 
 
 def test_resolve_torch_install_pins_windows_blender_50() -> None:

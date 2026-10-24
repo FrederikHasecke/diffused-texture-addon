@@ -8,7 +8,6 @@ accelerate>=1.14.0
 safetensors>=0.8.0
 peft>=0.19.1
 urllib3>=2.8.0
-# Security floors for transitive dependencies; also upgrade existing installs.
+# Security floors for transitive dependencies of huggingface-hub, requests, and torch.
 certifi>=2026.10.19
 filelock>=4.2.1
-setuptools>=84.1.0
