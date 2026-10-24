@@ -4,7 +4,7 @@
 [![Total Downloads](https://img.shields.io/github/downloads/FrederikHasecke/diffused-texture-addon/total?style=flat-square)](https://github.com/FrederikHasecke/diffused-texture-addon/releases/latest)
 [![Blender 4.2+](https://img.shields.io/badge/Blender-4.2%20%E2%80%93%205.2%20LTS-orange?style=flat-square&logo=blender&logoColor=white)](https://www.blender.org/download/)
 [![License: GPL-3.0](https://img.shields.io/github/license/FrederikHasecke/diffused-texture-addon?style=flat-square)](LICENSE)
-[![Lint](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/lint.yml/badge.svg?branch=master)](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/lint.yml)
+[![Tests and lint](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/tests.yml/badge.svg?branch=master)](https://github.com/FrederikHasecke/diffused-texture-addon/actions/workflows/tests.yml)
 
 DiffusedTexture is a free, open-source Blender add-on that generates textures directly on your 3D mesh with **Stable Diffusion 1.5** or **SDXL**. Depth, canny and normal **ControlNets** keep the result aligned with the geometry, and the generated views are projected and baked into your UV map. Everything runs locally on your own GPU: no cloud service and no subscription. It supports text-to-texture, image-to-texture refinement, **LoRA** and **IP-Adapter**.
 
