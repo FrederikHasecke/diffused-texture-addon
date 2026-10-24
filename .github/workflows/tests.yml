@@ -1,4 +1,4 @@
-name: lint
+name: Tests and lint
 permissions:
   contents: read
 on:

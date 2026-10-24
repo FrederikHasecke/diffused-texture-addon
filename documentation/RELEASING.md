@@ -24,7 +24,7 @@ To force a specific version, run the `release-please` workflow manually with the
 
 ## CI/CD Layout
 
-1. `lint.yml`: ruff, the fast test suite and the installer contract tests on every push and pull request.
+1. `tests.yml` (Tests and lint): ruff, the fast test suite and the installer contract tests on every push and pull request.
 2. `artifact-smoke.yml`: builds the ZIP and smoke-tests it on both Blender/Python lanes (push, pull request and nightly).
 3. `build.yml`: manual preview build, also callable from other workflows.
 4. `release-please.yml`: release PRs, tags, changelog, GitHub releases and release assets.
