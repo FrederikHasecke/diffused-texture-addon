@@ -7,11 +7,11 @@ SUPPORTED_PYTHON_SERIES = {
 }
 _CONSTRAINTS_DIR = Path(__file__).with_name("constraints")
 _PY313_TORCH_BASELINES = {
-    "cpu": "2.12.0",
-    "cu126": "2.9.1",
+    "cpu": "2.14.1",
+    "cu126": "2.14.1",
     "cu128": "2.9.1",
     "cu129": "2.9.0",
-    "cu130": "2.12.0",
+    "cu130": "2.14.1",
     "rocm6.3": "2.9.0",
 }
 
@@ -128,9 +128,9 @@ def resolve_torch_install(
     Python 3.13 lanes use channel-specific verified baselines. Pinning is
     required because pip considers both PyPI and the accelerator index; without
     a local-version pin, a newer generic PyPI wheel can silently win over an
-    older CUDA or ROCm wheel. PyTorch 2.13.0's cp313 CUDA index entries also
-    currently omit wheel hashes, which breaks reproducible uv installs and
-    leaves pip unable to verify the download against an index-provided digest.
+    older CUDA or ROCm wheel. The CPU, CUDA 12.6 and CUDA 13.0 baselines include the
+    torch.jit.script security fix and publish cp313 wheel hashes. Older
+    accelerator channels retain their last verified compatible wheels.
     """
     resolved_channel = channel
     if platform == "win32" and blender_version < (5, 1, 0):

@@ -41,6 +41,10 @@ class _PublishedWheelCase:
 
 
 def _resolver_cases() -> list[_ResolverCase]:
+    # pip --platform changes wheel tags, but evaluates dependency markers on
+    # the host. New Windows CPU metadata contains Linux-only CUDA requirements,
+    # so resolving that wheel on Linux incorrectly requires Windows NCCL wheels.
+    native_linux_cpu = sys.platform == "linux"
     cases = [
         _ResolverCase(
             name="win-blender50-cpu",
@@ -55,15 +59,15 @@ def _resolver_cases() -> list[_ResolverCase]:
             expected_torch_contains="+cpu",
         ),
         _ResolverCase(
-            name="win-blender52-cpu",
+            name="linux-blender52-cpu" if native_linux_cpu else "win-blender52-cpu",
             blender_version=(5, 2, 0),
             python_version=(3, 13),
             abi="cp313",
-            runtime_platform="win32",
-            pip_platforms=("win_amd64",),
+            runtime_platform="linux" if native_linux_cpu else "win32",
+            pip_platforms=() if native_linux_cpu else ("win_amd64",),
             channel="cpu",
             expected_numpy_prefix="2.3.",
-            expected_torch_prefix="2.12.0+cpu",
+            expected_torch_prefix="2.14.1+cpu",
             expected_torch_contains="+cpu",
         ),
     ]
@@ -83,6 +87,18 @@ def _resolver_cases() -> list[_ResolverCase]:
                     expected_torch_contains="+cu129",
                 ),
                 _ResolverCase(
+                    name="win-blender52-cu126",
+                    blender_version=(5, 2, 0),
+                    python_version=(3, 13),
+                    abi="cp313",
+                    runtime_platform="win32",
+                    pip_platforms=("win_amd64",),
+                    channel="cu126",
+                    expected_numpy_prefix="2.3.",
+                    expected_torch_prefix="2.14.1+cu126",
+                    expected_torch_contains="+cu126",
+                ),
+                _ResolverCase(
                     name="win-blender52-cu130",
                     blender_version=(5, 2, 0),
                     python_version=(3, 13),
@@ -91,7 +107,7 @@ def _resolver_cases() -> list[_ResolverCase]:
                     pip_platforms=("win_amd64",),
                     channel="cu130",
                     expected_numpy_prefix="2.3.",
-                    expected_torch_prefix="2.12.0+cu130",
+                    expected_torch_prefix="2.14.1+cu130",
                     expected_torch_contains="+cu130",
                 ),
             ]
@@ -104,11 +120,14 @@ def _published_wheel_cases() -> list[_PublishedWheelCase]:
         _PublishedWheelCase("cu126", "2.8.0", "cp311", "win_amd64"),
         _PublishedWheelCase("cu128", "2.8.0", "cp311", "win_amd64"),
         _PublishedWheelCase("cu129", "2.8.0", "cp311", "win_amd64"),
-        _PublishedWheelCase("cpu", "2.12.0", "cp313", "win_amd64"),
-        _PublishedWheelCase("cu126", "2.9.1", "cp313", "win_amd64"),
+        _PublishedWheelCase("cpu", "2.14.1", "cp313", "win_amd64"),
+        _PublishedWheelCase("cu126", "2.14.1", "cp313", "win_amd64"),
         _PublishedWheelCase("cu128", "2.9.1", "cp313", "win_amd64"),
         _PublishedWheelCase("cu129", "2.9.0", "cp313", "win_amd64"),
-        _PublishedWheelCase("cu130", "2.12.0", "cp313", "win_amd64"),
+        _PublishedWheelCase("cu130", "2.14.1", "cp313", "win_amd64"),
+        _PublishedWheelCase("cpu", "2.14.1", "cp313", "manylinux_2_28_x86_64"),
+        _PublishedWheelCase("cu126", "2.14.1", "cp313", "manylinux_2_28_x86_64"),
+        _PublishedWheelCase("cu130", "2.14.1", "cp313", "manylinux_2_28_x86_64"),
         _PublishedWheelCase(
             "rocm6.3",
             "2.9.0",
