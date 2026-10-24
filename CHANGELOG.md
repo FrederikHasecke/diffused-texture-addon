@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.4](https://github.com/FrederikHasecke/diffused-texture-addon/compare/diffused_texture_addon-v0.3.3...diffused_texture_addon-v0.3.4) (2026-10-24)
+
+
+### Bug Fixes
+
+* **deps:** limit setuptools floor to the Python 3.13 runtime lane ([9d6cfaf](https://github.com/FrederikHasecke/diffused-texture-addon/commit/9d6cfaf54526287e5148cdec71a3edbf01bbe471))
+* **deps:** update vulnerable runtime dependencies ([790a2c3](https://github.com/FrederikHasecke/diffused-texture-addon/commit/790a2c3e18bcb0c7e5865e0f2ab2c6457b833f6e))
+* **deps:** update vulnerable runtime dependencies ([e3e9b79](https://github.com/FrederikHasecke/diffused-texture-addon/commit/e3e9b7985a7b40556c98a61a14c711ebeff63693))
+
 ## [0.3.3](https://github.com/FrederikHasecke/diffused-texture-addon/compare/diffused_texture_addon-v0.3.2...diffused_texture_addon-v0.3.3) (2026-10-11)
 
 
