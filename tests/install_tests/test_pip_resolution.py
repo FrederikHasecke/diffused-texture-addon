@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import urllib.request
@@ -23,9 +24,7 @@ class _ResolverCase:
     name: str
     blender_version: tuple[int, int, int]
     python_version: tuple[int, int]
-    abi: str
     runtime_platform: str
-    pip_platforms: tuple[str, ...]
     channel: str
     expected_numpy_prefix: str
     expected_torch_prefix: str
@@ -46,9 +45,7 @@ def _resolver_cases() -> list[_ResolverCase]:
             name="win-blender50-cpu",
             blender_version=(5, 0, 0),
             python_version=(3, 11),
-            abi="cp311",
             runtime_platform="win32",
-            pip_platforms=("win_amd64",),
             channel="cpu",
             expected_numpy_prefix="1.",
             expected_torch_prefix="2.8.0+cpu",
@@ -58,12 +55,20 @@ def _resolver_cases() -> list[_ResolverCase]:
             name="win-blender52-cpu",
             blender_version=(5, 2, 0),
             python_version=(3, 13),
-            abi="cp313",
             runtime_platform="win32",
-            pip_platforms=("win_amd64",),
             channel="cpu",
             expected_numpy_prefix="2.3.",
-            expected_torch_prefix="2.12.0+cpu",
+            expected_torch_prefix="2.14.1+cpu",
+            expected_torch_contains="+cpu",
+        ),
+        _ResolverCase(
+            name="linux-blender52-cpu",
+            blender_version=(5, 2, 0),
+            python_version=(3, 13),
+            runtime_platform="linux",
+            channel="cpu",
+            expected_numpy_prefix="2.3.",
+            expected_torch_prefix="2.14.1+cpu",
             expected_torch_contains="+cpu",
         ),
     ]
@@ -74,24 +79,50 @@ def _resolver_cases() -> list[_ResolverCase]:
                     name="win-blender50-cu129",
                     blender_version=(5, 0, 0),
                     python_version=(3, 11),
-                    abi="cp311",
                     runtime_platform="win32",
-                    pip_platforms=("win_amd64",),
                     channel="cu129",
                     expected_numpy_prefix="1.",
                     expected_torch_prefix="2.8.0+cu129",
                     expected_torch_contains="+cu129",
                 ),
                 _ResolverCase(
+                    name="win-blender52-cu126",
+                    blender_version=(5, 2, 0),
+                    python_version=(3, 13),
+                    runtime_platform="win32",
+                    channel="cu126",
+                    expected_numpy_prefix="2.3.",
+                    expected_torch_prefix="2.14.1+cu126",
+                    expected_torch_contains="+cu126",
+                ),
+                _ResolverCase(
+                    name="win-blender52-cu128",
+                    blender_version=(5, 2, 0),
+                    python_version=(3, 13),
+                    runtime_platform="win32",
+                    channel="cu128",
+                    expected_numpy_prefix="2.3.",
+                    expected_torch_prefix="2.9.1+cu128",
+                    expected_torch_contains="+cu128",
+                ),
+                _ResolverCase(
+                    name="win-blender52-cu129",
+                    blender_version=(5, 2, 0),
+                    python_version=(3, 13),
+                    runtime_platform="win32",
+                    channel="cu129",
+                    expected_numpy_prefix="2.3.",
+                    expected_torch_prefix="2.9.0+cu129",
+                    expected_torch_contains="+cu129",
+                ),
+                _ResolverCase(
                     name="win-blender52-cu130",
                     blender_version=(5, 2, 0),
                     python_version=(3, 13),
-                    abi="cp313",
                     runtime_platform="win32",
-                    pip_platforms=("win_amd64",),
                     channel="cu130",
                     expected_numpy_prefix="2.3.",
-                    expected_torch_prefix="2.12.0+cu130",
+                    expected_torch_prefix="2.14.1+cu130",
                     expected_torch_contains="+cu130",
                 ),
             ]
@@ -104,11 +135,14 @@ def _published_wheel_cases() -> list[_PublishedWheelCase]:
         _PublishedWheelCase("cu126", "2.8.0", "cp311", "win_amd64"),
         _PublishedWheelCase("cu128", "2.8.0", "cp311", "win_amd64"),
         _PublishedWheelCase("cu129", "2.8.0", "cp311", "win_amd64"),
-        _PublishedWheelCase("cpu", "2.12.0", "cp313", "win_amd64"),
-        _PublishedWheelCase("cu126", "2.9.1", "cp313", "win_amd64"),
+        _PublishedWheelCase("cpu", "2.14.1", "cp313", "win_amd64"),
+        _PublishedWheelCase("cu126", "2.14.1", "cp313", "win_amd64"),
         _PublishedWheelCase("cu128", "2.9.1", "cp313", "win_amd64"),
         _PublishedWheelCase("cu129", "2.9.0", "cp313", "win_amd64"),
-        _PublishedWheelCase("cu130", "2.12.0", "cp313", "win_amd64"),
+        _PublishedWheelCase("cu130", "2.14.1", "cp313", "win_amd64"),
+        _PublishedWheelCase("cpu", "2.14.1", "cp313", "manylinux_2_28_x86_64"),
+        _PublishedWheelCase("cu126", "2.14.1", "cp313", "manylinux_2_28_x86_64"),
+        _PublishedWheelCase("cu130", "2.14.1", "cp313", "manylinux_2_28_x86_64"),
         _PublishedWheelCase(
             "rocm6.3",
             "2.9.0",
@@ -136,7 +170,13 @@ def _pip_base_command() -> list[str]:
     return [sys.executable, "-m", "pip"]
 
 
-def _run_resolution(case: _ResolverCase, report_path: Path) -> dict:
+_UV_PYTHON_PLATFORMS = {
+    "linux": "x86_64-manylinux_2_28",
+    "win32": "x86_64-pc-windows-msvc",
+}
+
+
+def _resolution_inputs(case: _ResolverCase) -> tuple[str, list[str]]:
     runtime_spec = resolve_runtime_spec(
         blender_version=case.blender_version,
         python_version=case.python_version,
@@ -147,12 +187,19 @@ def _run_resolution(case: _ResolverCase, report_path: Path) -> dict:
         blender_version=case.blender_version,
     )
     index_url, _ = torch_index_url(install_channel)
-    platform_args = [
-        argument
-        for platform_name in case.pip_platforms
-        for argument in ("--platform", platform_name)
-    ]
+    return index_url, [torch_requirement, *runtime_spec.runtime_requirements]
 
+
+def _is_native_case(case: _ResolverCase) -> bool:
+    return (
+        case.runtime_platform == sys.platform
+        and case.python_version == sys.version_info[:2]
+    )
+
+
+def _run_pip_resolution(case: _ResolverCase, tmp_path: Path) -> dict[str, str]:
+    index_url, requirements = _resolution_inputs(case)
+    report_path = tmp_path / f"{case.name}.json"
     command = [
         *_pip_base_command(),
         "install",
@@ -165,15 +212,7 @@ def _run_resolution(case: _ResolverCase, report_path: Path) -> dict:
         "https://pypi.org/simple",
         "--extra-index-url",
         index_url,
-        *platform_args,
-        "--python-version",
-        f"{case.python_version[0]}.{case.python_version[1]}",
-        "--implementation",
-        "cp",
-        "--abi",
-        case.abi,
-        torch_requirement,
-        *runtime_spec.runtime_requirements,
+        *requirements,
     ]
     completed = subprocess.run(
         command,
@@ -182,7 +221,55 @@ def _run_resolution(case: _ResolverCase, report_path: Path) -> dict:
         text=True,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
-    return json.loads(report_path.read_text(encoding="utf-8"))
+    return _versions_by_name(json.loads(report_path.read_text(encoding="utf-8")))
+
+
+def _run_uv_resolution(case: _ResolverCase, tmp_path: Path) -> dict[str, str]:
+    # pip --platform only changes wheel tags and still evaluates dependency
+    # markers for the host, e.g. torch's Linux-only CUDA requirements. uv
+    # evaluates markers for the target platform and Python version instead.
+    uv = shutil.which("uv")
+    if uv is None:
+        pytest.skip("uv is required to resolve non-host platforms")
+
+    index_url, requirements = _resolution_inputs(case)
+    requirements_path = tmp_path / f"{case.name}.in"
+    requirements_path.write_text("\n".join(requirements) + "\n", encoding="utf-8")
+    command = [
+        uv,
+        "pip",
+        "compile",
+        str(requirements_path),
+        "--no-config",
+        "--quiet",
+        "--no-header",
+        "--no-annotate",
+        "--only-binary",
+        ":all:",
+        "--index-url",
+        "https://pypi.org/simple",
+        "--extra-index-url",
+        index_url,
+        # Match pip, which considers every index for every package.
+        "--index-strategy",
+        "unsafe-best-match",
+        "--python-platform",
+        _UV_PYTHON_PLATFORMS[case.runtime_platform],
+        "--python-version",
+        f"{case.python_version[0]}.{case.python_version[1]}",
+    ]
+    completed = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    return {
+        match.group(1).lower(): match.group(2)
+        for line in completed.stdout.splitlines()
+        if (match := re.match(r"^([A-Za-z0-9_.-]+)==(\S+)", line))
+    }
 
 
 def _versions_by_name(report: dict) -> dict[str, str]:
@@ -208,8 +295,10 @@ def test_runtime_dependencies_resolve_for_supported_matrix(
     case: _ResolverCase,
     tmp_path: Path,
 ) -> None:
-    report = _run_resolution(case, tmp_path / f"{case.name}.json")
-    versions = _versions_by_name(report)
+    if _is_native_case(case):
+        versions = _run_pip_resolution(case, tmp_path)
+    else:
+        versions = _run_uv_resolution(case, tmp_path)
     runtime_spec = resolve_runtime_spec(
         blender_version=case.blender_version,
         python_version=case.python_version,

@@ -61,7 +61,7 @@ jobs:
           python -m pip install \
             "bpy==${{ matrix.bpy_version }}" \
             "${{ matrix.numpy_requirement }}" \
-            "pillow==12.3.0" \
+            "pillow==13.0.0" \
             "${{ matrix.opencv_requirement }}" \
             "dotenv>=0.9.9"
 

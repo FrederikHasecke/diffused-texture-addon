@@ -2,6 +2,7 @@ from pathlib import Path
 import re
 import tomllib
 
+from packaging.requirements import Requirement
 import pytest
 
 from installer.runtime_matrix import (
@@ -23,6 +24,9 @@ _RUNTIME_DEPENDENCY_NAMES = {
     "safetensors",
     "peft",
     "urllib3",
+    "certifi",
+    "filelock",
+    "setuptools",
 }
 
 
@@ -95,6 +99,56 @@ def test_runtime_constraints_files_exist() -> None:
     assert spec_311.constraints_path.parent == spec_313.constraints_path.parent
 
 
+_PY311_LANE = ((5, 0, 0), (3, 11))
+_PY313_LANE = ((5, 2, 0), (3, 13))
+
+
+def _runtime_requirements_by_name(
+    blender_version: tuple[int, int, int],
+    python_version: tuple[int, int],
+) -> dict[str, Requirement]:
+    spec = resolve_runtime_spec(
+        blender_version=blender_version,
+        python_version=python_version,
+    )
+    return {
+        requirement.name.lower(): requirement
+        for text in spec.runtime_requirements
+        for requirement in [Requirement(text)]
+    }
+
+
+@pytest.mark.parametrize(
+    ("lane", "package", "vulnerable", "patched"),
+    [
+        (lane, *versions)
+        for lane in (_PY311_LANE, _PY313_LANE)
+        for versions in (
+            ("pillow", "12.3.0", "13.0.0"),
+            ("certifi", "2026.6.17", "2026.10.19"),
+            ("filelock", "4.2.0", "4.2.1"),
+        )
+    ]
+    + [(_PY313_LANE, "setuptools", "84.0.0", "84.1.0")],
+)
+def test_runtime_requirements_exclude_vulnerable_dependency_versions(
+    lane: tuple[tuple[int, int, int], tuple[int, int]],
+    package: str,
+    vulnerable: str,
+    patched: str,
+) -> None:
+    requirements = _runtime_requirements_by_name(*lane)
+
+    assert vulnerable not in requirements[package].specifier
+    assert patched in requirements[package].specifier
+
+
+def test_py311_runtime_does_not_add_setuptools() -> None:
+    # torch only depends on setuptools for Python 3.12+. Installing it into the
+    # Python 3.11 target would also activate its distutils .pth hook in Blender.
+    assert "setuptools" not in _runtime_requirements_by_name(*_PY311_LANE)
+
+
 def test_resolve_torch_install_pins_windows_blender_50() -> None:
     channel, requirement, note = resolve_torch_install(
         "cu130",
@@ -115,8 +169,8 @@ def test_resolve_torch_install_pins_blender_52_cpu() -> None:
     )
 
     assert channel == "cpu"
-    assert requirement == "torch==2.12.0+cpu"
-    assert "verified 2.12.0 cpu baseline" in note
+    assert requirement == "torch==2.14.1+cpu"
+    assert "verified 2.14.1 cpu baseline" in note
 
 
 def test_resolve_torch_install_pins_blender_52_cu130() -> None:
@@ -127,8 +181,8 @@ def test_resolve_torch_install_pins_blender_52_cu130() -> None:
     )
 
     assert channel == "cu130"
-    assert requirement == "torch==2.12.0+cu130"
-    assert "verified 2.12.0 cu130 baseline" in note
+    assert requirement == "torch==2.14.1+cu130"
+    assert "verified 2.14.1 cu130 baseline" in note
 
 
 def test_resolve_torch_install_pins_older_cuda_channel_without_pypi_fallback() -> None:

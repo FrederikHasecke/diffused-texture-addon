@@ -1,6 +1,6 @@
 # Runtime dependencies for Blender 4.2-5.0 (Python 3.11).
 numpy>=1.26,<2.0
-pillow==12.3.0
+pillow==13.0.0
 opencv-python-headless==4.11.0.86
 diffusers>=0.39.0
 transformers>=5.14.1
@@ -8,3 +8,6 @@ accelerate>=1.14.0
 safetensors>=0.8.0
 peft>=0.19.1
 urllib3>=2.8.0
+# Security floors for transitive dependencies of huggingface-hub, requests, and torch.
+certifi>=2026.10.19
+filelock>=4.2.1

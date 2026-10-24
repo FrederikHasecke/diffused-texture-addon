@@ -7,7 +7,7 @@ requires-python = ">=3.11,<3.14,!=3.12.*"
 dependencies = [
     "numpy>=1.26,<2.0; python_version < '3.13'",
     "numpy>=2.3,<2.4; python_version >= '3.13'",
-    "pillow==12.3.0",
+    "pillow==13.0.0",
     "opencv-python-headless==4.11.0.86; python_version < '3.13'",
     "opencv-python-headless>=5.0.0.93; python_version >= '3.13'",
     "diffusers>=0.39.0",
@@ -16,11 +16,14 @@ dependencies = [
     "safetensors>=0.8.0",
     "peft>=0.19.1",
     "urllib3>=2.8.0",
+    "certifi>=2026.10.19",
+    "filelock>=4.2.1",
+    "setuptools>=84.1.0; python_version >= '3.13'",
 ]
 
 [dependency-groups]
 dev = [
-  "torch==2.12.0",
+  "torch==2.14.1",
   "bpy==5.2.0; python_version >= '3.13' and ((sys_platform == 'win32' and platform_machine == 'AMD64') or (sys_platform == 'linux' and platform_machine == 'x86_64'))",
   "pytest>=9.0.3",
   "pytest-xdist>=3.6.1",
